@@ -39,6 +39,23 @@ def grade():
     """AI 写作批改命令"""
 
 
+# 作文最小字符数（低于此值大概率不是有效作文）
+MIN_ESSAY_CHARS = 50
+
+
+def _validate_essay(text: str) -> str | None:
+    """校验作文，返回错误信息（若合法则返回 None）"""
+    if not text or not text.strip():
+        return "作文内容为空"
+    n = len(text.strip())
+    if n < MIN_ESSAY_CHARS:
+        return (
+            f"作文太短（{n} 字符）。IELTS 作文通常至少 150-250 词，"
+            f"请输入至少 {MIN_ESSAY_CHARS} 字符的完整段落"
+        )
+    return None
+
+
 @grade.command()
 @click.option("-t", "--topic", default=None, help="指定写作话题")
 def essay(topic: str | None):
@@ -60,8 +77,9 @@ def essay(topic: str | None):
         return
 
     essay_text = "\n".join(lines).strip()
-    if not essay_text:
-        console.print("[yellow]作文内容为空，已取消。[/yellow]")
+    err = _validate_essay(essay_text)
+    if err:
+        console.print(f"[yellow]{err}，已取消。[/yellow]")
         return
 
     _do_grade(essay_text, topic)
@@ -74,8 +92,9 @@ def file(path: str, topic: str | None):
     """从文件读取作文并批改"""
     file_path = Path(path)
     essay_text = file_path.read_text(encoding="utf-8").strip()
-    if not essay_text:
-        console.print("[yellow]文件内容为空。[/yellow]")
+    err = _validate_essay(essay_text)
+    if err:
+        console.print(f"[yellow]{err}。[/yellow]")
         return
 
     console.print(f"[dim]读取文件: {file_path} ({len(essay_text)} 字符)[/dim]")

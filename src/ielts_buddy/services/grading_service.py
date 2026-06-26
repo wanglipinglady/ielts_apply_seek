@@ -188,9 +188,10 @@ class GradingService:
         通过 stdin 传递 prompt，避免命令行参数长度限制
         """
         import sys
+        import re
         sp = system_prompt or SYSTEM_PROMPT
-        # 根据操作系统选择 Python 命令
-        python_cmd = "python" if sys.platform == "win32" else "python3"
+        # 使用当前 venv/script 解释器（避免依赖系统 PATH 中的 python3）
+        python_cmd = sys.executable
         try:
             # 通过 stdin 传递 prompt（避免命令行长度限制）
             process = subprocess.Popen(
@@ -214,7 +215,6 @@ class GradingService:
             outer = json.loads(stdout)
             content = outer.get("content", "")
             # 去掉 AI 的思考过程标签
-            import re
             content = re.sub(r'<think>.*?</think>', '', content, flags=re.DOTALL).strip()
             # content 可能被 markdown 代码块包裹
             content = content.strip()
@@ -224,8 +224,25 @@ class GradingService:
                 lines = [l for l in lines if not l.strip().startswith("```")]
                 content = "\n".join(lines)
             content = content.strip()
-            return json.loads(content)
-        except (subprocess.TimeoutExpired, FileNotFoundError, json.JSONDecodeError) as e:
+            try:
+                data = json.loads(content)
+            except json.JSONDecodeError as e:
+                # 友好提示：回显 LLM 实际返回的内容前 500 字符
+                preview = content[:500] if content else "<empty>"
+                raise RuntimeError(
+                    f"LLM 返回的内容不是合法 JSON: {e}\n"
+                    f"原始返回(前500字):\n{preview}"
+                ) from e
+            # 校验关键字段：LLM 是否按 schema 返回了评分数据
+            if not isinstance(data, dict) or "overall_score" not in data:
+                preview = json.dumps(data, ensure_ascii=False)[:500] if isinstance(data, dict) else str(data)[:500]
+                raise RuntimeError(
+                    f"LLM 未按预期返回评分结果（缺少 overall_score 字段）。\n"
+                    f"可能原因：1) 作文内容过短或不符合题目 2) 模型不遵循 JSON 格式。\n"
+                    f"原始返回(前500字):\n{preview}"
+                )
+            return data
+        except (subprocess.TimeoutExpired, FileNotFoundError) as e:
             raise RuntimeError(f"LLM 调用失败: {e}") from e
 
     def _parse_result(
@@ -255,14 +272,33 @@ class GradingService:
         for ann in annotations:
             error_summary[ann.issue_type] = error_summary.get(ann.issue_type, 0) + 1
 
+        def _score(d: dict, key: str, default: float = 5.0) -> float:
+            """安全提取分数：None / 缺失 / 非数值都用 default"""
+            v = d.get(key)
+            if v is None:
+                return default
+            try:
+                return float(v)
+            except (TypeError, ValueError):
+                return default
+
+        def _dim(d: dict, key: str) -> GradeDimension:
+            sub = d.get(key) or {}
+            if not isinstance(sub, dict):
+                sub = {}
+            return GradeDimension(
+                score=_score(sub, "score", 5.0),
+                comment=str(sub.get("comment") or ""),
+            )
+
         return GradeResult(
-            overall_score=float(data.get("overall_score", 5.0)),
-            task_response=GradeDimension(**data.get("task_response", {"score": 5.0, "comment": ""})),
-            coherence=GradeDimension(**data.get("coherence", {"score": 5.0, "comment": ""})),
-            lexical_resource=GradeDimension(**data.get("lexical_resource", {"score": 5.0, "comment": ""})),
-            grammar=GradeDimension(**data.get("grammar", {"score": 5.0, "comment": ""})),
-            suggestions=data.get("suggestions", []),
-            rewrite=data.get("rewrite", ""),
+            overall_score=_score(data, "overall_score", 5.0),
+            task_response=_dim(data, "task_response"),
+            coherence=_dim(data, "coherence"),
+            lexical_resource=_dim(data, "lexical_resource"),
+            grammar=_dim(data, "grammar"),
+            suggestions=data.get("suggestions") or [],
+            rewrite=data.get("rewrite") or "",
             essay_text=essay_text,
             topic=topic or "",
             task_type=task_type,
