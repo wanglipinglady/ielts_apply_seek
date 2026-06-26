@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>📚 IELTS Buddy · 每日雅思词汇</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0d1117;
+    color: #c9d1d9;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif;
+    min-height: 100vh;
+    padding: 20px;
+  }
+  .container { max-width: 760px; margin: 0 auto; }
+  .header {
+    background: linear-gradient(135deg, #1a1f2e 0%, #16213e 50%, #0f3460 100%);
+    border: 1px solid #30363d;
+    border-radius: 16px;
+    padding: 32px 28px;
+    margin-bottom: 24px;
+    text-align: center;
+  }
+  .header .emoji { font-size: 48px; display: block; margin-bottom: 10px; }
+  .header h1 { font-size: 24px; font-weight: 700; color: #58a6ff; margin-bottom: 8px; }
+  .header .subtitle { font-size: 14px; color: #8b949e; }
+  .stats-row {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+  }
+  .stat-card {
+    flex: 1;
+    min-width: 140px;
+    background: #161b22;
+    border: 1px solid #21262d;
+    border-radius: 12px;
+    padding: 18px 16px;
+    text-align: center;
+  }
+  .stat-card .num { font-size: 32px; font-weight: 700; color: #58a6ff; }
+  .stat-card .label { font-size: 12px; color: #8b949e; margin-top: 4px; }
+  .card {
+    background: #161b22;
+    border: 1px solid #21262d;
+    border-radius: 12px;
+    padding: 20px 18px;
+    margin-bottom: 20px;
+  }
+  .card-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: #e6edf3;
+    margin-bottom: 16px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #21262d;
+  }
+  .calendar-wrapper { overflow-x: auto; }
+  .cal-container { display: inline-block; }
+  .cal-left { display: flex; gap: 3px; }
+  .cal-weekday-col {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    margin-right: 4px;
+  }
+  .cal-weekday-col span {
+    font-size: 10px;
+    color: #484f58;
+    height: 14px;
+    line-height: 14px;
+    width: 20px;
+    text-align: right;
+    flex-shrink: 0;
+  }
+  .cal-weekday-col span:nth-child(even) { color: transparent; }
+  .cal-right { display: flex; flex-direction: column; gap: 0; }
+  .cal-month-row {
+    display: grid;
+    gap: 3px;
+    margin-bottom: 2px;
+    height: 16px;
+  }
+  .cal-mlabel {
+    font-size: 11px;
+    color: #58a6ff;
+    font-weight: 500;
+    line-height: 16px;
+    white-space: nowrap;
+  }
+  .cal-grid {
+    display: grid;
+    grid-template-rows: repeat(7, 14px);
+    grid-auto-flow: column;
+    gap: 3px;
+  }
+  .cal-day {
+    width: 14px;
+    height: 14px;
+    border-radius: 2px;
+    background: #21262d;
+    display: block;
+    cursor: default;
+  }
+  .cal-empty { background: transparent !important; cursor: default; }
+  a.cal-day {
+    background: #0e4429;
+    cursor: pointer;
+    transition: background 0.15s;
+    text-decoration: none;
+  }
+  a.cal-day[data-level="4"] { background: #39d353; }
+  a.cal-day:hover { background: #57f07e !important; }
+  .reports-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  .reports-table th {
+    text-align: left;
+    padding: 8px 12px;
+    color: #8b949e;
+    font-weight: 500;
+    border-bottom: 1px solid #21262d;
+    font-size: 12px;
+  }
+  .reports-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid #161b22;
+    color: #c9d1d9;
+  }
+  .reports-table tr:last-child td { border-bottom: none; }
+  .reports-table a { color: #58a6ff; text-decoration: none; }
+  .reports-table a:hover { text-decoration: underline; }
+  .footer {
+    text-align: center;
+    padding: 24px 0 12px;
+    color: #484f58;
+    font-size: 12px;
+    line-height: 1.8;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <span class="emoji">📚</span>
+    <h1>IELTS Buddy · 每日雅思词汇</h1>
+    <div class="subtitle">坚持每天学习，雅思高分指日可待 💪</div>
+  </div>
+
+  <div class="stats-row">
+    <div class="stat-card">
+      <div class="num">76</div>
+      <div class="label">连续打卡天数</div>
+    </div>
+    <div class="stat-card">
+      <div class="num">76</div>
+      <div class="label">累计报告篇数</div>
+    </div>
+    <div class="stat-card">
+      <div class="num">1381</div>
+      <div class="label">累计推送词汇</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">📅 学习日历</div>
+    <div class="calendar-wrapper">
+      <div class="cal-container">
+        <div class="cal-left">
+          <div class="cal-weekday-col">
+            <span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span>
+          </div>
+          <div class="cal-right">
+
+<div class="cal-month-row" style="grid-template-columns: repeat(13, 14px);">
+<span class="cal-mlabel" style="grid-column:1;">04月</span>
+<span class="cal-mlabel" style="grid-column:5;">05月</span>
+<span class="cal-mlabel" style="grid-column:10;">06月</span>
+</div>
+<div class="cal-grid" style="grid-template-columns: repeat(13, 14px);">
+<span class="cal-day cal-empty"></span>
+<span class="cal-day cal-empty"></span>
+<span class="cal-day" title="2026-04-01: 未推送"></span>
+<span class="cal-day" title="2026-04-02: 未推送"></span>
+<span class="cal-day" title="2026-04-03: 未推送"></span>
+<span class="cal-day" title="2026-04-04: 未推送"></span>
+<span class="cal-day" title="2026-04-05: 未推送"></span>
+<span class="cal-day" title="2026-04-06: 未推送"></span>
+<span class="cal-day" title="2026-04-07: 未推送"></span>
+<span class="cal-day" title="2026-04-08: 未推送"></span>
+<span class="cal-day" title="2026-04-09: 未推送"></span>
+<span class="cal-day" title="2026-04-10: 未推送"></span>
+<span class="cal-day" title="2026-04-11: 未推送"></span>
+<a class="cal-day" data-level="4" href="2026-04-12.html" title="2026-04-12: 0 词"></a>
+<a class="cal-day" data-level="4" href="2026-04-13.html" title="2026-04-13: 0 词"></a>
+<a class="cal-day" data-level="4" href="2026-04-14.html" title="2026-04-14: 20 词"></a>
+<a class="cal-day" data-level="4" href="2026-04-15.html" title="2026-04-15: 20 词"></a>
+<a class="cal-day" data-level="4" href="2026-04-16.html" title="2026-04-16: 20 词"></a>
+<a class="cal-day" data-level="4" href="2026-04-17.html" title="2026-04-17: 20 词"></a>
+<a class="cal-day" data-level="4" href="2026-04-18.html" title="2026-04-18: 20 词"></a>
+<a class="cal-day" data-level="4" href="2026-04-19.html" title="2026-04-19: 0 词"></a>
+<a class="cal-day" data-level="4" href="2026-04-20.html" title="2026-04-20: 20 词"></a>
+<a class="cal-day" data-level="4" href="2026-04-21.html" title="2026-04-21: 20 词"></a>
+<a class="cal-day" data-level="4" href="2026-04-22.html" title="2026-04-22: 0 词"></a>
+<a class="cal-day" data-level="4" href="2026-04-23.html" title="2026-04-23: 0 词"></a>
+<a class="cal-day" data-level="4" href="2026-04-24.html" title="2026-04-24: 20 词"></a>
+<a class="cal-day" data-level="4" href="2026-04-25.html" title="2026-04-25: 20 词"></a>
+<a class="cal-day" data-level="4" href="2026-04-26.html" title="2026-04-26: 20 词"></a>
+<a class="cal-day" data-level="4" href="2026-04-27.html" title="2026-04-27: 20 词"></a>
+<a class="cal-day" data-level="4" href="2026-04-28.html" title="2026-04-28: 0 词"></a>
+<a class="cal-day" data-level="4" href="2026-04-29.html" title="2026-04-29: 0 词"></a>
+<a class="cal-day" data-level="4" href="2026-04-30.html" title="2026-04-30: 20 词"></a>
+<a class="cal-day" data-level="4" href="2026-05-01.html" title="2026-05-01: 21 词"></a>
+<a class="cal-day" data-level="4" href="2026-05-02.html" title="2026-05-02: 20 词"></a>
+<a class="cal-day" data-level="4" href="2026-05-03.html" title="2026-05-03: 20 词"></a>
+<a class="cal-day" data-level="4" href="2026-05-04.html" title="2026-05-04: 20 词"></a>
+<a class="cal-day" data-level="4" href="2026-05-05.html" title="2026-05-05: 20 词"></a>
+<a class="cal-day" data-level="4" href="2026-05-06.html" title="2026-05-06: 20 词"></a>
+<a class="cal-day" data-level="4" href="2026-05-07.html" title="2026-05-07: 20 词"></a>
+<a class="cal-day" data-level="4" href="2026-05-08.html" title="2026-05-08: 20 词"></a>
+<a class="cal-day" data-level="4" href="2026-05-09.html" title="2026-05-09: 20 词"></a>
+<a class="cal-day" data-level="4" href="2026-05-10.html" title="2026-05-10: 20 词"></a>
+<a class="cal-day" data-level="4" href="2026-05-11.html" title="2026-05-11: 20 词"></a>
+<a class="cal-day" data-level="4" href="2026-05-12.html" title="2026-05-12: 20 词"></a>
+<a class="cal-day" data-level="4" href="2026-05-13.html" title="2026-05-13: 20 词"></a>
+<a class="cal-day" data-level="4" href="2026-05-14.html" title="2026-05-14: 20 词"></a>
+<a class="cal-day" data-level="4" href="2026-05-15.html" title="2026-05-15: 20 词"></a>
+<a class="cal-day" data-level="4" href="2026-05-16.html" title="2026-05-16: 20 词"></a>
+<a class="cal-day" data-level="4" href="2026-05-17.html" title="2026-05-17: 20 词"></a>
+<a class="cal-day" data-level="4" href="2026-05-18.html" title="2026-05-18: 20 词"></a>
+<a class="cal-day" data-level="4" href="2026-05-19.html" title="2026-05-19: 20 词"></a>
+<a class="cal-day" data-level="4" href="2026-05-20.html" title="2026-05-20: 20 词"></a>
+<a class="cal-day" data-level="4" href="2026-05-21.html" title="2026-05-21: 20 词"></a>
+<a class="cal-day" data-level="4" href="2026-05-22.html" title="2026-05-22: 20 词"></a>
+<a class="cal-day" data-level="4" href="2026-05-23.html" title="2026-05-23: 20 词"></a>
+<a class="cal-day" data-level="4" href="2026-05-24.html" title="2026-05-24: 20 词"></a>
+<a class="cal-day" data-level="4" href="2026-05-25.html" title="2026-05-25: 20 词"></a>
+<a class="cal-day" data-level="4" href="2026-05-26.html" title="2026-05-26: 20 词"></a>
+<a class="cal-day" data-level="4" href="2026-05-27.html" title="2026-05-27: 20 词"></a>
+<a class="cal-day" data-level="4" href="2026-05-28.html" title="2026-05-28: 20 词"></a>
+<a class="cal-day" data-level="4" href="2026-05-29.html" title="2026-05-29: 20 词"></a>
+<a class="cal-day" data-level="4" href="2026-05-30.html" title="2026-05-30: 20 词"></a>
+<a class="cal-day" data-level="4" href="2026-05-31.html" title="2026-05-31: 20 词"></a>
+<a class="cal-day" data-level="4" href="2026-06-01.html" title="2026-06-01: 20 词"></a>
+<a class="cal-day" data-level="4" href="2026-06-02.html" title="2026-06-02: 20 词"></a>
+<a class="cal-day" data-level="4" href="2026-06-03.html" title="2026-06-03: 20 词"></a>
+<a class="cal-day" data-level="4" href="2026-06-04.html" title="2026-06-04: 20 词"></a>
+<a class="cal-day" data-level="4" href="2026-06-05.html" title="2026-06-05: 20 词"></a>
+<a class="cal-day" data-level="4" href="2026-06-06.html" title="2026-06-06: 20 词"></a>
+<a class="cal-day" data-level="4" href="2026-06-07.html" title="2026-06-07: 20 词"></a>
+<a class="cal-day" data-level="4" href="2026-06-08.html" title="2026-06-08: 20 词"></a>
+<a class="cal-day" data-level="4" href="2026-06-09.html" title="2026-06-09: 20 词"></a>
+<a class="cal-day" data-level="4" href="2026-06-10.html" title="2026-06-10: 20 词"></a>
+<a class="cal-day" data-level="4" href="2026-06-11.html" title="2026-06-11: 20 词"></a>
+<a class="cal-day" data-level="4" href="2026-06-12.html" title="2026-06-12: 20 词"></a>
+<a class="cal-day" data-level="4" href="2026-06-13.html" title="2026-06-13: 20 词"></a>
+<a class="cal-day" data-level="4" href="2026-06-14.html" title="2026-06-14: 20 词"></a>
+<a class="cal-day" data-level="4" href="2026-06-15.html" title="2026-06-15: 20 词"></a>
+<a class="cal-day" data-level="4" href="2026-06-16.html" title="2026-06-16: 20 词"></a>
+<a class="cal-day" data-level="4" href="2026-06-17.html" title="2026-06-17: 20 词"></a>
+<a class="cal-day" data-level="4" href="2026-06-18.html" title="2026-06-18: 20 词"></a>
+<a class="cal-day" data-level="4" href="2026-06-19.html" title="2026-06-19: 20 词"></a>
+<a class="cal-day" data-level="4" href="2026-06-20.html" title="2026-06-20: 20 词"></a>
+<a class="cal-day" data-level="4" href="2026-06-21.html" title="2026-06-21: 20 词"></a>
+<a class="cal-day" data-level="4" href="2026-06-22.html" title="2026-06-22: 20 词"></a>
+<a class="cal-day" data-level="4" href="2026-06-23.html" title="2026-06-23: 20 词"></a>
+<a class="cal-day" data-level="4" href="2026-06-24.html" title="2026-06-24: 20 词"></a>
+<a class="cal-day" data-level="4" href="2026-06-25.html" title="2026-06-25: 20 词"></a>
+<a class="cal-day" data-level="4" href="2026-06-26.html" title="2026-06-26: 20 词"></a>
+</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">📋 最近报告</div>
+    <table class="reports-table">
+      <thead>
+        <tr>
+          <th>日期</th>
+          <th>Day</th>
+          <th>词汇数</th>
+          <th>累计</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><a href="2026-06-26.html">2026-06-26</a> 🔥</td>
+          <td>Day 76</td>
+          <td>20</td>
+          <td><strong>20</strong></td>
+        </tr>
+        <tr>
+          <td><a href="2026-06-25.html">2026-06-25</a> </td>
+          <td>Day 75</td>
+          <td>20</td>
+          <td><strong>20</strong></td>
+        </tr>
+        <tr>
+          <td><a href="2026-06-24.html">2026-06-24</a> </td>
+          <td>Day 74</td>
+          <td>20</td>
+          <td><strong>20</strong></td>
+        </tr>
+        <tr>
+          <td><a href="2026-06-23.html">2026-06-23</a> </td>
+          <td>Day 73</td>
+          <td>20</td>
+          <td><strong>20</strong></td>
+        </tr>
+        <tr>
+          <td><a href="2026-06-22.html">2026-06-22</a> </td>
+          <td>Day 72</td>
+          <td>20</td>
+          <td><strong>20</strong></td>
+        </tr>
+        <tr>
+          <td><a href="2026-06-21.html">2026-06-21</a> </td>
+          <td>Day 71</td>
+          <td>20</td>
+          <td><strong>20</strong></td>
+        </tr>
+        <tr>
+          <td><a href="2026-06-20.html">2026-06-20</a> </td>
+          <td>Day 70</td>
+          <td>20</td>
+          <td><strong>20</strong></td>
+        </tr>
+        <tr>
+          <td><a href="2026-06-19.html">2026-06-19</a> </td>
+          <td>Day 69</td>
+          <td>20</td>
+          <td><strong>20</strong></td>
+        </tr>
+        <tr>
+          <td><a href="2026-06-18.html">2026-06-18</a> </td>
+          <td>Day 68</td>
+          <td>20</td>
+          <td><strong>20</strong></td>
+        </tr>
+        <tr>
+          <td><a href="2026-06-17.html">2026-06-17</a> </td>
+          <td>Day 67</td>
+          <td>20</td>
+          <td><strong>20</strong></td>
+        </tr>
+        <tr>
+          <td><a href="2026-06-16.html">2026-06-16</a> </td>
+          <td>Day 66</td>
+          <td>20</td>
+          <td><strong>20</strong></td>
+        </tr>
+        <tr>
+          <td><a href="2026-06-15.html">2026-06-15</a> </td>
+          <td>Day 65</td>
+          <td>20</td>
+          <td><strong>20</strong></td>
+        </tr>
+        <tr>
+          <td><a href="2026-06-14.html">2026-06-14</a> </td>
+          <td>Day 64</td>
+          <td>20</td>
+          <td><strong>20</strong></td>
+        </tr>
+        <tr>
+          <td><a href="2026-06-13.html">2026-06-13</a> </td>
+          <td>Day 63</td>
+          <td>20</td>
+          <td><strong>20</strong></td>
+        </tr>
+        <tr>
+          <td><a href="2026-06-12.html">2026-06-12</a> </td>
+          <td>Day 62</td>
+          <td>20</td>
+          <td><strong>20</strong></td>
+        </tr>
+        <tr>
+          <td><a href="2026-06-11.html">2026-06-11</a> </td>
+          <td>Day 61</td>
+          <td>20</td>
+          <td><strong>20</strong></td>
+        </tr>
+        <tr>
+          <td><a href="2026-06-10.html">2026-06-10</a> </td>
+          <td>Day 60</td>
+          <td>20</td>
+          <td><strong>20</strong></td>
+        </tr>
+        <tr>
+          <td><a href="2026-06-09.html">2026-06-09</a> </td>
+          <td>Day 59</td>
+          <td>20</td>
+          <td><strong>20</strong></td>
+        </tr>
+        <tr>
+          <td><a href="2026-06-08.html">2026-06-08</a> </td>
+          <td>Day 58</td>
+          <td>20</td>
+          <td><strong>20</strong></td>
+        </tr>
+        <tr>
+          <td><a href="2026-06-07.html">2026-06-07</a> </td>
+          <td>Day 57</td>
+          <td>20</td>
+          <td><strong>20</strong></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="footer">
+    📬 由 IELTS Buddy 自动生成 · 最后更新 2026-06-26 · Day 76<br>
+    每日坚持，雅思高分指日可待 💪
+  </div>
+
+</div>
+</body>
+</html>
