@@ -17,6 +17,7 @@ from ielts_buddy.commands.stats import stats
 from ielts_buddy.commands.sync import sync
 from ielts_buddy.commands.vocab import vocab
 from ielts_buddy.commands.write import write
+from ielts_buddy.commands.course import course
 
 
 def _show_daily_reminder():
@@ -78,6 +79,7 @@ cli.add_command(deploy)
 cli.add_command(exam)
 cli.add_command(feishu)
 cli.add_command(recommend)
+cli.add_command(course)
 
 
 if __name__ == "__main__":

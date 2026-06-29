@@ -1,0 +1,95 @@
+{
+  "topic": "太空探索",
+  "source": "剑桥雅思9",
+  "core_sentence": {
+    "en": "There is considerable debate over how we should react if we detect a signal from an alien civilisation.",
+    "cn": "如果我们探测到了来自外星文明的信号，我们应该如何回应是一个备受争议的问题。"
+  },
+  "grammar": {
+    "structure": "There be 句型 + over + 宾语从句 + if 条件状语从句",
+    "diagram": "There is considerable debate [ over [ how [ we should react [ if [ we detect a signal from an alien civilisation ]]]]]"
+  },
+  "vocabulary": [
+    {
+      "word": "considerable",
+      "phonetic": "/kənˈsɪdərəbl/",
+      "pos": "adj.",
+      "meaning": "相当大的；可观的；重要的",
+      "memory": "consider（考虑）+ able（能…的）→ 能纳入考虑范围的",
+      "synonyms": ["great", "large", "substantial"]
+    },
+    {
+      "word": "react",
+      "phonetic": "/riˈækt/",
+      "pos": "v.",
+      "meaning": "反应；反抗；起化学反应",
+      "memory": "re（反）+ act（行动）→ 反着行动",
+      "synonyms": ["respond"]
+    },
+    {
+      "word": "detect",
+      "phonetic": "/dɪˈtekt/",
+      "pos": "v.",
+      "meaning": "察觉；侦查，探测",
+      "memory": "de（向下）+ tect（遮盖）→ 揭开遮盖物",
+      "synonyms": ["discover", "find"]
+    },
+    {
+      "word": "signal",
+      "phonetic": "/ˈsɪɡnəl/",
+      "pos": "n./v.",
+      "meaning": "信号；暗号；标志",
+      "memory": "sign（签名）+ al → 用签名作为标志",
+      "synonyms": ["sign", "indication"]
+    },
+    {
+      "word": "alien",
+      "phonetic": "/ˈeɪliən/",
+      "pos": "n./adj.",
+      "meaning": "外星人；外国的；相异的",
+      "memory": "ali（其他）+ en → 其他地方的",
+      "synonyms": ["extraterrestrial", "foreign"]
+    },
+    {
+      "word": "civilisation",
+      "phonetic": "/ˌsɪvəlaɪˈzeɪʃn/",
+      "pos": "n.",
+      "meaning": "文明（社会），文化",
+      "memory": "civilise（使文明开化）+ ation",
+      "synonyms": ["culture", "society"]
+    }
+  ],
+  "theme_vocab": {
+    "争论词汇": ["debate", "controversial", "controversy", "debatable", "disagreement", "dispute", "quarrel", "wrangle", "squabble", "bicker", "brawl", "contention", "contentious", "dissentious", "tiff"],
+    "反驳词汇": ["controvert", "counter", "deny", "disprove", "gainsay", "rebut", "refute", "retort"],
+    "太空探索": ["dweller", "evolution", "extract", "habitable", "inhospitable", "lander", "manned space flight", "microbial", "orbiter", "planetary", "solar", "space probe", "spacecraft", "ultraviolet"]
+  },
+  "explore_vocab": [
+    {"word": "explore", "meaning": "探险，探索"},
+    {"word": "ferret", "meaning": "搜索，翻找"},
+    {"word": "grope", "meaning": "（暗中）摸索"},
+    {"word": "risk", "meaning": "冒…的危险"},
+    {"word": "seek", "meaning": "寻找；探索"},
+    {"word": "venture", "meaning": "风险投资；冒险"}
+  ],
+  "writing_template": {
+    "开头": "It is a highly controversial issue whether humanity should venture into the unknown by sending signals to alien civilisations. Proponents and opponents have been wrangling over this question for decades.",
+    "反对方": "Opponents refute this proposal with several arguments. They contend that inhospitable alien environments, combined with unknown microbial risks, may pose a threat to the evolution of human civilisation.",
+    "支持方": "Supporters retort that exploring space is the very essence of human progress. Through spacecraft and space probes, we have detected water and organic compounds on other planets.",
+    "结尾": "In conclusion, the controversy is unlikely to be resolved in the short term. What we should do is to seek the truth with caution, so that our civilisation can explore the unknown while remaining vigilant against potential threats."
+  },
+  "writing_sample": {
+    "question": "Should humanity actively try to contact alien civilisations?",
+    "essay": "It is a highly controversial issue whether humanity should venture into the unknown by sending signals to alien civilisations..."
+  },
+  "summary": {
+    "核心例句": "1个（含 there be + 介词 + 宾语从句 + 条件状从）",
+    "核心词汇": "6个高频词",
+    "主题词汇_争论": "15个同义替换词",
+    "主题词汇_反驳": "9个反方论据动词",
+    "主题词汇_太空": "15个太空探索类词汇",
+    "主题词汇_探索": "6个探索动词",
+    "语法结构": "复杂嵌套结构",
+    "写作应用": "1篇完整议论文模板"
+  }
+}
