@@ -50,6 +50,7 @@ class LearningRecord(BaseModel):
     """学习记录模型"""
 
     id: Optional[int] = None
+    user_id: int = 1  # 所属用户（v2.2 W1.2 新增；单机模式固定 1，联网模式为 users.id）
     word_id: int
     memory_level: int = Field(default=0, ge=0, le=6)  # 记忆等级 0-6
     next_review: Optional[str] = None  # ISO 日期 YYYY-MM-DD
@@ -66,6 +67,7 @@ class TestSession(BaseModel):
     """测试会话模型"""
 
     id: Optional[int] = None
+    user_id: int = 1  # 所属用户（v2.2 W1.2 新增）
     session_id: str
     test_date: str  # ISO datetime
     test_mode: str  # spelling / meaning / choice / context
@@ -92,6 +94,7 @@ class DailySummary(BaseModel):
     """每日学习摘要模型"""
 
     id: Optional[int] = None
+    user_id: int = 1  # 所属用户（v2.2 W1.2 新增）
     date: str  # YYYY-MM-DD
     new_words: int = 0
     reviewed_words: int = 0
@@ -103,6 +106,7 @@ class DailySummary(BaseModel):
 class StudyPlan(BaseModel):
     """学习计划模型"""
 
+    user_id: int = 1  # 所属用户（v2.2 W1.2 新增；单机模式默认 1）
     target_band: int = Field(default=7, ge=5, le=9)
     daily_new: int = Field(default=30, ge=1)
     exam_date: Optional[str] = None  # YYYY-MM-DD
@@ -127,6 +131,7 @@ class ExamSession(BaseModel):
     """模拟考试会话模型"""
 
     id: str  # UUID
+    user_id: int = 1  # 所属用户（v2.2 W1.2 新增）
     questions: list[ExamQuestion] = Field(default_factory=list)
     time_limit: int = 20  # 分钟
     started_at: str = ""  # ISO datetime
@@ -138,6 +143,7 @@ class ExamReport(BaseModel):
     """模拟考试报告模型"""
 
     session_id: str
+    user_id: int = 1  # 所属用户（v2.2 W1.2 新增）
     score: int = 0
     total: int = 0
     accuracy: float = 0.0
@@ -151,6 +157,7 @@ class PersonalWord(BaseModel):
     """个人词库单词模型"""
 
     id: Optional[int] = None
+    user_id: int = 1  # 所属用户（v2.2 W1.2 新增）
     word: str
     phonetic: str = ""
     meaning: str = ""
@@ -169,6 +176,7 @@ class VocabCategory(BaseModel):
     """词库分类模型"""
 
     id: Optional[int] = None
+    user_id: int = 1  # 所属用户（v2.2 W1.2 新增；user_id=0 为系统模板）
     name: str
     description: str = ""
     is_system: bool = False  # 系统内置分类不可删除
@@ -208,6 +216,7 @@ class ParagraphAnalysis(BaseModel):
 class GradeResult(BaseModel):
     """AI 写作批改结果"""
 
+    user_id: int = 1  # 所属用户（v2.2 W1.2 新增）
     overall_score: float = Field(ge=1.0, le=9.0)
     task_response: GradeDimension
     coherence: GradeDimension
