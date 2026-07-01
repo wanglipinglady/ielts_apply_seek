@@ -21,13 +21,19 @@ class ReportService:
     """学习报告服务"""
 
     def __init__(self, db_path: Path | None = None) -> None:
+        from ielts_buddy.repositories import create_sqlite_repositories
         self._db_path = db_path or get_db_path()
-        self._db_path.parent.mkdir(parents=True, exist_ok=True)
-        self._conn = sqlite3.connect(str(self._db_path))
-        self._conn.row_factory = sqlite3.Row
+        # W2: 通过 Repository 容器管理连接，自动建表/迁移
+        # 容器内部持有 _conn 和缓存 db
+        self._container = create_sqlite_repositories(db_path=self._db_path)
+
+    @property
+    def _conn(self):
+        """向后兼容：旧版测试访问 service._conn。"""
+        return self._container._conn
 
     def close(self) -> None:
-        self._conn.close()
+        self._container.close()
 
     def _table_exists(self, table: str = "learning_records") -> bool:
         row = self._conn.execute(

@@ -17,13 +17,17 @@ class RecommendService:
     """智能学习推荐服务"""
 
     def __init__(self, db_path: Path | None = None) -> None:
+        from ielts_buddy.repositories import create_sqlite_repositories
         self._db_path = db_path or get_db_path()
-        self._db_path.parent.mkdir(parents=True, exist_ok=True)
-        self._conn = sqlite3.connect(str(self._db_path))
-        self._conn.row_factory = sqlite3.Row
+        # W2: 通过 Repository 容器管理连接
+        self._container = create_sqlite_repositories(db_path=self._db_path)
+
+    @property
+    def _conn(self):
+        return self._container._conn
 
     def close(self) -> None:
-        self._conn.close()
+        self._container.close()
 
     def _table_exists(self) -> bool:
         row = self._conn.execute(

@@ -13,6 +13,7 @@ from ielts_buddy.core.config import get_db_path
 from ielts_buddy.core.models import (
     GradeDimension, GradeResult, ParagraphAnalysis, SentenceAnnotation,
 )
+from ielts_buddy.repositories import create_sqlite_repositories
 
 # 获取项目根目录（ielts_learning_agent）
 # 文件: src/ielts_buddy/services/grading_service.py
@@ -124,31 +125,28 @@ class GradingService:
 
     def __init__(self, db_path: Path | None = None) -> None:
         self._db_path = db_path or get_db_path()
-        self._db_path.parent.mkdir(parents=True, exist_ok=True)
-        self._conn = sqlite3.connect(str(self._db_path))
-        self._conn.row_factory = sqlite3.Row
-        self._init_db()
+        # W2: 委托给 Repository
+        self._container = create_sqlite_repositories(db_path=self._db_path)
+        self._repo = self._container.grade
+        self._user_id = 1
 
     def _init_db(self) -> None:
-        self._conn.executescript(_SCHEMA)
-        self._migrate_add_task_type()
-        self._conn.commit()
+        # W2: 由 Repository 容器初始化（IF NOT EXISTS + 迁移）
+        pass
 
     def _migrate_add_task_type(self) -> None:
-        """为已有 grade_history 表添加 task_type 和 error_summary_json 列（幂等）"""
-        cursor = self._conn.execute("PRAGMA table_info(grade_history)")
-        columns = {row[1] for row in cursor.fetchall()}
-        if "task_type" not in columns:
-            self._conn.execute(
-                "ALTER TABLE grade_history ADD COLUMN task_type TEXT DEFAULT 'task2'"
-            )
-        if "error_summary_json" not in columns:
-            self._conn.execute(
-                "ALTER TABLE grade_history ADD COLUMN error_summary_json TEXT DEFAULT '{}'"
-            )
+        # W2: 由 Repository 容器自动迁移
+        pass
 
     def close(self) -> None:
-        self._conn.close()
+        self._container.close()
+
+    # ---- 向后兼容属性 ----
+
+    @property
+    def _conn(self):
+        """向后兼容：旧版测试访问 service._conn。"""
+        return self._container._conn
 
     def grade_essay(
         self,
@@ -309,69 +307,36 @@ class GradingService:
         )
 
     def _save_history(self, result: GradeResult) -> None:
-        """保存批改记录到数据库"""
-        self._conn.execute(
-            """INSERT INTO grade_history
-               (essay_text, topic, overall_score,
-                task_response_score, coherence_score, lexical_score, grammar_score,
-                result_json, task_type, error_summary_json, graded_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                result.essay_text,
-                result.topic,
-                result.overall_score,
-                result.task_response.score,
-                result.coherence.score,
-                result.lexical_resource.score,
-                result.grammar.score,
-                result.model_dump_json(),
-                result.task_type,
-                json.dumps(result.error_summary, ensure_ascii=False),
-                result.graded_at,
-            ),
-        )
-        self._conn.commit()
+        """保存批改记录到数据库（W2: 委托给 Repository）"""
+        if not result.user_id:
+            result.user_id = self._user_id
+        if not result.graded_at:
+            result.graded_at = datetime.now().isoformat(timespec="seconds")
+        self._repo.save_result(self._user_id, result)
 
     def get_history(self, limit: int = 20, task_type: str | None = None) -> list[GradeResult]:
-        """获取历史批改记录，可按 task_type 筛选"""
-        if task_type:
-            rows = self._conn.execute(
-                """SELECT result_json FROM grade_history
-                   WHERE task_type = ?
-                   ORDER BY id DESC LIMIT ?""",
-                (task_type, limit),
-            ).fetchall()
-        else:
-            rows = self._conn.execute(
-                """SELECT result_json FROM grade_history
-                   ORDER BY id DESC LIMIT ?""",
-                (limit,),
-            ).fetchall()
-        results = []
-        for row in rows:
-            try:
-                data = json.loads(row["result_json"])
-                results.append(GradeResult(**data))
-            except (json.JSONDecodeError, Exception):
-                continue
-        return results
+        """获取历史批改记录，可按 task_type 筛选（W2: 委托给 Repository）"""
+        return self._repo.get_history(self._user_id, limit, task_type)
 
     def get_history_count(self) -> int:
         """获取批改记录总数"""
-        row = self._conn.execute("SELECT COUNT(*) as cnt FROM grade_history").fetchone()
+        # W2: 直接 SQL 查询（count 简单）
+        row = self._conn.execute(
+            "SELECT COUNT(*) as cnt FROM grade_history WHERE user_id = ?",
+            (self._user_id,),
+        ).fetchone()
         return row["cnt"]
 
     def get_average_score(self) -> float:
-        """获取历史平均分"""
-        row = self._conn.execute(
-            "SELECT AVG(overall_score) as avg_score FROM grade_history"
-        ).fetchone()
-        return row["avg_score"] or 0.0
+        """获取历史平均分（W2: 委托给 Repository）"""
+        return self._repo.get_average_score(self._user_id)
 
     def get_error_stats(self) -> dict[str, int]:
         """聚合所有批改记录的错误类型分布"""
         rows = self._conn.execute(
-            "SELECT error_summary_json FROM grade_history WHERE error_summary_json != '{}'"
+            """SELECT error_summary_json FROM grade_history
+               WHERE user_id = ? AND error_summary_json != '{}' AND error_summary_json IS NOT NULL""",
+            (self._user_id,),
         ).fetchall()
         totals: dict[str, int] = {}
         for row in rows:
@@ -384,30 +349,13 @@ class GradingService:
         return totals
 
     def get_error_trend(self, limit: int = 10) -> list[dict]:
-        """获取最近 N 次批改的错误类型趋势
+        """获取最近 N 次批改的错误类型趋势（W2: 委托给 Repository）
 
         Returns:
             [{graded_at, overall_score, error_summary}, ...]
             按时间正序排列（从旧到新）
         """
-        rows = self._conn.execute(
-            """SELECT graded_at, overall_score, error_summary_json
-               FROM grade_history
-               ORDER BY id DESC LIMIT ?""",
-            (limit,),
-        ).fetchall()
-        result = []
-        for row in reversed(rows):  # 反转为正序
-            try:
-                summary = json.loads(row["error_summary_json"])
-            except (json.JSONDecodeError, TypeError):
-                summary = {}
-            result.append({
-                "graded_at": row["graded_at"],
-                "overall_score": row["overall_score"],
-                "error_summary": summary,
-            })
-        return result
+        return self._repo.get_error_trend(self._user_id, limit)
 
     @staticmethod
     def extract_vocab_from_result(result: GradeResult) -> list[dict[str, str]]:
