@@ -1,5 +1,7 @@
 """IELTS LEARNING SEEK -  CLI 入口"""
 
+import os
+
 import click
 from rich.console import Console
 
@@ -67,8 +69,13 @@ def _show_current_user(invoked: str) -> None:
 
     - IELTS_BUDDY_NO_BANNER=1   关闭 banner（CI / 老测试用）
     - 默认（变量未设）         开启 banner（终端用户）
+
+    W8 阶段升级：未登录 + online 模式 → SystemExit(1) 阻断（保护 MySQL 的
+    system seed user_id=1 不被匿名用户污染）；未登录 + local 模式 → 软提示
+    banner 后继续（W7 既有行为）。
     """
     import os
+    import sys
     # auth 子命令自己会打印用户信息，避免重复
     # invoked 是 group 名（auth），不一定是子命令（login/logout/whoami）
     if invoked == "auth":
@@ -76,15 +83,24 @@ def _show_current_user(invoked: str) -> None:
     if os.environ.get("IELTS_BUDDY_NO_BANNER", "").strip() in ("1", "true", "yes"):
         return
     try:
-        from ielts_buddy.core.config import get_app_dir
+        from ielts_buddy.core.config import Config, get_app_dir, get_mode
         from ielts_buddy.services.auth_service import AuthService
 
+        cfg = Config()
+        mode = get_mode(cfg)
         session_path = get_app_dir() / "session.json"
-        svc = AuthService(session_path=session_path)
+        svc = AuthService(session_path=session_path, config=cfg, mode=mode)
         info = svc.whoami()
         svc.close()
         if info is None:
-            # W7 阶段：未登录不阻断；显式提示数据归属
+            # W8：未登录 + online 模式 → 硬退出（保护 MySQL 的 user_id=1）
+            if mode == "online":
+                console = Console(stderr=True)
+                console.print(
+                    "[red]在线模式需要先登录。执行 `ib auth login <username>` 后重试。[/red]"
+                )
+                sys.exit(1)
+            # W7 既有：未登录 + local 模式 → 软提示 banner，继续
             console = Console(stderr=True)
             console.print(
                 "[dim]-- 未登录：数据默认保存到 user_id=1 --"
@@ -100,14 +116,45 @@ def _show_current_user(invoked: str) -> None:
         pass  # 静默失败
 
 
+_MODE_ENV_BACKUP = {"delete": False, "value": ""}
+
+
 @click.group()
 @click.version_option(version="0.1.0", prog_name="ielts-learning-seek")
+@click.option(
+    "--mode",
+    type=click.Choice(["local", "online"], case_sensitive=False),
+    default=None,
+    help="数据源模式（local=SQLite / online=MySQL）。"
+    "优先级：--mode > $IELTS_BUDDY_MODE > config.toml > 默认 local。",
+)
 @click.pass_context
-def cli(ctx):
+def cli(ctx, mode: str | None):
     """IELTS LEARNING SEEK - 雅思学习-不断求索"""
-    if ctx.invoked_subcommand is not None:
-        _show_daily_reminder()
-        _show_current_user(ctx.invoked_subcommand)
+    # W9：--mode 优先级最高，写到 os.environ 让 get_mode() 命中
+    # 用 _MODE_ENV_BACKUP 机制在退出时还原，避免污染进程级 env
+    if mode is not None:
+        if "IELTS_BUDDY_MODE" not in os.environ:
+            # 没设过 → 退出时删掉
+            _MODE_ENV_BACKUP["delete"] = True
+        else:
+            # 设过 → 退出时还原
+            _MODE_ENV_BACKUP["value"] = os.environ["IELTS_BUDDY_MODE"]
+            _MODE_ENV_BACKUP["delete"] = False
+        os.environ["IELTS_BUDDY_MODE"] = mode
+    try:
+        if ctx.invoked_subcommand is not None:
+            _show_daily_reminder()
+            _show_current_user(ctx.invoked_subcommand)
+    finally:
+        # 还原 IELTS_BUDDY_MODE（避免子命令执行过程中被改）
+        if mode is not None:
+            if _MODE_ENV_BACKUP["delete"]:
+                os.environ.pop("IELTS_BUDDY_MODE", None)
+            else:
+                os.environ["IELTS_BUDDY_MODE"] = _MODE_ENV_BACKUP["value"]
+            _MODE_ENV_BACKUP["delete"] = False
+            _MODE_ENV_BACKUP["value"] = ""
 
 
 cli.add_command(vocab)
