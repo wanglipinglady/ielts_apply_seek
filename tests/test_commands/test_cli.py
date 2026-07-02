@@ -35,7 +35,7 @@ class TestCLIBasic:
     def test_help(self, runner: CliRunner):
         result = runner.invoke(cli, ["--help"])
         assert result.exit_code == 0
-        assert "IELTS Buddy" in result.output
+        assert "IELTS LEARNING SEEK" in result.output
         assert "vocab" in result.output
         assert "stats" in result.output
 

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -92,3 +91,20 @@ def custom_vocab_file(tmp_path: Path) -> Path:
     file_path = tmp_path / "custom_vocab.json"
     file_path.write_text(json.dumps(words, ensure_ascii=False), encoding="utf-8")
     return file_path
+
+
+# =============================================================
+# W6: 默认关闭 CLI 启动 banner，避免污染老 CLI 测试的 output 断言。
+# 需要测 banner 本身的测试在 test_auth_cli.py::TestCurrentUserBanner 里
+# 显式 monkeypatch.delenv("IELTS_BUDDY_NO_BANNER", raising=False) 即可。
+# =============================================================
+
+
+@pytest.fixture(autouse=True)
+def _disable_cli_banner(monkeypatch):
+    """所有测试默认关闭 W6 引入的 '当前用户' banner。
+
+    banner 默认在终端用户启用；测试中默认关闭，需要验证时单独打开。
+    """
+    monkeypatch.setenv("IELTS_BUDDY_NO_BANNER", "1")
+    yield

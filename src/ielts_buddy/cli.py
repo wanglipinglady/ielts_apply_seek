@@ -18,6 +18,7 @@ from ielts_buddy.commands.sync import sync
 from ielts_buddy.commands.vocab import vocab
 from ielts_buddy.commands.write import write
 from ielts_buddy.commands.course import course
+from ielts_buddy.commands.auth import auth
 
 
 def _show_daily_reminder():
@@ -56,6 +57,47 @@ def _show_daily_reminder():
         pass  # 静默失败，不影响正常使用
 
 
+def _show_current_user(invoked: str) -> None:
+    """在每个子命令前显示当前用户；auth 子命令自身负责显示所以跳过。
+
+    静默失败：不连 DB、不创建容器，仅读 ~/.ielts-buddy/session.json。
+
+    默认情况下 banner 总是输出。W6 引入的 banner 会污染老 CLI 测试的
+    output 断言，所以新增了显式开关：
+
+    - IELTS_BUDDY_NO_BANNER=1   关闭 banner（CI / 老测试用）
+    - 默认（变量未设）         开启 banner（终端用户）
+    """
+    import os
+    # auth 子命令自己会打印用户信息，避免重复
+    # invoked 是 group 名（auth），不一定是子命令（login/logout/whoami）
+    if invoked == "auth":
+        return
+    if os.environ.get("IELTS_BUDDY_NO_BANNER", "").strip() in ("1", "true", "yes"):
+        return
+    try:
+        from ielts_buddy.core.config import get_app_dir
+        from ielts_buddy.services.auth_service import AuthService
+
+        session_path = get_app_dir() / "session.json"
+        svc = AuthService(session_path=session_path)
+        info = svc.whoami()
+        svc.close()
+        if info is None:
+            console = Console(stderr=True)
+            console.print(
+                "[dim]-- 未登录（执行 `ib login <username>` 登录）--[/dim]"
+            )
+            return
+        console = Console(stderr=True)
+        console.print(
+            f"[dim]-- 当前用户: {info.get('username')} "
+            f"(id={info.get('user_id')}, mode={info.get('mode')}) --[/dim]"
+        )
+    except Exception:
+        pass  # 静默失败
+
+
 @click.group()
 @click.version_option(version="0.1.0", prog_name="ielts-learning-seek")
 @click.pass_context
@@ -63,6 +105,7 @@ def cli(ctx):
     """IELTS LEARNING SEEK - 雅思学习-不断求索"""
     if ctx.invoked_subcommand is not None:
         _show_daily_reminder()
+        _show_current_user(ctx.invoked_subcommand)
 
 
 cli.add_command(vocab)
@@ -80,6 +123,7 @@ cli.add_command(exam)
 cli.add_command(feishu)
 cli.add_command(recommend)
 cli.add_command(course)
+cli.add_command(auth)
 
 
 if __name__ == "__main__":
