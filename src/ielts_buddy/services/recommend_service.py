@@ -1,4 +1,7 @@
-"""智能学习推荐服务：薄弱词、到期词、新词推荐、掌握率预测、综合建议"""
+"""智能学习推荐服务：薄弱词、到期词、新词推荐、掌握率预测、综合建议
+
+W4 阶段：未传 db_path 时按 config.mode 选 local/online 容器。
+"""
 
 from __future__ import annotations
 
@@ -17,10 +20,17 @@ class RecommendService:
     """智能学习推荐服务"""
 
     def __init__(self, db_path: Path | None = None) -> None:
-        from ielts_buddy.repositories import create_sqlite_repositories
-        self._db_path = db_path or get_db_path()
-        # W2: 通过 Repository 容器管理连接
-        self._container = create_sqlite_repositories(db_path=self._db_path)
+        from ielts_buddy.repositories import create_repositories
+        # 显式传 db_path = 强制走 local（保持旧测试 / 旧调用方行为不变）
+        if db_path is not None:
+            self._db_path = db_path
+            self._container = create_repositories(mode="local", db_path=db_path)
+        else:
+            from ielts_buddy.core.config import Config, get_mode
+            cfg = Config()
+            mode = get_mode(cfg)
+            self._db_path = None
+            self._container = create_repositories(mode=mode)
 
     @property
     def _conn(self):

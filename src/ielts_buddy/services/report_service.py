@@ -1,4 +1,7 @@
-"""学习报告服务：生成每日报告数据、日历热力图数据、首页数据"""
+"""学习报告服务：生成每日报告数据、日历热力图数据、首页数据
+
+W4 阶段：未传 db_path 时按 config.mode 选 local/online 容器。
+"""
 
 from __future__ import annotations
 
@@ -21,11 +24,17 @@ class ReportService:
     """学习报告服务"""
 
     def __init__(self, db_path: Path | None = None) -> None:
-        from ielts_buddy.repositories import create_sqlite_repositories
-        self._db_path = db_path or get_db_path()
-        # W2: 通过 Repository 容器管理连接，自动建表/迁移
-        # 容器内部持有 _conn 和缓存 db
-        self._container = create_sqlite_repositories(db_path=self._db_path)
+        from ielts_buddy.repositories import create_repositories
+        # 显式传 db_path = 强制走 local（保持旧测试 / 旧调用方行为不变）
+        if db_path is not None:
+            self._db_path = db_path
+            self._container = create_repositories(mode="local", db_path=db_path)
+        else:
+            from ielts_buddy.core.config import Config, get_mode
+            cfg = Config()
+            mode = get_mode(cfg)
+            self._db_path = None
+            self._container = create_repositories(mode=mode)
 
     @property
     def _conn(self):

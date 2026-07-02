@@ -24,8 +24,27 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "general": {
         "daily_count": 50,
         "default_band": 7,
+        # W4 阶段：数据源模式
+        # - "local":  本地 SQLite（默认，向后兼容）
+        # - "online": 远端 MySQL（推荐生产用）
+        "mode": "local",
+    },
+    "database": {
+        # W4 阶段：MySQL 连接信息
+        # 优先级：环境变量 MYSQL_URL > 配置文件 > 模块默认
+        # 留空字符串代表"使用模块默认（118.190.148.121:3306）"
+        "mysql_url": "",
+        # 联网模式默认登录用户名（占位；用户首登会复制模板分类）
+        "default_username": "anonymous",
+        # W5 阶段：当前 user_id
+        # 优先级：环境变量 IELTS_BUDDY_USER_ID > 配置文件 > 1（单机默认）
+        # 联网模式首登后会被 user_repo.get_or_create 返回的真实 id 覆盖
+        "user_id": 1,
     },
 }
+
+# 有效模式集合（防止拼写错误静默走默认）
+VALID_MODES = ("local", "online")
 
 # 应用数据目录（惰性求值，支持运行时修改环境变量）
 def get_app_dir() -> Path:
@@ -38,6 +57,113 @@ def get_config_path() -> Path:
 
 def get_db_path() -> Path:
     return get_app_dir() / "data.db"
+
+
+# =============================================================
+# W4 阶段：mode / MySQL URL 解析
+# =============================================================
+
+
+def get_mode(config: "Config | None" = None) -> str:
+    """读取当前模式（"local" | "online"）。
+
+    优先级：环境变量 IELTS_BUDDY_MODE > config.general.mode > "local"
+    任何来源的值不在 VALID_MODES 内都退回到 "local" 并发出一次性提示。
+    """
+    import warnings
+    env_mode = os.environ.get("IELTS_BUDDY_MODE", "").strip().lower()
+    if env_mode:
+        if env_mode in VALID_MODES:
+            return env_mode
+        warnings.warn(
+            f"IELTS_BUDDY_MODE={env_mode!r} 非法，应为 {VALID_MODES}，已回退到 'local'",
+            stacklevel=2,
+        )
+        return "local"
+
+    if config is not None:
+        cfg_mode = str(config.get("general.mode", "local")).strip().lower()
+        if cfg_mode in VALID_MODES:
+            return cfg_mode
+        if cfg_mode:  # 非空但非法
+            warnings.warn(
+                f"general.mode={cfg_mode!r} 非法，应为 {VALID_MODES}，已回退到 'local'",
+                stacklevel=2,
+            )
+    return "local"
+
+
+def get_mysql_url(config: "Config | None" = None) -> str:
+    """读取 MySQL 连接 URL。
+
+    优先级：环境变量 MYSQL_URL > config.database.mysql_url > 模块默认
+    返回值始终是 SQLAlchemy 格式的 URL（含 scheme://...）。
+    """
+    env_url = os.environ.get("MYSQL_URL", "").strip()
+    if env_url:
+        return env_url
+
+    if config is not None:
+        cfg_url = str(config.get("database.mysql_url", "")).strip()
+        if cfg_url:
+            return cfg_url
+
+    # 留空：延迟到 MySQL 容器内部用默认 118.190.148.121
+    return ""
+
+
+# =============================================================
+# W5 阶段：user_id 解析
+# =============================================================
+
+
+def get_user_id(config: "Config | None" = None) -> int:
+    """读取当前 user_id。
+
+    优先级：
+    1. 环境变量 IELTS_BUDDY_USER_ID（必须是非负整数）
+    2. config.database.user_id
+    3. 默认 1（单机模式约定；SQLiteUserRepository 单机实现固定 1）
+
+    联网模式下，CLI 启动时会调 user_repo.get_or_create(default_username)
+    拿到真实 user_id，调用方应把该值写回 config 或环境变量后再构造 Service。
+    """
+    import warnings
+
+    env = os.environ.get("IELTS_BUDDY_USER_ID", "").strip()
+    if env:
+        try:
+            v = int(env)
+            if v >= 0:
+                return v
+            warnings.warn(
+                f"IELTS_BUDDY_USER_ID={env!r} 必须为非负整数，已回退",
+                stacklevel=2,
+            )
+        except ValueError:
+            warnings.warn(
+                f"IELTS_BUDDY_USER_ID={env!r} 不是合法整数，已回退",
+                stacklevel=2,
+            )
+
+    if config is not None:
+        cfg_val = config.get("database.user_id", None)
+        if cfg_val is not None:
+            try:
+                v = int(cfg_val)
+                if v >= 0:
+                    return v
+                warnings.warn(
+                    f"database.user_id={cfg_val!r} 必须为非负整数，已回退",
+                    stacklevel=2,
+                )
+            except (TypeError, ValueError):
+                warnings.warn(
+                    f"database.user_id={cfg_val!r} 不是合法整数，已回退",
+                    stacklevel=2,
+                )
+
+    return 1
 
 
 def _serialize_toml(data: dict[str, Any]) -> str:

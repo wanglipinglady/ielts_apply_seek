@@ -1,6 +1,8 @@
 """模拟考试服务：生成考试、提交答案、生成报告、历史记录
 
 W2 阶段：所有 SQL 调用委托给 SQLiteExamRepository。
+W4 阶段：未传 db_path 时按 config.mode 选 local/online 容器。
+W5 阶段：未传 user_id 时按 get_user_id() 解析（env > config > 1）。
 """
 from __future__ import annotations
 
@@ -12,19 +14,28 @@ from pathlib import Path
 from typing import Any
 
 from ielts_buddy.core.models import ExamQuestion, ExamReport, ExamSession
-from ielts_buddy.repositories import create_sqlite_repositories
+from ielts_buddy.repositories import create_repositories
 
 
 class ExamService:
-    """模拟考试服务（W2: 委托给 Repository）"""
+    """模拟考试服务（W2: 委托给 Repository；W4: 模式分发；W5: user_id 注入）"""
 
-    def __init__(self, db_path: Path | None = None) -> None:
-        if db_path is None:
-            from ielts_buddy.core.config import get_db_path
-            db_path = get_db_path()
-        self._container = create_sqlite_repositories(db_path=db_path)
+    def __init__(self, db_path: Path | None = None, user_id: int | None = None) -> None:
+        # 显式传 db_path = 强制走 local（保持旧测试 / 旧调用方行为不变）
+        if db_path is not None:
+            self._container = create_repositories(mode="local", db_path=db_path)
+        else:
+            from ielts_buddy.core.config import Config, get_mode
+            cfg = Config()
+            mode = get_mode(cfg)
+            self._container = create_repositories(mode=mode)
         self._repo = self._container.exam
-        self._user_id = 1
+        # W5: user_id 显式传 > get_user_id() 解析 > 1
+        if user_id is not None:
+            self._user_id = user_id
+        else:
+            from ielts_buddy.core.config import Config, get_user_id
+            self._user_id = get_user_id(Config())
         # 保存当前 session 供 submit/finish 内部用
         self._current_session: ExamSession | None = None
 

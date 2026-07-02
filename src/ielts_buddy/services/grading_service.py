@@ -1,4 +1,8 @@
-"""写作批改服务：调用 LLM 批改雅思作文，存储历史记录"""
+"""写作批改服务：调用 LLM 批改雅思作文，存储历史记录
+
+W4 阶段：未传 db_path 时按 config.mode 选 local/online 容器。
+W5 阶段：未传 user_id 时按 get_user_id() 解析（env > config > 1）。
+"""
 
 from __future__ import annotations
 
@@ -13,7 +17,7 @@ from ielts_buddy.core.config import get_db_path
 from ielts_buddy.core.models import (
     GradeDimension, GradeResult, ParagraphAnalysis, SentenceAnnotation,
 )
-from ielts_buddy.repositories import create_sqlite_repositories
+from ielts_buddy.repositories import create_repositories
 
 # 获取项目根目录（ielts_learning_agent）
 # 文件: src/ielts_buddy/services/grading_service.py
@@ -123,12 +127,25 @@ CREATE TABLE IF NOT EXISTS grade_history (
 class GradingService:
     """AI 写作批改服务"""
 
-    def __init__(self, db_path: Path | None = None) -> None:
-        self._db_path = db_path or get_db_path()
+    def __init__(self, db_path: Path | None = None, user_id: int | None = None) -> None:
+        # 显式传 db_path = 强制走 local（保持旧测试 / 旧调用方行为不变）
+        if db_path is not None:
+            self._db_path = db_path
+            self._container = create_repositories(mode="local", db_path=db_path)
+        else:
+            from ielts_buddy.core.config import Config, get_mode
+            cfg = Config()
+            mode = get_mode(cfg)
+            self._db_path = None
+            self._container = create_repositories(mode=mode)
         # W2: 委托给 Repository
-        self._container = create_sqlite_repositories(db_path=self._db_path)
         self._repo = self._container.grade
-        self._user_id = 1
+        # W5: user_id 显式传 > get_user_id() 解析 > 1
+        if user_id is not None:
+            self._user_id = user_id
+        else:
+            from ielts_buddy.core.config import Config, get_user_id
+            self._user_id = get_user_id(Config())
 
     def _init_db(self) -> None:
         # W2: 由 Repository 容器初始化（IF NOT EXISTS + 迁移）

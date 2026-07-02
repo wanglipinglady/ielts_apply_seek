@@ -1,6 +1,8 @@
 """复习服务：基于艾宾浩斯遗忘曲线的间隔重复，使用 SQLite 存储学习记录
 
 W2 阶段：所有 SQL 调用委托给 SQLiteLearningRepository。
+W4 阶段：未传 db_path 时按 config.mode 选 local/online 容器。
+W5 阶段：未传 user_id 时按 get_user_id() 解析（env > config > 1）。
 公开 API 保持不变（commands 层和测试无需修改）。
 """
 from __future__ import annotations
@@ -10,7 +12,7 @@ from pathlib import Path
 from typing import Optional
 
 from ielts_buddy.core.models import LearningRecord, Word
-from ielts_buddy.repositories import REVIEW_INTERVALS, create_sqlite_repositories
+from ielts_buddy.repositories import REVIEW_INTERVALS, create_repositories
 
 # 艾宾浩斯复习间隔（天数），memory_level 0-6 对应
 __all__ = ["ReviewService", "REVIEW_INTERVALS", "_next_review_date"]
@@ -28,15 +30,24 @@ def _next_review_date(today_str: str, level: int) -> str:
 class ReviewService:
     """艾宾浩斯复习服务（W2: 委托给 Repository）"""
 
-    def __init__(self, db_path: Path | None = None) -> None:
-        if db_path is None:
-            from ielts_buddy.core.config import get_db_path
-            db_path = get_db_path()
+    def __init__(self, db_path: Path | None = None, user_id: int | None = None) -> None:
+        # 显式传 db_path = 强制走 local（保持旧测试 / 旧调用方行为不变）
+        if db_path is not None:
+            self._container = create_repositories(mode="local", db_path=db_path)
+        else:
+            from ielts_buddy.core.config import Config, get_mode
+            cfg = Config()
+            mode = get_mode(cfg)
+            self._container = create_repositories(mode=mode)
         # 每次构造都建独立 container（与原版 conn 生命周期一致）
         # 关闭时调用 .close()
-        self._container = create_sqlite_repositories(db_path=db_path)
         self._repo = self._container.learning
-        self._user_id = 1  # 单机模式固定 1
+        # W5: user_id 显式传 > get_user_id() 解析 > 1
+        if user_id is not None:
+            self._user_id = user_id
+        else:
+            from ielts_buddy.core.config import Config, get_user_id
+            self._user_id = get_user_id(Config())  # 单机模式默认 1
 
     def close(self) -> None:
         self._container.close()
