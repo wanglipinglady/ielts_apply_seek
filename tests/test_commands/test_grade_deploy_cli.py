@@ -4,14 +4,23 @@ from __future__ import annotations
 
 import json
 import os
-import tempfile
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 from click.testing import CliRunner
 
 from ielts_buddy.cli import cli
+
+
+# W7 阶段：grade 命令强制至少 50 字符的预校验（_validate_essay）。
+# 老测试用的是 11~33 字符的短文，会被预校验拦住，mock subprocess.run
+# 永远不会被调用，断言找不到 mock 返回的关键字。
+# 这里用一段 60+ 字符的占位作文（topic: 教育的价值）作为合法输入。
+_VALID_ESSAY = (
+    "Education is fundamental to the development of individuals and societies. "
+    "It shapes our perspectives, opens opportunities, and empowers future generations. "
+)
+_VALID_ESSAY_LEN = len(_VALID_ESSAY)  # ≥ 50 chars
 
 
 @pytest.fixture(autouse=True)
@@ -39,17 +48,22 @@ def _mock_grok_response() -> dict:
     }
 
 
-def _make_subprocess_result(data: dict) -> MagicMock:
+def _make_popen_result(data: dict) -> MagicMock:
+    """构造 grading_service._call_grok 期望的 Popen.communicate 返回值。
+
+    grading_service 走 subprocess.Popen + communicate(input=...)，
+    返回 (stdout, stderr) 元组；returncode 在 Popen 实例上。
+    """
     content = json.dumps(data, ensure_ascii=False)
     outer = json.dumps({"content": content, "model": "test", "usage": {}})
     mock = MagicMock()
     mock.returncode = 0
-    mock.stdout = outer
-    mock.stderr = ""
+    mock.communicate.return_value = (outer, "")
     return mock
 
 
 # ---- Tests: grade 命令组 ----
+
 
 class TestGradeCLI:
 
@@ -67,28 +81,29 @@ class TestGradeCLI:
         assert result.exit_code == 0
         assert "为空" in result.output
 
-    @patch("ielts_buddy.services.grading_service.subprocess.run")
-    def test_grade_essay_with_text(self, mock_run, runner: CliRunner):
-        mock_run.return_value = _make_subprocess_result(_mock_grok_response())
-        result = runner.invoke(cli, ["grade", "essay"], input="This is my essay about education.\n")
+    @patch("ielts_buddy.services.grading_service.subprocess.Popen")
+    def test_grade_essay_with_text(self, mock_popen, runner: CliRunner):
+        mock_popen.return_value = _make_popen_result(_mock_grok_response())
+        result = runner.invoke(cli, ["grade", "essay"], input=_VALID_ESSAY)
         assert result.exit_code == 0
         assert "批改结果" in result.output or "正在批改" in result.output
 
-    @patch("ielts_buddy.services.grading_service.subprocess.run")
-    def test_grade_essay_with_topic(self, mock_run, runner: CliRunner):
-        mock_run.return_value = _make_subprocess_result(_mock_grok_response())
+    @patch("ielts_buddy.services.grading_service.subprocess.Popen")
+    def test_grade_essay_with_topic(self, mock_popen, runner: CliRunner):
+        mock_popen.return_value = _make_popen_result(_mock_grok_response())
         result = runner.invoke(
             cli, ["grade", "essay", "-t", "Education is important"],
-            input="My essay text here.\n",
+            input=_VALID_ESSAY,
         )
         assert result.exit_code == 0
 
-    @patch("ielts_buddy.services.grading_service.subprocess.run")
-    def test_grade_file(self, mock_run, runner: CliRunner, tmp_path):
-        mock_run.return_value = _make_subprocess_result(_mock_grok_response())
+    @patch("ielts_buddy.services.grading_service.subprocess.Popen")
+    def test_grade_file(self, mock_popen, runner: CliRunner, tmp_path):
+        mock_popen.return_value = _make_popen_result(_mock_grok_response())
 
         essay_file = tmp_path / "essay.txt"
-        essay_file.write_text("This is a test essay for grading.", encoding="utf-8")
+        # W7: 写够 50 字符的占位作文（_validate_essay 预校验）
+        essay_file.write_text(_VALID_ESSAY, encoding="utf-8")
 
         result = runner.invoke(cli, ["grade", "file", str(essay_file)])
         assert result.exit_code == 0
@@ -111,46 +126,46 @@ class TestGradeCLI:
         assert result.exit_code == 0
         assert "暂无" in result.output
 
-    @patch("ielts_buddy.services.grading_service.subprocess.run")
-    def test_grade_history_with_data(self, mock_run, runner: CliRunner):
-        mock_run.return_value = _make_subprocess_result(_mock_grok_response())
+    @patch("ielts_buddy.services.grading_service.subprocess.Popen")
+    def test_grade_history_with_data(self, mock_popen, runner: CliRunner):
+        mock_popen.return_value = _make_popen_result(_mock_grok_response())
 
-        # 先批改一篇
-        runner.invoke(cli, ["grade", "essay"], input="Some essay text.\n")
+        # 先批改一篇（W7: 用合法长度作文）
+        runner.invoke(cli, ["grade", "essay"], input=_VALID_ESSAY)
 
         result = runner.invoke(cli, ["grade", "history"])
         assert result.exit_code == 0
         assert "批改历史" in result.output
 
-    @patch("ielts_buddy.services.grading_service.subprocess.run")
-    def test_grade_essay_llm_failure(self, mock_run, runner: CliRunner):
-        mock = MagicMock()
-        mock.returncode = 1
-        mock.stderr = "API error"
-        mock.stdout = ""
-        mock_run.return_value = mock
+    @patch("ielts_buddy.services.grading_service.subprocess.Popen")
+    def test_grade_essay_llm_failure(self, mock_popen, runner: CliRunner):
+        mock_proc = MagicMock()
+        mock_proc.returncode = 1
+        mock_proc.communicate.return_value = ("", "API error")
+        mock_popen.return_value = mock_proc
 
-        result = runner.invoke(cli, ["grade", "essay"], input="Test essay.\n")
+        result = runner.invoke(cli, ["grade", "essay"], input=_VALID_ESSAY)
         assert result.exit_code == 0
         assert "失败" in result.output
 
-    @patch("ielts_buddy.services.grading_service.subprocess.run")
-    def test_grade_shows_scores(self, mock_run, runner: CliRunner):
-        mock_run.return_value = _make_subprocess_result(_mock_grok_response())
-        result = runner.invoke(cli, ["grade", "essay"], input="Test essay text.\n")
+    @patch("ielts_buddy.services.grading_service.subprocess.Popen")
+    def test_grade_shows_scores(self, mock_popen, runner: CliRunner):
+        mock_popen.return_value = _make_popen_result(_mock_grok_response())
+        result = runner.invoke(cli, ["grade", "essay"], input=_VALID_ESSAY)
         assert result.exit_code == 0
         # 应该显示四维评分
         assert "6.5" in result.output or "批改" in result.output
 
-    @patch("ielts_buddy.services.grading_service.subprocess.run")
-    def test_grade_shows_suggestions(self, mock_run, runner: CliRunner):
-        mock_run.return_value = _make_subprocess_result(_mock_grok_response())
-        result = runner.invoke(cli, ["grade", "essay"], input="Test essay text.\n")
+    @patch("ielts_buddy.services.grading_service.subprocess.Popen")
+    def test_grade_shows_suggestions(self, mock_popen, runner: CliRunner):
+        mock_popen.return_value = _make_popen_result(_mock_grok_response())
+        result = runner.invoke(cli, ["grade", "essay"], input=_VALID_ESSAY)
         assert result.exit_code == 0
         assert "改进建议" in result.output or "建议" in result.output
 
 
 # ---- Tests: deploy 命令组 ----
+
 
 class TestDeployCLI:
 
@@ -181,7 +196,10 @@ class TestDeployCLI:
 
         mock_run.side_effect = side_effect
 
-        result = runner.invoke(cli, ["deploy", "setup", "--repo", "https://github.com/user/repo.git"])
+        result = runner.invoke(
+            cli,
+            ["deploy", "setup", "--repo", "https://github.com/user/repo.git"],
+        )
         assert result.exit_code == 0
         assert "初始化完成" in result.output
 
@@ -191,6 +209,7 @@ class TestDeployCLI:
 
 
 # ---- Tests: CLI 注册 ----
+
 
 class TestCLIRegistration:
 

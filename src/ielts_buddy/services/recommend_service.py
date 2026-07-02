@@ -1,17 +1,16 @@
 """智能学习推荐服务：薄弱词、到期词、新词推荐、掌握率预测、综合建议
 
 W4 阶段：未传 db_path 时按 config.mode 选 local/online 容器。
+W5 阶段：未传 user_id 时按 get_user_id() 解析（env > config > 1）。
+W7 阶段：所有 learning_records 查询统一加 WHERE user_id = ? 过滤。
 """
 
 from __future__ import annotations
 
 import json
-import math
-import sqlite3
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from pathlib import Path
 
-from ielts_buddy.core.config import get_db_path
 from ielts_buddy.services.review_service import REVIEW_INTERVALS
 from ielts_buddy.services.vocab_service import VocabService
 
@@ -19,7 +18,9 @@ from ielts_buddy.services.vocab_service import VocabService
 class RecommendService:
     """智能学习推荐服务"""
 
-    def __init__(self, db_path: Path | None = None) -> None:
+    def __init__(
+        self, db_path: Path | None = None, user_id: int | None = None
+    ) -> None:
         from ielts_buddy.repositories import create_repositories
         # 显式传 db_path = 强制走 local（保持旧测试 / 旧调用方行为不变）
         if db_path is not None:
@@ -31,6 +32,12 @@ class RecommendService:
             mode = get_mode(cfg)
             self._db_path = None
             self._container = create_repositories(mode=mode)
+        # W5: user_id 显式传 > get_user_id() 解析 > 1
+        if user_id is not None:
+            self._user_id = user_id
+        else:
+            from ielts_buddy.core.config import Config, get_user_id
+            self._user_id = get_user_id(Config())
 
     @property
     def _conn(self):
@@ -56,12 +63,12 @@ class RecommendService:
         rows = self._conn.execute(
             """SELECT word, word_data, learn_count, correct_count, wrong_count
                FROM learning_records
-               WHERE learn_count > 0
+               WHERE user_id = ? AND learn_count > 0
                ORDER BY
                    CAST(wrong_count AS REAL) / CASE WHEN learn_count = 0 THEN 1 ELSE learn_count END DESC,
                    wrong_count DESC
                LIMIT ?""",
-            (limit,),
+            (self._user_id, limit),
         ).fetchall()
 
         results = []
@@ -106,10 +113,10 @@ class RecommendService:
         rows = self._conn.execute(
             """SELECT word, word_data, memory_level, next_review
                FROM learning_records
-               WHERE next_review <= ?
+               WHERE user_id = ? AND next_review <= ?
                ORDER BY next_review ASC, memory_level ASC
                LIMIT ?""",
-            (today, limit),
+            (self._user_id, today, limit),
         ).fetchall()
 
         today_date = date.today()
@@ -148,7 +155,10 @@ class RecommendService:
         # 获取已学过的词集合
         learned_words: set[str] = set()
         if self._table_exists():
-            rows = self._conn.execute("SELECT word FROM learning_records").fetchall()
+            rows = self._conn.execute(
+                "SELECT word FROM learning_records WHERE user_id = ?",
+                (self._user_id,),
+            ).fetchall()
             learned_words = {row["word"] for row in rows}
 
         # 加载词库
@@ -194,7 +204,9 @@ class RecommendService:
             }
 
         rows = self._conn.execute(
-            "SELECT memory_level, next_review, correct_count, wrong_count FROM learning_records"
+            "SELECT memory_level, next_review, correct_count, wrong_count "
+            "FROM learning_records WHERE user_id = ?",
+            (self._user_id,),
         ).fetchall()
 
         total = len(rows)

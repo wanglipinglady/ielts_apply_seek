@@ -1,18 +1,20 @@
 """学习报告服务：生成每日报告数据、日历热力图数据、首页数据
 
 W4 阶段：未传 db_path 时按 config.mode 选 local/online 容器。
+W5 阶段：未传 user_id 时按 get_user_id() 解析（env > config > 1）。
+W7 阶段：所有 learning_records 查询统一加 WHERE user_id = ? 过滤。
 """
 
 from __future__ import annotations
 
 import json
 import sqlite3
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from pathlib import Path
 
 from jinja2 import Environment, PackageLoader
 
-from ielts_buddy.core.config import get_app_dir, get_db_path
+from ielts_buddy.core.config import get_app_dir
 
 
 def _get_site_dir() -> Path:
@@ -21,9 +23,11 @@ def _get_site_dir() -> Path:
 
 
 class ReportService:
-    """学习报告服务"""
+    """学习报告服务（W7: 按 user_id 隔离）"""
 
-    def __init__(self, db_path: Path | None = None) -> None:
+    def __init__(
+        self, db_path: Path | None = None, user_id: int | None = None
+    ) -> None:
         from ielts_buddy.repositories import create_repositories
         # 显式传 db_path = 强制走 local（保持旧测试 / 旧调用方行为不变）
         if db_path is not None:
@@ -35,6 +39,12 @@ class ReportService:
             mode = get_mode(cfg)
             self._db_path = None
             self._container = create_repositories(mode=mode)
+        # W5: user_id 显式传 > get_user_id() 解析 > 1
+        if user_id is not None:
+            self._user_id = user_id
+        else:
+            from ielts_buddy.core.config import Config, get_user_id
+            self._user_id = get_user_id(Config())
 
     @property
     def _conn(self):
@@ -108,9 +118,9 @@ class ReportService:
         rows = self._conn.execute(
             """SELECT word, word_data, memory_level
                FROM learning_records
-               WHERE DATE(first_learned) = ?
+               WHERE user_id = ? AND DATE(first_learned) = ?
                ORDER BY first_learned""",
-            (date_str,),
+            (self._user_id, date_str),
         ).fetchall()
         return [self._parse_word_row(row) for row in rows]
 
@@ -121,9 +131,9 @@ class ReportService:
         rows = self._conn.execute(
             """SELECT word, word_data, memory_level
                FROM learning_records
-               WHERE DATE(last_reviewed) = ? AND DATE(first_learned) != ?
+               WHERE user_id = ? AND DATE(last_reviewed) = ? AND DATE(first_learned) != ?
                ORDER BY last_reviewed""",
-            (date_str, date_str),
+            (self._user_id, date_str, date_str),
         ).fetchall()
         return [self._parse_word_row(row) for row in rows]
 
@@ -151,11 +161,12 @@ class ReportService:
         if not self._table_exists():
             return (0, 0)
         row = self._conn.execute(
-            """SELECT COALESCE(SUM(correct_count), 0) as correct,
-                      COALESCE(SUM(wrong_count), 0) as wrong
+            """SELECT
+               COALESCE(SUM(correct_count), 0) as correct,
+               COALESCE(SUM(wrong_count), 0) as wrong
                FROM learning_records
-               WHERE DATE(last_reviewed) = ?""",
-            (date_str,),
+               WHERE user_id = ? AND DATE(last_reviewed) = ?""",
+            (self._user_id, date_str),
         ).fetchone()
         return (row["correct"], row["wrong"])
 
@@ -167,8 +178,9 @@ class ReportService:
         rows = self._conn.execute(
             """SELECT DISTINCT DATE(last_reviewed) as study_date
                FROM learning_records
-               WHERE last_reviewed IS NOT NULL
-               ORDER BY study_date DESC"""
+               WHERE user_id = ? AND last_reviewed IS NOT NULL
+               ORDER BY study_date DESC""",
+            (self._user_id,),
         ).fetchall()
 
         if not rows:
@@ -212,7 +224,8 @@ class ReportService:
         band_mastered: dict[int, int] = {}
         if self._table_exists():
             rows = self._conn.execute(
-                "SELECT word_data, memory_level FROM learning_records"
+                "SELECT word_data, memory_level FROM learning_records WHERE user_id = ?",
+                (self._user_id,),
             ).fetchall()
             for row in rows:
                 try:
@@ -245,17 +258,17 @@ class ReportService:
         prev_row = self._conn.execute(
             """SELECT DISTINCT DATE(last_reviewed) as d
                FROM learning_records
-               WHERE DATE(last_reviewed) < ?
+               WHERE user_id = ? AND DATE(last_reviewed) < ?
                ORDER BY d DESC LIMIT 1""",
-            (target_str,),
+            (self._user_id, target_str),
         ).fetchone()
 
         next_row = self._conn.execute(
             """SELECT DISTINCT DATE(last_reviewed) as d
                FROM learning_records
-               WHERE DATE(last_reviewed) > ?
+               WHERE user_id = ? AND DATE(last_reviewed) > ?
                ORDER BY d ASC LIMIT 1""",
-            (target_str,),
+            (self._user_id, target_str),
         ).fetchone()
 
         prev_date = prev_row["d"] if prev_row else None
@@ -282,9 +295,9 @@ class ReportService:
         rows = self._conn.execute(
             """SELECT DATE(last_reviewed) as study_date, COUNT(*) as cnt
                FROM learning_records
-               WHERE DATE(last_reviewed) >= ?
+               WHERE user_id = ? AND DATE(last_reviewed) >= ?
                GROUP BY DATE(last_reviewed)""",
-            (start_str,),
+            (self._user_id, start_str),
         ).fetchall()
 
         date_counts = {row["study_date"]: row["cnt"] for row in rows}
@@ -378,7 +391,9 @@ class ReportService:
                COALESCE(SUM(correct_count), 0) as total_correct,
                COALESCE(SUM(wrong_count), 0) as total_wrong,
                COUNT(CASE WHEN memory_level >= 5 THEN 1 END) as mastered
-               FROM learning_records"""
+               FROM learning_records
+               WHERE user_id = ?""",
+            (self._user_id,),
         ).fetchone()
 
         total_attempts = row["total_correct"] + row["total_wrong"]
@@ -404,16 +419,16 @@ class ReportService:
 
         new_rows = self._conn.execute(
             """SELECT DATE(first_learned) as d, COUNT(*) as cnt
-               FROM learning_records WHERE DATE(first_learned) >= ?
+               FROM learning_records WHERE user_id = ? AND DATE(first_learned) >= ?
                GROUP BY DATE(first_learned)""",
-            (start.isoformat(),),
+            (self._user_id, start.isoformat()),
         ).fetchall()
 
         review_rows = self._conn.execute(
             """SELECT DATE(last_reviewed) as d, COUNT(*) as cnt
-               FROM learning_records WHERE DATE(last_reviewed) >= ?
+               FROM learning_records WHERE user_id = ? AND DATE(last_reviewed) >= ?
                GROUP BY DATE(last_reviewed)""",
-            (start.isoformat(),),
+            (self._user_id, start.isoformat()),
         ).fetchall()
 
         new_counts = {row["d"]: row["cnt"] for row in new_rows}
@@ -436,8 +451,9 @@ class ReportService:
         rows = self._conn.execute(
             """SELECT DISTINCT DATE(last_reviewed) as d
                FROM learning_records
-               WHERE last_reviewed IS NOT NULL
-               ORDER BY d"""
+               WHERE user_id = ? AND last_reviewed IS NOT NULL
+               ORDER BY d""",
+            (self._user_id,),
         ).fetchall()
         return [row["d"] for row in rows]
 

@@ -84,9 +84,11 @@ def _show_current_user(invoked: str) -> None:
         info = svc.whoami()
         svc.close()
         if info is None:
+            # W7 阶段：未登录不阻断；显式提示数据归属
             console = Console(stderr=True)
             console.print(
-                "[dim]-- 未登录（执行 `ib login <username>` 登录）--[/dim]"
+                "[dim]-- 未登录：数据默认保存到 user_id=1 --"
+                "（执行 `ib login <username>` 登录后切换）--[/dim]"
             )
             return
         console = Console(stderr=True)
