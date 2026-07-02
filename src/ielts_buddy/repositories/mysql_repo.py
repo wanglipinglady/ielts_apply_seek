@@ -1,0 +1,1441 @@
+"""MySQL Repository 实现。
+
+W3 阶段：把 SQLite Repository 的 6 个接口翻译为 MySQL 8.0 实现。
+所有业务方法都带 ``user_id`` 参数，与 SQLite 端语义一致。
+
+设计要点：
+1. 使用 SQLAlchemy Core（不是 ORM），保持 SQL 透明
+2. ``vocab_cache`` / ``cache_meta`` 是跨用户共享的，不带 user_id
+3. 首登时调用 ``seed_default_categories_for_user`` 把 user_id=0 的分类复制给新用户
+4. 与 SQLite 端方法签名完全一致，可由 Service 层无差别调用
+"""
+from __future__ import annotations
+
+import json
+from datetime import date, datetime, timedelta
+from typing import Any, Optional
+
+from sqlalchemy import (
+    BigInteger, Boolean, Column, Date, DateTime, DECIMAL, Integer, MetaData, String,
+    Table, Text, UniqueConstraint, Index, insert, select, update, delete, text,
+)
+from sqlalchemy.engine import Engine
+from sqlalchemy.exc import IntegrityError
+
+from ielts_buddy.core.models import (
+    ExamReport,
+    ExamSession,
+    GradeResult,
+    LearningRecord,
+    PersonalWord,
+    VocabCategory,
+    Word,
+)
+
+# =============================================================
+# 表元数据（用 SQLAlchemy Core 描述）
+# =============================================================
+
+metadata = MetaData()
+
+t_users = Table(
+    "users", metadata,
+    Column("id", BigInteger, primary_key=True, autoincrement=True),
+    Column("username", String(64), nullable=False, unique=True),
+    Column("created_at", DateTime, nullable=False, server_default=text("CURRENT_TIMESTAMP")),
+    Column("last_login_at", DateTime, nullable=True),
+)
+
+t_learning_records = Table(
+    "learning_records", metadata,
+    Column("id", BigInteger, primary_key=True, autoincrement=True),
+    Column("user_id", BigInteger, nullable=False, server_default=text("1")),
+    Column("word", String(128), nullable=False),
+    Column("word_data", Text, nullable=False),
+    Column("memory_level", Integer, nullable=False, server_default=text("0")),
+    Column("next_review", Date, nullable=True),
+    Column("learn_count", Integer, nullable=False, server_default=text("0")),
+    Column("correct_count", Integer, nullable=False, server_default=text("0")),
+    Column("wrong_count", Integer, nullable=False, server_default=text("0")),
+    Column("first_learned", DateTime, nullable=True),
+    Column("last_reviewed", DateTime, nullable=True),
+    Column("is_starred", Boolean, nullable=False, server_default=text("0")),
+    Column("is_difficult", Boolean, nullable=False, server_default=text("0")),
+    Column("source", String(32), nullable=False, server_default=text("'builtin'")),
+    UniqueConstraint("user_id", "word", name="uk_lr_user_word"),
+    Index("idx_lr_user_review", "user_id", "next_review"),
+    Index("idx_lr_user_level", "user_id", "memory_level"),
+)
+
+t_personal_vocab = Table(
+    "personal_vocab", metadata,
+    Column("id", BigInteger, primary_key=True, autoincrement=True),
+    Column("user_id", BigInteger, nullable=False, server_default=text("1")),
+    Column("word", String(128), nullable=False),
+    Column("phonetic", String(128), nullable=True),
+    Column("meaning", String(512), nullable=True),
+    Column("pos", String(16), nullable=True),
+    Column("band", Integer, nullable=True),
+    Column("topic", String(64), nullable=True),
+    Column("example", Text, nullable=True),
+    Column("example_cn", Text, nullable=True),
+    Column("note", Text, nullable=True),
+    Column("source", String(32), nullable=False, server_default=text("'manual'")),
+    Column("created_at", DateTime, nullable=False, server_default=text("CURRENT_TIMESTAMP")),
+    Column("updated_at", DateTime, nullable=False,
+           server_default=text("CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP")),
+    UniqueConstraint("user_id", "word", name="uk_pv_user_word"),
+    Index("idx_pv_user_source", "user_id", "source"),
+)
+
+t_vocab_categories = Table(
+    "vocab_categories", metadata,
+    Column("id", BigInteger, primary_key=True, autoincrement=True),
+    Column("user_id", BigInteger, nullable=False, server_default=text("1")),
+    Column("name", String(64), nullable=False),
+    Column("description", String(512), nullable=True),
+    Column("is_system", Boolean, nullable=False, server_default=text("0")),
+    Column("word_count", Integer, nullable=False, server_default=text("0")),
+    Column("created_at", DateTime, nullable=False, server_default=text("CURRENT_TIMESTAMP")),
+    UniqueConstraint("user_id", "name", name="uk_vc_user_name"),
+)
+
+t_vocab_category_words = Table(
+    "vocab_category_words", metadata,
+    Column("id", BigInteger, primary_key=True, autoincrement=True),
+    Column("user_id", BigInteger, nullable=False, server_default=text("1")),
+    Column("category_id", BigInteger, nullable=False),
+    Column("word", String(128), nullable=False),
+    Column("added_at", DateTime, nullable=False, server_default=text("CURRENT_TIMESTAMP")),
+    UniqueConstraint("user_id", "category_id", "word", name="uk_vcw_user_cat_word"),
+    Index("idx_vcw_user_word", "user_id", "word"),
+)
+
+t_exam_sessions = Table(
+    "exam_sessions", metadata,
+    Column("id", BigInteger, primary_key=True, autoincrement=True),
+    Column("user_id", BigInteger, nullable=False, server_default=text("1")),
+    Column("session_id", String(32), nullable=False),
+    Column("questions_json", Text, nullable=False),
+    Column("answers_json", Text, nullable=True),
+    Column("time_limit", Integer, nullable=False, server_default=text("20")),
+    Column("started_at", DateTime, nullable=False),
+    Column("finished_at", DateTime, nullable=True),
+    Column("band_filter", Integer, nullable=True),
+    Column("score", DECIMAL(5, 2), nullable=True),
+    Column("total", Integer, nullable=True),
+    Column("accuracy", DECIMAL(5, 2), nullable=True),
+    UniqueConstraint("user_id", "session_id", name="uk_es_user_session"),
+    Index("idx_es_user_started", "user_id", "started_at"),
+)
+
+t_grade_history = Table(
+    "grade_history", metadata,
+    Column("id", BigInteger, primary_key=True, autoincrement=True),
+    Column("user_id", BigInteger, nullable=False, server_default=text("1")),
+    Column("overall_score", DECIMAL(3, 1), nullable=True),
+    Column("task_type", String(32), nullable=True),
+    Column("topic", String(256), nullable=True),
+    Column("essay_text", Text, nullable=True),
+    Column("result_json", Text, nullable=False),
+    Column("graded_at", DateTime, nullable=False, server_default=text("CURRENT_TIMESTAMP")),
+    Index("idx_gh_user_graded", "user_id", "graded_at"),
+    Index("idx_gh_user_task", "user_id", "task_type"),
+)
+
+t_vocab_cache = Table(
+    "vocab_cache", metadata,
+    Column("word", String(128), primary_key=True),
+    Column("band", Integer, nullable=False),
+    Column("topic", String(64), nullable=False),
+    Column("payload_json", Text, nullable=False),
+    Index("idx_vc_band", "band"),
+    Index("idx_vc_topic", "topic"),
+)
+
+t_cache_meta = Table(
+    "cache_meta", metadata,
+    Column("key_name", String(64), primary_key=True),
+    Column("value", String(256), nullable=False),
+    Column("updated_at", DateTime, nullable=False,
+           server_default=text("CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP")),
+)
+
+
+# =============================================================
+# 工具函数
+# =============================================================
+
+# 艾宾浩斯复习间隔（与 SQLite 一致）
+REVIEW_INTERVALS = [0, 1, 2, 4, 7, 15, 30]
+
+
+def _next_review_date(today_str: str, level: int) -> str:
+    today = date.fromisoformat(today_str)
+    interval = REVIEW_INTERVALS[min(level, len(REVIEW_INTERVALS) - 1)]
+    return (today + timedelta(days=interval)).isoformat()
+
+
+def _row_to_learning_record(row: Any) -> LearningRecord:
+    m = row._mapping
+    return LearningRecord(
+        id=m["id"],
+        user_id=m["user_id"],
+        word_id=m["id"],  # 与 SQLite 端保持兼容（word_id == id）
+        memory_level=m["memory_level"],
+        next_review=m["next_review"].isoformat() if m["next_review"] else None,
+        learn_count=m["learn_count"],
+        correct_count=m["correct_count"],
+        wrong_count=m["wrong_count"],
+        first_learned=m["first_learned"].isoformat() if m["first_learned"] else None,
+        last_reviewed=m["last_reviewed"].isoformat() if m["last_reviewed"] else None,
+        is_starred=bool(m["is_starred"]),
+        is_difficult=bool(m["is_difficult"]),
+    )
+
+
+def _row_to_personal_word(row: Any) -> PersonalWord:
+    m = row._mapping
+    return PersonalWord(
+        id=m["id"],
+        user_id=m["user_id"],
+        word=m["word"],
+        phonetic=m["phonetic"] or "",
+        meaning=m["meaning"] or "",
+        pos=m["pos"] or "",
+        band=m["band"] or 5,
+        topic=m["topic"] or "",
+        example=m["example"] or "",
+        example_cn=m["example_cn"] or "",
+        note=m["note"] or "",
+        source=m["source"],
+        created_at=m["created_at"].isoformat() if m["created_at"] else None,
+        updated_at=m["updated_at"].isoformat() if m["updated_at"] else None,
+    )
+
+
+def _row_to_vocab_category(row: Any) -> VocabCategory:
+    m = row._mapping
+    return VocabCategory(
+        id=m["id"],
+        user_id=m["user_id"],
+        name=m["name"],
+        description=m["description"] or "",
+        is_system=bool(m["is_system"]),
+        word_count=m["word_count"] or 0,
+        created_at=m["created_at"].isoformat() if m["created_at"] else None,
+    )
+
+
+# =============================================================
+# 1. MySQLLearningRepository
+# =============================================================
+
+
+class MySQLLearningRepository:
+    def __init__(self, engine: Engine) -> None:
+        self._engine = engine
+
+    def get_record(self, user_id: int, word: str) -> Optional[LearningRecord]:
+        with self._engine.connect() as conn:
+            row = conn.execute(
+                select(t_learning_records).where(
+                    (t_learning_records.c.user_id == user_id)
+                    & (t_learning_records.c.word == word)
+                )
+            ).first()
+            return _row_to_learning_record(row) if row else None
+
+    def upsert_record(
+        self,
+        user_id: int,
+        word: Word,
+        correct: bool,
+        source: str = "builtin",
+    ) -> LearningRecord:
+        now = datetime.now()
+        today_str = date.today().isoformat()
+        word_data = word.model_dump_json()
+
+        with self._engine.begin() as conn:
+            row = conn.execute(
+                select(t_learning_records).where(
+                    (t_learning_records.c.user_id == user_id)
+                    & (t_learning_records.c.word == word.word)
+                )
+            ).first()
+
+            if row is None:
+                level = 1 if correct else 0
+                next_review = _next_review_date(today_str, level)
+                conn.execute(insert(t_learning_records).values(
+                    user_id=user_id,
+                    word=word.word,
+                    word_data=word_data,
+                    memory_level=level,
+                    next_review=next_review,
+                    learn_count=1,
+                    correct_count=1 if correct else 0,
+                    wrong_count=0 if correct else 1,
+                    first_learned=now,
+                    last_reviewed=now,
+                    source=source,
+                ))
+            else:
+                current_level = row._mapping["memory_level"]
+                if correct:
+                    new_level = min(current_level + 1, len(REVIEW_INTERVALS) - 1)
+                else:
+                    new_level = max(current_level - 1, 0)
+                next_review = _next_review_date(today_str, new_level)
+                conn.execute(
+                    update(t_learning_records)
+                    .where(
+                        (t_learning_records.c.user_id == user_id)
+                        & (t_learning_records.c.word == word.word)
+                    )
+                    .values(
+                        memory_level=new_level,
+                        next_review=next_review,
+                        learn_count=t_learning_records.c.learn_count + 1,
+                        correct_count=t_learning_records.c.correct_count + (1 if correct else 0),
+                        wrong_count=t_learning_records.c.wrong_count + (0 if correct else 1),
+                        last_reviewed=now,
+                    )
+                )
+
+        # 回读
+        return self.get_record(user_id, word.word)  # type: ignore[return-value]
+
+    def toggle_star(self, user_id: int, word: str) -> bool:
+        with self._engine.begin() as conn:
+            row = conn.execute(
+                select(t_learning_records.c.is_starred).where(
+                    (t_learning_records.c.user_id == user_id)
+                    & (t_learning_records.c.word == word)
+                )
+            ).first()
+            if row is None:
+                raise ValueError(f"未找到单词 '{word}' 的学习记录")
+            new_state = not bool(row._mapping["is_starred"])
+            conn.execute(
+                update(t_learning_records)
+                .where(
+                    (t_learning_records.c.user_id == user_id)
+                    & (t_learning_records.c.word == word)
+                )
+                .values(is_starred=new_state)
+            )
+            return new_state
+
+    def toggle_difficult(self, user_id: int, word: str) -> bool:
+        with self._engine.begin() as conn:
+            row = conn.execute(
+                select(t_learning_records.c.is_difficult).where(
+                    (t_learning_records.c.user_id == user_id)
+                    & (t_learning_records.c.word == word)
+                )
+            ).first()
+            if row is None:
+                raise ValueError(f"未找到单词 '{word}' 的学习记录")
+            new_state = not bool(row._mapping["is_difficult"])
+            conn.execute(
+                update(t_learning_records)
+                .where(
+                    (t_learning_records.c.user_id == user_id)
+                    & (t_learning_records.c.word == word)
+                )
+                .values(is_difficult=new_state)
+            )
+            return new_state
+
+    def get_due_words(self, user_id: int, limit: int = 20) -> list[dict]:
+        today_str = date.today().isoformat()
+        with self._engine.connect() as conn:
+            rows = conn.execute(
+                select(t_learning_records)
+                .where(
+                    (t_learning_records.c.user_id == user_id)
+                    & (t_learning_records.c.next_review <= today_str)
+                )
+                .order_by(t_learning_records.c.memory_level.asc(), t_learning_records.c.next_review.asc())
+                .limit(limit)
+            ).fetchall()
+        results = []
+        for row in rows:
+            word_data = Word(**json.loads(row._mapping["word_data"]))
+            record = _row_to_learning_record(row)
+            results.append({
+                "word": row._mapping["word"],
+                "word_data": word_data,
+                "record": record,
+            })
+        return results
+
+    def get_due_count(self, user_id: int) -> int:
+        today_str = date.today().isoformat()
+        with self._engine.connect() as conn:
+            row = conn.execute(
+                select(text("COUNT(*)")).select_from(t_learning_records).where(
+                    (t_learning_records.c.user_id == user_id)
+                    & (t_learning_records.c.next_review <= today_str)
+                )
+            ).first()
+            return int(row[0]) if row else 0
+
+    def get_history(self, user_id: int, days: int = 30) -> list[dict]:
+        today = date.today()
+        start = today - timedelta(days=days - 1)
+        start_dt = datetime.combine(start, datetime.min.time())
+
+        with self._engine.connect() as conn:
+            new_rows = conn.execute(text("""
+                SELECT DATE(first_learned) AS learn_date, COUNT(*) AS cnt
+                FROM learning_records
+                WHERE user_id = :uid AND first_learned >= :start
+                GROUP BY DATE(first_learned)
+            """), {"uid": user_id, "start": start_dt}).fetchall()
+
+            review_rows = conn.execute(text("""
+                SELECT DATE(last_reviewed) AS review_date, COUNT(*) AS cnt
+                FROM learning_records
+                WHERE user_id = :uid AND last_reviewed >= :start
+                GROUP BY DATE(last_reviewed)
+            """), {"uid": user_id, "start": start_dt}).fetchall()
+
+        new_counts = {str(r[0]): r[1] for r in new_rows}
+        review_counts = {str(r[0]): r[1] for r in review_rows}
+
+        result = []
+        for i in range(days):
+            d = (start + timedelta(days=i)).isoformat()
+            result.append({
+                "date": d,
+                "new_words": new_counts.get(d, 0),
+                "reviewed_words": review_counts.get(d, 0),
+            })
+        return result
+
+    def get_all_records(self, user_id: int) -> list[LearningRecord]:
+        with self._engine.connect() as conn:
+            rows = conn.execute(
+                select(t_learning_records)
+                .where(t_learning_records.c.user_id == user_id)
+                .order_by(t_learning_records.c.last_reviewed.desc())
+            ).fetchall()
+        return [_row_to_learning_record(r) for r in rows]
+
+    def get_learned_count(self, user_id: int) -> int:
+        with self._engine.connect() as conn:
+            row = conn.execute(
+                select(text("COUNT(*)")).select_from(t_learning_records).where(
+                    t_learning_records.c.user_id == user_id
+                )
+            ).first()
+            return int(row[0]) if row else 0
+
+    def get_learned_words_today(self, user_id: int) -> list[str]:
+        today_dt = datetime.combine(date.today(), datetime.min.time())
+        with self._engine.connect() as conn:
+            rows = conn.execute(text("""
+                SELECT word FROM learning_records
+                WHERE user_id = :uid AND DATE(first_learned) = :today
+            """), {"uid": user_id, "today": today_dt}).fetchall()
+        return [r[0] for r in rows]
+
+
+# =============================================================
+# 2. MySQLPersonalVocabRepository
+# =============================================================
+
+
+class MySQLPersonalVocabRepository:
+    SYSTEM_CATEGORY_NAMES = ("favorites", "mistakes")
+
+    def __init__(self, engine: Engine) -> None:
+        self._engine = engine
+
+    def _ensure_system_categories(self, user_id: int) -> None:
+        """如果当前用户没有系统分类，从 user_id=0 模板复制（首登触发）"""
+        with self._engine.begin() as conn:
+            existing = conn.execute(
+                select(t_vocab_categories.c.name).where(t_vocab_categories.c.user_id == user_id)
+            ).fetchall()
+            existing_names = {r[0] for r in existing}
+            for name in self.SYSTEM_CATEGORY_NAMES:
+                if name in existing_names:
+                    continue
+                # 从 user_id=0 复制
+                tmpl = conn.execute(
+                    select(t_vocab_categories).where(
+                        (t_vocab_categories.c.user_id == 0)
+                        & (t_vocab_categories.c.name == name)
+                    )
+                ).first()
+                if tmpl is None:
+                    # 模板缺失（不应该发生），手动插
+                    conn.execute(insert(t_vocab_categories).values(
+                        user_id=user_id, name=name,
+                        description={"favorites": "收藏夹", "mistakes": "错词本"}.get(name, ""),
+                        is_system=True, word_count=0,
+                    ))
+                else:
+                    m = tmpl._mapping
+                    conn.execute(insert(t_vocab_categories).values(
+                        user_id=user_id, name=name, description=m["description"] or "",
+                        is_system=True, word_count=0,
+                    ))
+
+    # ---- 单词 CRUD ----
+
+    def add_word(self, user_id: int, pw: Word | PersonalWord) -> int:
+        """添加单词到个人词库。兼容 Word 与 PersonalWord（与 add_mistake 一致）。"""
+        self._ensure_system_categories(user_id)
+        with self._engine.begin() as conn:
+            try:
+                result = conn.execute(insert(t_personal_vocab).values(
+                    user_id=user_id,
+                    word=pw.word,
+                    phonetic=getattr(pw, "phonetic", "") or "",
+                    meaning=pw.meaning,
+                    pos=getattr(pw, "pos", "") or "",
+                    band=pw.band,
+                    topic=getattr(pw, "topic", "") or "",
+                    example=getattr(pw, "example", "") or "",
+                    example_cn=getattr(pw, "example_cn", "") or "",
+                    note=getattr(pw, "note", "") or "",
+                    source=getattr(pw, "source", "manual") or "manual",
+                ))
+                return int(result.inserted_primary_key[0])
+            except IntegrityError:
+                raise ValueError(f"单词 '{pw.word}' 已存在于个人词库中")
+
+    def edit_word(self, user_id: int, word_name: str, **kwargs: Any) -> PersonalWord:
+        existing = self.get_word(user_id, word_name)
+        if existing is None:
+            raise ValueError(f"单词 '{word_name}' 不在个人词库中")
+
+        allowed = {"phonetic", "meaning", "pos", "band", "topic", "example", "example_cn", "note"}
+        updates = {k: v for k, v in kwargs.items() if k in allowed and v is not None}
+        if not updates:
+            return existing
+
+        with self._engine.begin() as conn:
+            conn.execute(
+                update(t_personal_vocab)
+                .where(
+                    (t_personal_vocab.c.user_id == user_id)
+                    & (t_personal_vocab.c.word == word_name)
+                )
+                .values(**updates)
+            )
+        return self.get_word(user_id, word_name)  # type: ignore[return-value]
+
+    def delete_word(self, user_id: int, word_name: str) -> bool:
+        with self._engine.begin() as conn:
+            word_row = conn.execute(
+                select(t_personal_vocab.c.id).where(
+                    (t_personal_vocab.c.user_id == user_id)
+                    & (t_personal_vocab.c.word == word_name)
+                )
+            ).first()
+            if word_row is None:
+                return False
+            conn.execute(
+                delete(t_vocab_category_words).where(
+                    (t_vocab_category_words.c.user_id == user_id)
+                    & (t_vocab_category_words.c.word == word_name)
+                )
+            )
+            result = conn.execute(
+                delete(t_personal_vocab).where(
+                    (t_personal_vocab.c.user_id == user_id)
+                    & (t_personal_vocab.c.word == word_name)
+                )
+            )
+            return result.rowcount > 0
+
+    def get_word(self, user_id: int, word_name: str) -> Optional[PersonalWord]:
+        with self._engine.connect() as conn:
+            row = conn.execute(
+                select(t_personal_vocab).where(
+                    (t_personal_vocab.c.user_id == user_id)
+                    & (t_personal_vocab.c.word == word_name)
+                )
+            ).first()
+            return _row_to_personal_word(row) if row else None
+
+    def list_words(
+        self,
+        user_id: int,
+        category: Optional[str] = None,
+        page: int = 1,
+        per_page: int = 20,
+    ) -> tuple[list[PersonalWord], int]:
+        with self._engine.connect() as conn:
+            if category:
+                cat_row = conn.execute(
+                    select(t_vocab_categories.c.id).where(
+                        (t_vocab_categories.c.user_id == user_id)
+                        & (t_vocab_categories.c.name == category)
+                    )
+                ).first()
+                if cat_row is None:
+                    return [], 0
+                cat_id = cat_row[0]
+
+                total_row = conn.execute(
+                    select(text("COUNT(*)")).select_from(t_personal_vocab).where(
+                        (t_personal_vocab.c.user_id == user_id)
+                        & (
+                            select(t_vocab_category_words.c.word).where(
+                                (t_vocab_category_words.c.user_id == user_id)
+                                & (t_vocab_category_words.c.category_id == cat_id)
+                            ).exists()
+                        )
+                    )
+                ).first()
+                total = int(total_row[0]) if total_row else 0
+
+                offset = (page - 1) * per_page
+                rows = conn.execute(text("""
+                    SELECT p.* FROM personal_vocab p
+                    JOIN vocab_category_words cw ON cw.word = p.word
+                    WHERE p.user_id = :uid AND cw.user_id = :uid AND cw.category_id = :cat_id
+                    ORDER BY p.created_at DESC
+                    LIMIT :limit OFFSET :offset
+                """), {"uid": user_id, "cat_id": cat_id, "limit": per_page, "offset": offset}).fetchall()
+            else:
+                total_row = conn.execute(
+                    select(text("COUNT(*)")).select_from(t_personal_vocab).where(
+                        t_personal_vocab.c.user_id == user_id
+                    )
+                ).first()
+                total = int(total_row[0]) if total_row else 0
+
+                offset = (page - 1) * per_page
+                rows = conn.execute(
+                    select(t_personal_vocab)
+                    .where(t_personal_vocab.c.user_id == user_id)
+                    .order_by(t_personal_vocab.c.created_at.desc())
+                    .limit(per_page).offset(offset)
+                ).fetchall()
+
+        return [_row_to_personal_word(r) for r in rows], total
+
+    def get_word_count(self, user_id: int) -> int:
+        with self._engine.connect() as conn:
+            row = conn.execute(
+                select(text("COUNT(*)")).select_from(t_personal_vocab).where(
+                    t_personal_vocab.c.user_id == user_id
+                )
+            ).first()
+            return int(row[0]) if row else 0
+
+    # ---- 分类管理 ----
+
+    def create_category(self, user_id: int, name: str, description: str = "") -> VocabCategory:
+        self._ensure_system_categories(user_id)
+        with self._engine.begin() as conn:
+            try:
+                conn.execute(insert(t_vocab_categories).values(
+                    user_id=user_id, name=name, description=description, is_system=False, word_count=0,
+                ))
+            except IntegrityError:
+                raise ValueError(f"分类 '{name}' 已存在")
+        cat = self._get_category_by_name(user_id, name)
+        if cat is None:
+            raise ValueError(f"分类 '{name}' 创建失败")
+        return cat
+
+    def delete_category(self, user_id: int, name: str) -> bool:
+        self._ensure_system_categories(user_id)
+        cat = self._get_category_by_name(user_id, name)
+        if cat is None:
+            raise ValueError(f"分类 '{name}' 不存在")
+        if cat.is_system:
+            raise ValueError(f"系统分类 '{name}' 不可删除")
+        with self._engine.begin() as conn:
+            # 先清掉关联
+            conn.execute(
+                delete(t_vocab_category_words).where(
+                    (t_vocab_category_words.c.user_id == user_id)
+                    & (t_vocab_category_words.c.category_id == cat.id)
+                )
+            )
+            conn.execute(
+                delete(t_vocab_categories).where(
+                    (t_vocab_categories.c.user_id == user_id)
+                    & (t_vocab_categories.c.name == name)
+                )
+            )
+        return True
+
+    def list_categories(self, user_id: int) -> list[VocabCategory]:
+        self._ensure_system_categories(user_id)
+        with self._engine.connect() as conn:
+            rows = conn.execute(text("""
+                SELECT c.*, COUNT(cw.id) AS word_count
+                FROM vocab_categories c
+                LEFT JOIN vocab_category_words cw
+                  ON cw.category_id = c.id AND cw.user_id = c.user_id
+                WHERE c.user_id = :uid
+                GROUP BY c.id
+                ORDER BY c.is_system DESC, c.name ASC
+            """), {"uid": user_id}).fetchall()
+        # 重建行对象以便 _row_to_vocab_category 处理
+        result = []
+        for r in rows:
+            # 把 word_count 注入到 mapping
+            class _RowProxy:
+                def __init__(self, mapping):
+                    self._mapping = mapping
+            mapping = dict(r._mapping)
+            mapping["word_count"] = r.word_count
+            result.append(_row_to_vocab_category(_RowProxy(mapping)))
+        return result
+
+    def add_to_category(self, user_id: int, word: str, category: str) -> bool:
+        word_row = self.get_word(user_id, word)
+        if word_row is None:
+            raise ValueError(f"单词 '{word}' 不在个人词库中")
+        cat = self._get_category_by_name(user_id, category)
+        if cat is None:
+            raise ValueError(f"分类 '{category}' 不存在")
+        with self._engine.begin() as conn:
+            try:
+                conn.execute(insert(t_vocab_category_words).values(
+                    user_id=user_id, category_id=cat.id, word=word,
+                ))
+            except IntegrityError:
+                return False
+        return True
+
+    def remove_from_category(self, user_id: int, word: str, category: str) -> bool:
+        cat = self._get_category_by_name(user_id, category)
+        if cat is None:
+            raise ValueError(f"分类 '{category}' 不存在")
+        with self._engine.begin() as conn:
+            result = conn.execute(
+                delete(t_vocab_category_words).where(
+                    (t_vocab_category_words.c.user_id == user_id)
+                    & (t_vocab_category_words.c.category_id == cat.id)
+                    & (t_vocab_category_words.c.word == word)
+                )
+            )
+            return result.rowcount > 0
+
+    def get_word_categories(self, user_id: int, word: str) -> list[VocabCategory]:
+        with self._engine.connect() as conn:
+            rows = conn.execute(text("""
+                SELECT c.* FROM vocab_categories c
+                JOIN vocab_category_words cw ON cw.category_id = c.id
+                WHERE cw.user_id = :uid AND c.user_id = :uid AND cw.word = :word
+                ORDER BY c.name
+            """), {"uid": user_id, "word": word}).fetchall()
+        return [_row_to_vocab_category(r) for r in rows]
+
+    # ---- 特殊方法 ----
+
+    def add_mistake(
+        self,
+        user_id: int,
+        word: Word | PersonalWord,
+        source: str = "quiz_mistake",
+    ) -> PersonalWord:
+        existing = self.get_word(user_id, word.word)
+        if existing is None:
+            pw = PersonalWord(
+                word=word.word,
+                phonetic=getattr(word, "phonetic", ""),
+                meaning=getattr(word, "meaning", ""),
+                pos=getattr(word, "pos", ""),
+                band=getattr(word, "band", 5),
+                topic=getattr(word, "topic", ""),
+                example=getattr(word, "example", ""),
+                example_cn=getattr(word, "example_cn", ""),
+                source=source,
+            )
+            self.add_word(user_id, pw)
+            existing = self.get_word(user_id, word.word)
+        self.add_to_category(user_id, existing.word, "mistakes")  # type: ignore[union-attr]
+        return existing  # type: ignore[return-value]
+
+    def add_from_grading(
+        self,
+        user_id: int,
+        word: str,
+        context: str = "",
+        suggestion: str = "",
+        comment: str = "",
+    ) -> PersonalWord:
+        existing = self.get_word(user_id, word)
+        if existing is not None:
+            return existing
+        pw = PersonalWord(
+            word=word, example=context, example_cn=suggestion, note=comment, source="grading",
+        )
+        self.add_word(user_id, pw)
+        return self.get_word(user_id, word)  # type: ignore[return-value]
+
+    # ---- 统计 ----
+
+    def get_source_distribution(self, user_id: int) -> dict[str, int]:
+        with self._engine.connect() as conn:
+            rows = conn.execute(
+                select(t_personal_vocab.c.source, text("COUNT(*) AS cnt"))
+                .where(t_personal_vocab.c.user_id == user_id)
+                .group_by(t_personal_vocab.c.source)
+                .order_by(text("cnt DESC"))
+            ).fetchall()
+        return {r[0]: r[1] for r in rows}
+
+    def get_band_distribution(self, user_id: int) -> dict[int, int]:
+        with self._engine.connect() as conn:
+            rows = conn.execute(
+                select(t_personal_vocab.c.band, text("COUNT(*) AS cnt"))
+                .where(t_personal_vocab.c.user_id == user_id)
+                .group_by(t_personal_vocab.c.band)
+                .order_by(t_personal_vocab.c.band)
+            ).fetchall()
+        return {int(r[0]): int(r[1]) for r in rows}
+
+    # ---- 导入导出（纯逻辑，与 SQLite 端独立） ----
+
+    def import_words(
+        self,
+        user_id: int,
+        file_path: Any,
+        vocab_service: Any = None,
+    ) -> dict[str, int]:
+        import csv as _csv
+        import io as _io
+
+        suffix = str(file_path).lower()
+        if suffix.endswith(".json"):
+            content = open(file_path, encoding="utf-8").read().strip()
+        else:
+            content = open(file_path, encoding="utf-8").read().strip()
+        if not content:
+            return {"imported": 0, "skipped": 0, "failed": 0}
+
+        words: list[PersonalWord] = []
+        if suffix.endswith(".json"):
+            try:
+                data = json.loads(content)
+            except json.JSONDecodeError:
+                return {"imported": 0, "skipped": 0, "failed": 0}
+            if not isinstance(data, list):
+                return {"imported": 0, "skipped": 0, "failed": 0}
+            for item in data:
+                if not isinstance(item, dict) or "word" not in item:
+                    continue
+                try:
+                    words.append(PersonalWord(
+                        word=item["word"],
+                        meaning=item.get("meaning", ""),
+                        phonetic=item.get("phonetic", ""),
+                        pos=item.get("pos", ""),
+                        band=item.get("band", 5),
+                        source="import",
+                    ))
+                except Exception:
+                    continue
+        elif suffix.endswith(".csv"):
+            reader = _csv.DictReader(_io.StringIO(content))
+            for row in reader:
+                if "word" not in row:
+                    continue
+                try:
+                    band = int(row.get("band", 5))
+                    band = max(5, min(9, band))
+                except (ValueError, TypeError):
+                    band = 5
+                try:
+                    words.append(PersonalWord(
+                        word=row["word"].strip(), meaning=row.get("meaning", "").strip(),
+                        band=band, source="import",
+                    ))
+                except Exception:
+                    continue
+        else:
+            for line in content.splitlines():
+                w = line.strip()
+                if not w:
+                    continue
+                if vocab_service:
+                    builtin = vocab_service.get_word(w)
+                    if builtin:
+                        words.append(PersonalWord(
+                            word=builtin.word, meaning=builtin.meaning,
+                            band=builtin.band, source="import",
+                        ))
+                        continue
+                words.append(PersonalWord(word=w, source="import"))
+
+        imported = skipped = failed = 0
+        for pw in words:
+            if not pw.word.strip():
+                failed += 1
+                continue
+            try:
+                self.add_word(user_id, pw)
+                imported += 1
+            except ValueError:
+                skipped += 1
+            except Exception:
+                failed += 1
+        return {"imported": imported, "skipped": skipped, "failed": failed}
+
+    def export_words(
+        self,
+        user_id: int,
+        fmt: str = "json",
+        category: Optional[str] = None,
+    ) -> str:
+        import csv as _csv
+        import io as _io
+
+        words, _ = self.list_words(user_id, category=category, page=1, per_page=999_999)
+        if not words:
+            return "[]" if fmt == "json" else ""
+
+        if fmt == "csv":
+            output = _io.StringIO()
+            writer = _csv.DictWriter(output, fieldnames=[
+                "word", "phonetic", "meaning", "pos", "band", "topic",
+                "example", "example_cn", "note",
+            ])
+            writer.writeheader()
+            for w in words:
+                writer.writerow({
+                    "word": w.word, "phonetic": w.phonetic, "meaning": w.meaning,
+                    "pos": w.pos, "band": w.band, "topic": w.topic,
+                    "example": w.example, "example_cn": w.example_cn, "note": w.note,
+                })
+            return output.getvalue()
+
+        data = [{
+            "word": w.word, "phonetic": w.phonetic, "meaning": w.meaning,
+            "pos": w.pos, "band": w.band, "topic": w.topic,
+        } for w in words]
+        return json.dumps(data, ensure_ascii=False, indent=2)
+
+    # ---- 内部 ----
+
+    def _get_category_by_name(
+        self, user_id: int, name: str
+    ) -> Optional[VocabCategory]:
+        with self._engine.connect() as conn:
+            row = conn.execute(
+                select(t_vocab_categories).where(
+                    (t_vocab_categories.c.user_id == user_id)
+                    & (t_vocab_categories.c.name == name)
+                )
+            ).first()
+            return _row_to_vocab_category(row) if row else None
+
+
+# =============================================================
+# 3. MySQLExamRepository
+# =============================================================
+
+
+class MySQLExamRepository:
+    def __init__(self, engine: Engine) -> None:
+        self._engine = engine
+
+    def create_exam(
+        self,
+        user_id: int,
+        band: int,
+        count: int,
+        time_limit: int = 20,
+    ) -> ExamSession:
+        """W3 阶段：create_exam 只生成 session 对象（题目由 Service 层注入）。
+
+        Service 层在生成题目后会调 ``save_exam_session`` 显式落库。
+        """
+        return ExamSession(
+            id=self._gen_session_id(),
+            user_id=user_id,
+            time_limit=time_limit,
+            started_at=datetime.now().isoformat(timespec="seconds"),
+            band_filter=band,
+        )
+
+    @staticmethod
+    def _gen_session_id() -> str:
+        import uuid
+        return uuid.uuid4().hex[:12]
+
+    def save_exam_session(self, user_id: int, session: ExamSession) -> None:
+        """显式落库考试 session（被 Service 层调用）"""
+        questions_json = json.dumps(
+            [q.model_dump() for q in session.questions], ensure_ascii=False
+        )
+        with self._engine.begin() as conn:
+            conn.execute(insert(t_exam_sessions).values(
+                user_id=user_id, session_id=session.id,
+                questions_json=questions_json, time_limit=session.time_limit,
+                started_at=session.started_at, band_filter=session.band_filter,
+            ))
+
+    def submit_answer(
+        self,
+        user_id: int,
+        session_id: str,
+        q_index: int,
+        answer: str,
+    ) -> dict:
+        with self._engine.begin() as conn:
+            row = conn.execute(
+                select(t_exam_sessions.c.questions_json).where(
+                    (t_exam_sessions.c.user_id == user_id)
+                    & (t_exam_sessions.c.session_id == session_id)
+                )
+            ).first()
+            if row is None:
+                raise ValueError(f"考试 {session_id} 不存在")
+            questions = json.loads(row[0])
+            if q_index < 0 or q_index >= len(questions):
+                raise IndexError(f"题号 {q_index} 超出范围")
+            q = questions[q_index]
+
+            if q["mode"] == "en2zh":
+                meanings = q["answer"].replace("；", "，").replace(",", "，").split("，")
+                is_correct = any(
+                    m.strip() in answer or answer in m.strip()
+                    for m in meanings if m.strip()
+                )
+            else:
+                is_correct = answer.strip().lower() == q["answer"].strip().lower()
+            q["user_answer"] = answer
+            q["is_correct"] = is_correct
+
+            conn.execute(
+                update(t_exam_sessions)
+                .where(
+                    (t_exam_sessions.c.user_id == user_id)
+                    & (t_exam_sessions.c.session_id == session_id)
+                )
+                .values(questions_json=json.dumps(questions, ensure_ascii=False))
+            )
+            return {"correct": is_correct, "answer": q["answer"]}
+
+    def finish_exam(self, user_id: int, session_id: str) -> ExamReport:
+        with self._engine.begin() as conn:
+            row = conn.execute(
+                select(t_exam_sessions).where(
+                    (t_exam_sessions.c.user_id == user_id)
+                    & (t_exam_sessions.c.session_id == session_id)
+                )
+            ).first()
+            if row is None:
+                raise ValueError(f"考试 {session_id} 不存在")
+            questions = json.loads(row._mapping["questions_json"])
+            finished_at = datetime.now()
+
+            answered = [q for q in questions if q.get("is_correct") is not None]
+            correct_count = sum(1 for q in answered if q.get("is_correct"))
+            total = len(answered)
+            accuracy = correct_count / total if total > 0 else 0.0
+
+            band_breakdown: dict[int, dict[str, int]] = {}
+            for q in answered:
+                b = q.get("band", 5)
+                if b not in band_breakdown:
+                    band_breakdown[b] = {"correct": 0, "wrong": 0}
+                if q.get("is_correct"):
+                    band_breakdown[b]["correct"] += 1
+                else:
+                    band_breakdown[b]["wrong"] += 1
+
+            weak_words = [q["word"] for q in answered if not q.get("is_correct")]
+            started = row._mapping["started_at"]
+            duration = int((finished_at - started).total_seconds())
+
+            report = ExamReport(
+                session_id=session_id,
+                user_id=user_id,
+                score=correct_count,
+                total=total,
+                accuracy=accuracy,
+                band_breakdown=band_breakdown,
+                weak_words=weak_words,
+                duration=duration,
+                finished_at=finished_at.isoformat(timespec="seconds"),
+            )
+
+            # 保存 report 数据（score/total/accuracy/finished_at）
+            conn.execute(
+                update(t_exam_sessions)
+                .where(
+                    (t_exam_sessions.c.user_id == user_id)
+                    & (t_exam_sessions.c.session_id == session_id)
+                )
+                .values(
+                    finished_at=finished_at,
+                    score=correct_count, total=total, accuracy=accuracy,
+                )
+            )
+        return report
+
+    def get_exam_history(self, user_id: int, limit: int = 20) -> list[dict]:
+        with self._engine.connect() as conn:
+            rows = conn.execute(
+                select(t_exam_sessions)
+                .where(
+                    (t_exam_sessions.c.user_id == user_id)
+                    & (t_exam_sessions.c.finished_at.isnot(None))
+                )
+                .order_by(t_exam_sessions.c.finished_at.desc())
+                .limit(limit)
+            ).fetchall()
+        results = []
+        for row in rows:
+            m = row._mapping
+            questions = json.loads(m["questions_json"]) if m["questions_json"] else []
+            weak_words = [q["word"] for q in questions if not q.get("is_correct")]
+            band_breakdown: dict[int, dict[str, int]] = {}
+            for q in questions:
+                if q.get("is_correct") is None:
+                    continue
+                b = q.get("band", 5)
+                if b not in band_breakdown:
+                    band_breakdown[b] = {"correct": 0, "wrong": 0}
+                if q.get("is_correct"):
+                    band_breakdown[b]["correct"] += 1
+                else:
+                    band_breakdown[b]["wrong"] += 1
+            results.append({
+                "session_id": m["session_id"],
+                "score": int(m["score"]) if m["score"] is not None else 0,
+                "total": int(m["total"]) if m["total"] is not None else 0,
+                "accuracy": float(m["accuracy"]) if m["accuracy"] is not None else 0.0,
+                "band_breakdown": band_breakdown,
+                "weak_words": weak_words,
+                "duration": 0,
+                "finished_at": m["finished_at"].isoformat() if m["finished_at"] else "",
+            })
+        return results
+
+    def get_exam_session(self, user_id: int, session_id: str) -> Optional[ExamSession]:
+        with self._engine.connect() as conn:
+            row = conn.execute(
+                select(t_exam_sessions).where(
+                    (t_exam_sessions.c.user_id == user_id)
+                    & (t_exam_sessions.c.session_id == session_id)
+                )
+            ).first()
+            if row is None:
+                return None
+            from ielts_buddy.core.models import ExamQuestion
+
+            m = row._mapping
+            questions_data = json.loads(m["questions_json"]) if m["questions_json"] else []
+            questions = [ExamQuestion(**q) for q in questions_data]
+            return ExamSession(
+                id=m["session_id"],
+                user_id=m["user_id"],
+                questions=questions,
+                time_limit=m["time_limit"],
+                started_at=m["started_at"].isoformat(timespec="seconds") if m["started_at"] else "",
+                finished_at=m["finished_at"].isoformat(timespec="seconds") if m["finished_at"] else None,
+                band_filter=m["band_filter"],
+            )
+
+
+# =============================================================
+# 4. MySQLGradeRepository
+# =============================================================
+
+
+class MySQLGradeRepository:
+    def __init__(self, engine: Engine) -> None:
+        self._engine = engine
+
+    def save_result(self, user_id: int, result: GradeResult) -> int:
+        with self._engine.begin() as conn:
+            row = conn.execute(insert(t_grade_history).values(
+                user_id=user_id,
+                overall_score=result.overall_score,
+                task_type=result.task_type,
+                topic=result.topic,
+                essay_text=result.essay_text,
+                result_json=result.model_dump_json(),
+                graded_at=result.graded_at or datetime.now().isoformat(timespec="seconds"),
+            ))
+            return int(row.inserted_primary_key[0])
+
+    def get_history(
+        self,
+        user_id: int,
+        limit: int = 20,
+        task_type: Optional[str] = None,
+    ) -> list[GradeResult]:
+        with self._engine.connect() as conn:
+            stmt = select(t_grade_history.c.result_json).where(
+                t_grade_history.c.user_id == user_id
+            )
+            if task_type:
+                stmt = stmt.where(t_grade_history.c.task_type == task_type)
+            stmt = stmt.order_by(t_grade_history.c.id.desc()).limit(limit)
+            rows = conn.execute(stmt).fetchall()
+        results = []
+        for row in rows:
+            try:
+                data = json.loads(row[0])
+                results.append(GradeResult(**data))
+            except Exception:
+                continue
+        return results
+
+    def get_average_score(self, user_id: int) -> float:
+        with self._engine.connect() as conn:
+            row = conn.execute(
+                select(text("AVG(overall_score)")).select_from(t_grade_history).where(
+                    t_grade_history.c.user_id == user_id
+                )
+            ).first()
+            if row is None or row[0] is None:
+                return 0.0
+            return float(row[0])
+
+    def get_error_trend(self, user_id: int, limit: int = 10) -> list[dict]:
+        with self._engine.connect() as conn:
+            rows = conn.execute(
+                select(t_grade_history.c.graded_at,
+                      t_grade_history.c.overall_score,
+                      t_grade_history.c.result_json)
+                .where(t_grade_history.c.user_id == user_id)
+                .order_by(t_grade_history.c.id.desc())
+                .limit(limit)
+            ).fetchall()
+        result = []
+        for row in reversed(rows):
+            try:
+                data = json.loads(row[2])
+                summary = data.get("error_summary", {})
+            except (json.JSONDecodeError, TypeError):
+                summary = {}
+            result.append({
+                "graded_at": row[0].isoformat() if row[0] else "",
+                "overall_score": float(row[1]) if row[1] is not None else 0.0,
+                "error_summary": summary,
+            })
+        return result
+
+
+# =============================================================
+# 5. MySQLVocabCacheRepository
+# =============================================================
+
+
+class MySQLVocabCacheRepository:
+    """vocab_cache 是跨用户共享的缓存，不带 user_id。"""
+
+    def __init__(self, engine: Engine) -> None:
+        self._engine = engine
+
+    def get_cached(self, word: str) -> Optional[dict]:
+        with self._engine.connect() as conn:
+            row = conn.execute(
+                select(t_vocab_cache).where(t_vocab_cache.c.word == word)
+            ).first()
+            if row is None:
+                return None
+            m = row._mapping
+            payload = json.loads(m["payload_json"])
+            return {
+                "word": m["word"],
+                "band": m["band"],
+                "topic": m["topic"],
+                **payload,
+            }
+
+    def put_cached(self, word: str, band: int, topic: str, payload: dict) -> None:
+        payload_json = json.dumps(payload, ensure_ascii=False)
+        with self._engine.begin() as conn:
+            conn.execute(insert(t_vocab_cache).values(
+                word=word, band=band, topic=topic, payload_json=payload_json,
+            ))
+
+    def get_mtime(self, key: str) -> str:
+        with self._engine.connect() as conn:
+            row = conn.execute(
+                select(t_cache_meta.c.value).where(t_cache_meta.c.key_name == key)
+            ).first()
+            return row[0] if row else ""
+
+    def set_mtime(self, key: str, value: str) -> None:
+        with self._engine.begin() as conn:
+            conn.execute(insert(t_cache_meta).values(key_name=key, value=value))
+
+    def clear_cache(self) -> None:
+        with self._engine.begin() as conn:
+            conn.execute(delete(t_vocab_cache))
+
+
+# =============================================================
+# 6. MySQLUserRepository
+# =============================================================
+
+
+class MySQLUserRepository:
+    """联网模式 UserRepository。"""
+
+    def __init__(self, engine: Engine) -> None:
+        self._engine = engine
+
+    def get_or_create(self, username: str) -> int:
+        with self._engine.begin() as conn:
+            row = conn.execute(
+                select(t_users.c.id).where(t_users.c.username == username)
+            ).first()
+            if row is not None:
+                user_id = int(row[0])
+            else:
+                result = conn.execute(insert(t_users).values(username=username))
+                user_id = int(result.inserted_primary_key[0])
+
+            # 更新 last_login_at
+            conn.execute(
+                update(t_users)
+                .where(t_users.c.id == user_id)
+                .values(last_login_at=datetime.now())
+            )
+            return user_id
+
+    def get_by_id(self, user_id: int) -> Optional[dict]:
+        with self._engine.connect() as conn:
+            row = conn.execute(
+                select(t_users).where(t_users.c.id == user_id)
+            ).first()
+            if row is None:
+                return None
+            m = row._mapping
+            return {
+                "id": m["id"],
+                "username": m["username"],
+                "created_at": m["created_at"].isoformat() if m["created_at"] else None,
+                "last_login_at": m["last_login_at"].isoformat() if m["last_login_at"] else None,
+            }
+
+    def update_last_login(self, user_id: int) -> None:
+        with self._engine.begin() as conn:
+            conn.execute(
+                update(t_users)
+                .where(t_users.c.id == user_id)
+                .values(last_login_at=datetime.now())
+            )
+
+    def list_users(self) -> list[dict]:
+        with self._engine.connect() as conn:
+            rows = conn.execute(
+                select(t_users).order_by(t_users.c.created_at.desc())
+            ).fetchall()
+        return [
+            {
+                "id": r._mapping["id"],
+                "username": r._mapping["username"],
+                "created_at": r._mapping["created_at"].isoformat() if r._mapping["created_at"] else None,
+                "last_login_at": r._mapping["last_login_at"].isoformat() if r._mapping["last_login_at"] else None,
+            }
+            for r in rows
+        ]
+
+    def ensure_system_categories(self, user_id: int) -> None:
+        """首登时调用：把 user_id=0 模板复制给当前用户"""
+        pv = MySQLPersonalVocabRepository(self._engine)
+        pv._ensure_system_categories(user_id)
+
+
+# =============================================================
+# 默认 MySQL 连接参数（与 init_mysql.sql 保持一致）
+# =============================================================
+DEFAULT_MYSQL_HOST = "118.190.148.121"
+DEFAULT_MYSQL_PORT = 3306
+DEFAULT_MYSQL_USER = "remote_user"
+DEFAULT_MYSQL_PASSWORD = "Pass@666"  # noqa: S105
+DEFAULT_MYSQL_DATABASE = "ietls_learn_online"
+DEFAULT_MYSQL_CHARSET = "utf8mb4"
+
+
+def _build_mysql_url(
+    host: str = DEFAULT_MYSQL_HOST,
+    port: int = DEFAULT_MYSQL_PORT,
+    user: str = DEFAULT_MYSQL_USER,
+    password: str = DEFAULT_MYSQL_PASSWORD,
+    database: str = DEFAULT_MYSQL_DATABASE,
+    charset: str = DEFAULT_MYSQL_CHARSET,
+) -> str:
+    """拼出 SQLAlchemy 用的 MySQL URL，密码中的 @ 需要 percent-encode。"""
+    from urllib.parse import quote_plus
+    pwd = quote_plus(password)
+    return (
+        f"mysql+pymysql://{user}:{pwd}@{host}:{port}/{database}"
+        f"?charset={charset}"
+    )
+
+
+class MySQLRepositoryContainer:
+    """6 个 MySQL Repository 的容器。
+
+    与 SQLite 容器相比，MySQL 容器只持有一个 SQLAlchemy Engine：
+    - 业务表（learning_records / personal_vocab / ...）和共享缓存表
+      （vocab_cache / cache_meta / users）都在同一库 ietls_learn_online 里
+    - 容器负责 Engine 的生命周期（构造时创建、close() 时释放）
+    - Service 层拿到 container 后，对 learning / personal_vocab / ... 的调用方式
+      与 SQLite 端完全一致，只是背后换成 SQLAlchemy Core
+    """
+
+    def __init__(self, connection_url: Optional[str] = None) -> None:
+        from sqlalchemy import create_engine
+        if connection_url is None:
+            connection_url = _build_mysql_url()
+        self._engine: Engine = create_engine(
+            connection_url,
+            pool_pre_ping=True,   # 防止长连接被 MySQL 主动断开
+            pool_recycle=3600,    # 1 小时回收一次
+            future=True,
+        )
+
+        self.learning = MySQLLearningRepository(self._engine)
+        self.personal_vocab = MySQLPersonalVocabRepository(self._engine)
+        self.exam = MySQLExamRepository(self._engine)
+        self.grade = MySQLGradeRepository(self._engine)
+        self.user = MySQLUserRepository(self._engine)
+        self.vocab_cache = MySQLVocabCacheRepository(self._engine)
+
+    def close(self) -> None:
+        self._engine.dispose()
+
+
+def create_mysql_repositories(connection_url: Optional[str] = None) -> MySQLRepositoryContainer:
+    """创建 MySQLRepositoryContainer（W3 阶段便捷函数）。
+
+    Args:
+        connection_url: 完整的 SQLAlchemy MySQL URL，例如
+            ``mysql+pymysql://user:pwd@host:3306/db?charset=utf8mb4``。
+            传 None 时使用默认生产配置（见 ``_build_mysql_url``）。
+    """
+    return MySQLRepositoryContainer(connection_url=connection_url)
+
+
+__all__ = [
+    "MySQLLearningRepository",
+    "MySQLPersonalVocabRepository",
+    "MySQLExamRepository",
+    "MySQLGradeRepository",
+    "MySQLVocabCacheRepository",
+    "MySQLUserRepository",
+    "MySQLRepositoryContainer",
+    "create_mysql_repositories",
+    "REVIEW_INTERVALS",
+    "DEFAULT_MYSQL_HOST",
+    "DEFAULT_MYSQL_PORT",
+    "DEFAULT_MYSQL_USER",
+    "DEFAULT_MYSQL_DATABASE",
+    "DEFAULT_MYSQL_CHARSET",
+]

@@ -15,6 +15,22 @@ from ielts_buddy.repositories.sqlite_repo import (
     create_sqlite_repositories,
 )
 
+# MySQL Repository（依赖 SQLAlchemy + PyMySQL，未安装时延迟导入失败）
+try:
+    from ielts_buddy.repositories.mysql_repo import (
+        MySQLExamRepository,
+        MySQLGradeRepository,
+        MySQLLearningRepository,
+        MySQLPersonalVocabRepository,
+        MySQLRepositoryContainer,
+        MySQLUserRepository,
+        MySQLVocabCacheRepository,
+        create_mysql_repositories,
+    )
+    _MYSQL_AVAILABLE = True
+except ImportError:
+    _MYSQL_AVAILABLE = False
+
 __all__ = [
     "SQLiteLearningRepository",
     "SQLitePersonalVocabRepository",
@@ -26,3 +42,15 @@ __all__ = [
     "create_sqlite_repositories",
     "REVIEW_INTERVALS",
 ]
+
+if _MYSQL_AVAILABLE:
+    __all__ += [
+        "MySQLLearningRepository",
+        "MySQLPersonalVocabRepository",
+        "MySQLExamRepository",
+        "MySQLGradeRepository",
+        "MySQLVocabCacheRepository",
+        "MySQLUserRepository",
+        "MySQLRepositoryContainer",
+        "create_mysql_repositories",
+    ]
