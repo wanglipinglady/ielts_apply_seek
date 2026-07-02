@@ -196,10 +196,19 @@ class AuthService:
     def whoami(self) -> dict[str, Any] | None:
         """读取当前 session；不存在返回 None。
 
+        W11：session.mode 必须跟当前 self._mode 一致才认账。
+        否则视为未登录——避免 "用 online 模式登录后切 local 查 SQLite"
+        出现 user_id 错位（W11 真实 bug）。
+
         Returns:
             {user_id, username, mode, logged_in_at, last_login_at} | None
         """
-        return self._read_session()
+        data = self._read_session()
+        if data is None:
+            return None
+        if data.get("mode") != self._mode:
+            return None
+        return data
 
     def logout(self) -> bool:
         """删除本地 session.json。返回是否实际删除。

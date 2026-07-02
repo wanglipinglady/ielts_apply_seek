@@ -30,6 +30,9 @@ dependencies = [
     "jinja2>=3.0",
     "openai>=1.0",          # 新增
     "anthropic>=0.30",      # 可选，如果你用 anthropic provider
+    "sqlalchemy>=2.0",      # W3：MySQL 容器依赖
+    "pymysql>=1.1",         # W3：MySQL 驱动（MySQL 8 默认 sha2 还需 cryptography）
+    "cryptography>=41.0",   # W3：pymysql 走 caching_sha2_password 时必装
 ]
 
 [project.optional-dependencies]

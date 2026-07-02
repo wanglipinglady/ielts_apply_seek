@@ -116,7 +116,12 @@ def _show_current_user(invoked: str) -> None:
         pass  # 静默失败
 
 
-_MODE_ENV_BACKUP = {"delete": False, "value": ""}
+# _MODE_STATE 在 W10 替代 W9 的 _MODE_ENV_BACKUP 机制。
+# click result_callback 没有 ctx 参数，只能用模块级 dict 暂存。
+# pytest 用 CliRunner 跑测试时，每个 CliRunner.invoke() 在子进程里完成，
+# 模块级 dict 不会跨测试污染（每个 pytest 测试都是独立 CliRunner.invoke，
+# 各自完成 env 设置 + result_callback 还原）。
+_MODE_STATE = {"set": False, "added": False, "old": ""}
 
 
 @click.group()
@@ -131,30 +136,40 @@ _MODE_ENV_BACKUP = {"delete": False, "value": ""}
 @click.pass_context
 def cli(ctx, mode: str | None):
     """IELTS LEARNING SEEK - 雅思学习-不断求索"""
-    # W9：--mode 优先级最高，写到 os.environ 让 get_mode() 命中
-    # 用 _MODE_ENV_BACKUP 机制在退出时还原，避免污染进程级 env
+    # W10：--mode 写到 os.environ，让 get_mode() 命中。
+    # 还原由 @cli.result_callback() 在子命令执行完后做（click 调用顺序：
+    # cli() → subcommand() → result_callback()，所以 try/finally 不能写在
+    # cli() 内——finally 会在子命令执行前就触发）。
     if mode is not None:
         if "IELTS_BUDDY_MODE" not in os.environ:
-            # 没设过 → 退出时删掉
-            _MODE_ENV_BACKUP["delete"] = True
+            _MODE_STATE["set"] = True
+            _MODE_STATE["added"] = True
         else:
-            # 设过 → 退出时还原
-            _MODE_ENV_BACKUP["value"] = os.environ["IELTS_BUDDY_MODE"]
-            _MODE_ENV_BACKUP["delete"] = False
+            _MODE_STATE["set"] = True
+            _MODE_STATE["added"] = False
+            _MODE_STATE["old"] = os.environ["IELTS_BUDDY_MODE"]
         os.environ["IELTS_BUDDY_MODE"] = mode
-    try:
-        if ctx.invoked_subcommand is not None:
-            _show_daily_reminder()
-            _show_current_user(ctx.invoked_subcommand)
-    finally:
-        # 还原 IELTS_BUDDY_MODE（避免子命令执行过程中被改）
-        if mode is not None:
-            if _MODE_ENV_BACKUP["delete"]:
-                os.environ.pop("IELTS_BUDDY_MODE", None)
-            else:
-                os.environ["IELTS_BUDDY_MODE"] = _MODE_ENV_BACKUP["value"]
-            _MODE_ENV_BACKUP["delete"] = False
-            _MODE_ENV_BACKUP["value"] = ""
+    if ctx.invoked_subcommand is not None:
+        _show_daily_reminder()
+        _show_current_user(ctx.invoked_subcommand)
+
+
+@cli.result_callback()
+def _mode_env_restore(result, **kwargs):
+    """W10：在子命令执行完后还原 IELTS_BUDDY_MODE，避免污染进程级 env。"""
+    # click 8.x result_callback 没有 ctx 参数，只能从 result 拿到 sub_ctx。
+    # 业务子命令 return 的是 exit code（int），不是 ctx。
+    # 折中：sub_ctx 在 click 内部有 but 不能从 result 拿到。
+    # 改成查模块级 dict 暂存模式状态。
+    if not _MODE_STATE["set"]:
+        return
+    if _MODE_STATE["added"]:
+        os.environ.pop("IELTS_BUDDY_MODE", None)
+    else:
+        os.environ["IELTS_BUDDY_MODE"] = _MODE_STATE["old"]
+    _MODE_STATE["set"] = False
+    _MODE_STATE["added"] = False
+    _MODE_STATE["old"] = ""
 
 
 cli.add_command(vocab)

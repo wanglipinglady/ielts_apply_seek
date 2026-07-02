@@ -195,6 +195,9 @@ class TestCLINoLoginFallback:
     def _tmp_home(self, tmp_path, monkeypatch):
         monkeypatch.setenv("IELTS_BUDDY_HOME", str(tmp_path / ".ielts-buddy"))
         monkeypatch.delenv("IELTS_BUDDY_USER_ID", raising=False)
+        # W10：W9/W10 测试设了 IELTS_BUDDY_MODE 必须清，否则这个测试会被
+        # 之前 W9/W10 测试残留的 env 带到 online 模式（MySQL），断言失败。
+        monkeypatch.delenv("IELTS_BUDDY_MODE", raising=False)
         yield
 
     @pytest.fixture
