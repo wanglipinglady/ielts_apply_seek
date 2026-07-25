@@ -1,0 +1,2 @@
+[ERROR] 缺少 tree-sitter 语言支持。
+请运行: pip install tree-sitter-language-pack

@@ -1,0 +1,269 @@
+{
+  "$schema": "nexus-mapper/concept-model/v1",
+  "generated_at": "2026-07-16T22:57:00+08:00",
+  "repo_path": "/Users/wangliping/Public/selfProgram/ielts_apply_seek",
+  "generator": "nexus-mapper v2",
+  "nodes": [
+    {
+      "id": "ielts-apply-seek.cli-entry",
+      "type": "System",
+      "label": "CLI Entry",
+      "responsibility": "命令行接口编排，注册 14 个命令组，46 个子命令，调用每日学习提醒",
+      "implementation_status": "implemented",
+      "code_path": "src/ielts_buddy/cli.py",
+      "evidence_path": null,
+      "evidence_gap": null,
+      "tech_stack": ["click", "rich"],
+      "hotspot": false
+    },
+    {
+      "id": "ielts-apply-seek.vocabulary-system",
+      "type": "System",
+      "label": "Vocabulary System",
+      "responsibility": "词库加载、搜索、过滤，支持大词库和精选词库，内置 SQLite 缓存和内存索引加速",
+      "implementation_status": "implemented",
+      "code_path": "src/ielts_buddy/services/vocab_service.py",
+      "evidence_path": null,
+      "evidence_gap": null,
+      "tech_stack": ["sqlite3", "pydantic"],
+      "hotspot": false
+    },
+    {
+      "id": "ielts-apply-seek.data-models",
+      "type": "System",
+      "label": "Data Models",
+      "responsibility": "Pydantic 数据模型定义，统一数据结构，包括 Word、LearningRecord、GradeResult 等核心模型",
+      "implementation_status": "implemented",
+      "code_path": "src/ielts_buddy/core/models.py",
+      "evidence_path": null,
+      "evidence_gap": null,
+      "tech_stack": ["pydantic"],
+      "hotspot": false
+    },
+    {
+      "id": "ielts-apply-seek.commands-layer",
+      "type": "System",
+      "label": "Commands Layer",
+      "responsibility": "14 个命令模块，提供用户交互接口，处理命令行参数和输出展示",
+      "implementation_status": "implemented",
+      "code_path": "src/ielts_buddy/commands/",
+      "evidence_path": null,
+      "evidence_gap": null,
+      "tech_stack": ["click", "rich"],
+      "hotspot": false
+    },
+    {
+      "id": "ielts-apply-seek.services-layer",
+      "type": "System",
+      "label": "Services Layer",
+      "responsibility": "17 个业务服务，实现核心业务逻辑，包括词汇、复习、统计、邮件、写作、口语等",
+      "implementation_status": "implemented",
+      "code_path": "src/ielts_buddy/services/",
+      "evidence_path": null,
+      "evidence_gap": null,
+      "tech_stack": ["pydantic", "sqlite3", "jinja2"],
+      "hotspot": true
+    },
+    {
+      "id": "ielts-apply-seek.repository-layer",
+      "type": "System",
+      "label": "Repository Layer",
+      "responsibility": "数据持久化抽象，提供 Repository 接口协议和 SQLite 实现",
+      "implementation_status": "implemented",
+      "code_path": "src/ielts_buddy/repositories/",
+      "evidence_path": null,
+      "evidence_gap": null,
+      "tech_stack": ["sqlite3"],
+      "hotspot": false
+    },
+    {
+      "id": "ielts-apply-seek.built-in-data",
+      "type": "System",
+      "label": "Built-in Data",
+      "responsibility": "内置数据文件，包括 4485 词大词库、写作模板、口语话题、听力资源等",
+      "implementation_status": "implemented",
+      "code_path": "src/ielts_buddy/data/",
+      "evidence_path": null,
+      "evidence_gap": null,
+      "tech_stack": ["json"],
+      "hotspot": false
+    },
+    {
+      "id": "ielts-apply-seek.knowledge-cards",
+      "type": "System",
+      "label": "Knowledge Cards",
+      "responsibility": "课程内容管理和中文知识卡片生成，支持 Sentence 知识卡片格式",
+      "implementation_status": "implemented",
+      "code_path": "src/ielts_buddy/services/course_service.py",
+      "evidence_path": null,
+      "evidence_gap": null,
+      "tech_stack": ["pydantic"],
+      "hotspot": false
+    },
+    {
+      "id": "ielts-apply-seek.vocabulary-learning",
+      "type": "Domain",
+      "label": "Vocabulary Learning",
+      "responsibility": "雅思词汇学习，包括词库管理、单词测验、艾宾浩斯复习调度",
+      "implementation_status": "implemented",
+      "code_path": "src/ielts_buddy/services/vocab_service.py",
+      "evidence_path": null,
+      "evidence_gap": null,
+      "tech_stack": [],
+      "hotspot": false
+    },
+    {
+      "id": "ielts-apply-seek.spaced-repetition",
+      "type": "Domain",
+      "label": "Spaced Repetition",
+      "responsibility": "艾宾浩斯遗忘曲线复习算法，根据答对/答错调整复习间隔",
+      "implementation_status": "implemented",
+      "code_path": "src/ielts_buddy/services/review_service.py",
+      "evidence_path": null,
+      "evidence_gap": null,
+      "tech_stack": [],
+      "hotspot": false
+    },
+    {
+      "id": "ielts-apply-seek.writing-assistance",
+      "type": "Domain",
+      "label": "Writing Assistance",
+      "responsibility": "雅思写作辅助，包括话题库、句型模板、同义替换、AI 批改",
+      "implementation_status": "implemented",
+      "code_path": "src/ielts_buddy/services/writing_service.py",
+      "evidence_path": null,
+      "evidence_gap": null,
+      "tech_stack": ["openai", "anthropic"],
+      "hotspot": false
+    },
+    {
+      "id": "ielts-apply-seek.speaking-practice",
+      "type": "Domain",
+      "label": "Speaking Practice",
+      "responsibility": "雅思口语练习，包括 Part 1/2/3 话题库和抽题练习",
+      "implementation_status": "implemented",
+      "code_path": "src/ielts_buddy/services/speaking_service.py",
+      "evidence_path": null,
+      "evidence_gap": null,
+      "tech_stack": [],
+      "hotspot": false
+    },
+    {
+      "id": "ielts-apply-seek.exam-simulation",
+      "type": "Domain",
+      "label": "Exam Simulation",
+      "responsibility": "模拟考试，包括限时测验、题目生成、成绩报告",
+      "implementation_status": "implemented",
+      "code_path": "src/ielts_buddy/services/exam_service.py",
+      "evidence_path": null,
+      "evidence_gap": null,
+      "tech_stack": [],
+      "hotspot": true
+    },
+    {
+      "id": "ielts-apply-seek.personal-vocabulary",
+      "type": "Domain",
+      "label": "Personal Vocabulary",
+      "responsibility": "个人词库管理，包括错题本、收藏夹、难点标记、分类管理",
+      "implementation_status": "implemented",
+      "code_path": "src/ielts_buddy/services/personal_vocab_service.py",
+      "evidence_path": null,
+      "evidence_gap": null,
+      "tech_stack": [],
+      "hotspot": true
+    },
+    {
+      "id": "ielts-apply-seek.ai-grading",
+      "type": "Domain",
+      "label": "AI Grading",
+      "responsibility": "AI 写作批改，基于 OpenAI/Anthropic 提供四维度评分和详细反馈",
+      "implementation_status": "implemented",
+      "code_path": "src/ielts_buddy/services/grading_service.py",
+      "evidence_path": null,
+      "evidence_gap": null,
+      "tech_stack": ["openai", "anthropic"],
+      "hotspot": true
+    },
+    {
+      "id": "ielts-apply-seek.intelligent-recommend",
+      "type": "Domain",
+      "label": "Intelligent Recommendation",
+      "responsibility": "根据学习数据智能推荐下一步学习内容",
+      "implementation_status": "implemented",
+      "code_path": "src/ielts_buddy/services/recommend_service.py",
+      "evidence_path": null,
+      "evidence_gap": null,
+      "tech_stack": [],
+      "hotspot": true
+    }
+  ],
+  "edges": [
+    {
+      "source": "ielts-apply-seek.cli-entry",
+      "target": "ielts-apply-seek.commands-layer",
+      "type": "contains",
+      "description": "CLI 注册所有命令模块"
+    },
+    {
+      "source": "ielts-apply-seek.commands-layer",
+      "target": "ielts-apply-seek.services-layer",
+      "type": "imports",
+      "description": "命令层调用服务层"
+    },
+    {
+      "source": "ielts-apply-seek.services-layer",
+      "target": "ielts-apply-seek.data-models",
+      "type": "imports",
+      "description": "服务层使用 Pydantic 模型"
+    },
+    {
+      "source": "ielts-apply-seek.services-layer",
+      "target": "ielts-apply-seek.repository-layer",
+      "type": "imports",
+      "description": "服务层调用仓库接口"
+    },
+    {
+      "source": "ielts-apply-seek.repository-layer",
+      "target": "ielts-apply-seek.built-in-data",
+      "type": "uses",
+      "description": "仓库层使用内置数据文件"
+    },
+    {
+      "source": "ielts-apply-seek.vocabulary-learning",
+      "target": "ielts-apply-seek.spaced-repetition",
+      "type": "depends_on",
+      "description": "词汇学习依赖复习调度"
+    },
+    {
+      "source": "ielts-apply-seek.vocabulary-learning",
+      "target": "ielts-apply-seek.personal-vocabulary",
+      "type": "depends_on",
+      "description": "词汇学习与个人词库交互"
+    },
+    {
+      "source": "ielts-apply-seek.exam-simulation",
+      "target": "ielts-apply-seek.vocabulary-learning",
+      "type": "depends_on",
+      "description": "模拟考试使用词汇"
+    },
+    {
+      "source": "ielts-apply-seek.writing-assistance",
+      "target": "ielts-apply-seek.ai-grading",
+      "type": "depends_on",
+      "description": "写作辅助调用 AI 批改"
+    },
+    {
+      "source": "ielts-apply-seek.exam-simulation",
+      "target": "ielts-apply-seek.ai-grading",
+      "type": "depends_on",
+      "description": "考试可调用 AI 批改"
+    }
+  ],
+  "metadata": {
+    "total_files": 161,
+    "total_lines": 4978,
+    "languages": ["python", "json", "html", "bash"],
+    "git_commits_analyzed": 8,
+    "analysis_days": 90
+  }
+}
