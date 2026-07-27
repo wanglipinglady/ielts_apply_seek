@@ -1,22 +1,115 @@
 {% extends "base.html" %}
 
+{% block page_title %}仪表盘{% endblock %}
+
 {% block content %}
-<section class="dashboard-hero">
-  <h1>欢迎，{{ current_user.email }}</h1>
-  <p class="lede">
-    今日学习 + 累计进度一目了然。点击进入：
-    <a href="/study/random">随机学习</a> ·
-    <a href="/study/review">复习</a> ·
-    <a href="/stats">完整统计</a>。
-  </p>
-
-  <div id="dashboard-cards" class="status-grid">
-    {% include "partials/_summary_cards.html" %}
+{# === 今日学习统计卡片 === #}
+<div class="stats-grid">
+  <div class="stat-card accent">
+    <div class="label">今日新学</div>
+    <div class="value">{{ summary.today_new_words if summary else 0 }}</div>
+    <div class="delta">个新单词</div>
   </div>
-
-  <div class="dashboard-actions">
-    <a class="btn-primary" href="/study/random">开始今日学习</a>
-    <a class="btn-secondary" href="/stats">查看完整统计</a>
+  <div class="stat-card">
+    <div class="label">今日复习</div>
+    <div class="value">{{ summary.today_reviewed if summary else 0 }}</div>
+    <div class="delta">个到期词</div>
   </div>
-</section>
+  <div class="stat-card">
+    <div class="label">待复习</div>
+    <div class="value">{{ summary.due_count if summary else 0 }}</div>
+    <div class="delta">个单词</div>
+  </div>
+  <div class="stat-card">
+    <div class="label">连续学习</div>
+    <div class="value">{{ summary.current_streak if summary else 0 }}</div>
+    <div class="delta">天</div>
+  </div>
+</div>
+
+{# === 学习路径面板 === #}
+<div class="panel">
+  <div class="panel-title">
+    <span>今日学习路径</span>
+    <div class="actions">
+      <a href="/study/random" class="btn primary">开始学习</a>
+    </div>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;">
+    <div style="border:1px solid var(--border-color);border-radius:10px;padding:14px;background:var(--bg-primary);">
+      <div style="font-size:12px;color:var(--text-muted);">任务 1</div>
+      <div style="font-size:15px;font-weight:600;margin:4px 0;">随机学习新单词</div>
+      <div class="progress-bar">
+        <div class="fill" style="width:{{ (summary.today_new_words / 5 * 100)|round|int if summary and summary.today_new_words < 5 else 100 }}%;"></div>
+      </div>
+      <div style="font-size:11px;color:var(--text-muted);margin-top:6px;">
+        {% if summary and summary.today_new_words > 0 %}
+          已学 {{ summary.today_new_words }} 个
+        {% else %}
+          未开始
+        {% endif %}
+      </div>
+    </div>
+    <div style="border:1px solid var(--border-color);border-radius:10px;padding:14px;background:var(--bg-primary);">
+      <div style="font-size:12px;color:var(--text-muted);">任务 2</div>
+      <div style="font-size:15px;font-weight:600;margin:4px 0;">复习到期单词</div>
+      <div class="progress-bar">
+        <div class="fill" style="width:{{ (summary.today_reviewed / (summary.due_count + summary.today_reviewed) * 100)|round|int if summary and (summary.due_count + summary.today_reviewed) > 0 else 0 }}%;"></div>
+      </div>
+      <div style="font-size:11px;color:var(--text-muted);margin-top:6px;">
+        {% if summary and summary.today_reviewed > 0 %}
+          已复习 {{ summary.today_reviewed }} 个
+        {% elif summary and summary.due_count > 0 %}
+          {{ summary.due_count }} 个待复习
+        {% else %}
+          暂无待复习
+        {% endif %}
+      </div>
+    </div>
+    <div style="border:1px solid var(--border-color);border-radius:10px;padding:14px;background:var(--bg-primary);">
+      <div style="font-size:12px;color:var(--text-muted);">任务 3</div>
+      <div style="font-size:15px;font-weight:600;margin:4px 0;">查看学习统计</div>
+      <div class="progress-bar"><div class="fill" style="width:0%;"></div></div>
+      <div style="font-size:11px;color:var(--text-muted);margin-top:6px;">
+        <a href="/stats" style="font-size:12px;">前往查看 →</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# === 快捷入口 === #}
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+  <div class="panel">
+    <div class="panel-title"><span>快速开始</span></div>
+    <div style="display:flex;flex-direction:column;gap:10px;">
+      <a href="/study/random" class="btn primary" style="text-align:center;">
+        ⚄ 随机学习
+      </a>
+      <a href="/study/review" class="btn" style="text-align:center;">
+        ↻ 艾宾浩斯复习
+      </a>
+    </div>
+  </div>
+  <div class="panel">
+    <div class="panel-title"><span>学习概览</span></div>
+    <div style="display:flex;flex-direction:column;gap:8px;font-size:13px;">
+      <div style="display:flex;justify-content:space-between;">
+        <span style="color:var(--text-muted);">总学词数</span>
+        <span style="font-weight:600;">{{ summary.total_words if summary else 0 }}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;">
+        <span style="color:var(--text-muted);">累计正确率</span>
+        <span style="font-weight:600;">{{ '%.0f%%'|format(summary.accuracy * 100) if summary and summary.accuracy else 0 }}%</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;">
+        <span style="color:var(--text-muted);">已掌握</span>
+        <span style="font-weight:600;">{{ summary.mastered if summary else 0 }}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;">
+        <span style="color:var(--text-muted);">历史最长连续</span>
+        <span style="font-weight:600;">{{ summary.max_streak if summary else 0 }} 天</span>
+      </div>
+    </div>
+  </div>
+</div>
 {% endblock %}

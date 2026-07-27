@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}{{ title }} · {{ app_name }}{% endblock %}</title>
+  <link rel="stylesheet" href="/static/css/app.css">
+  <script src="/static/js/htmx.min.js"></script>
+</head>
+<body>
+  <div class="auth-page">
+    {% block content %}{% endblock %}
+  </div>
+  <footer class="footer">
+    <span>{{ app_name }} v{{ app_version }}</span>
+    <span>· Web MVP 阶段 {{ phase }}</span>
+  </footer>
+</body>
+</html>

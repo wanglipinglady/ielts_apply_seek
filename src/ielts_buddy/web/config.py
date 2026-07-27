@@ -80,20 +80,33 @@ COOKIE_SAMESITE: Final[str] = os.environ.get(
 
 def _resolve_db_mode() -> str:
     """Web 端默认强制 online（MySQL）；dev 可显式用 sqlite 走内存库。"""
-    env = os.environ.get("IELTS_BUDDY_WEB_DB_MODE", "online").strip().lower()
+    env = os.environ.get("IELTS_BUDDY_WEB_DB_MODE", "sqlite").strip().lower()
     if env in ("online", "mysql"):
         return "online"
     if env in ("sqlite", "memory"):
         return "sqlite"
     warnings.warn(
-        f"IELTS_BUDDY_WEB_DB_MODE={env!r} 非法，回退到 online",
+        f"IELTS_BUDDY_WEB_DB_MODE={env!r} 非法，回退到 sqlite",
         stacklevel=2,
     )
-    return "online"
+    return "sqlite"
 
 
 WEB_DB_MODE: Final[str] = _resolve_db_mode()
 WEB_DB_URL: Final[str] = os.environ.get("IELTS_BUDDY_WEB_DB_URL", "")
+
+
+def get_web_db_path() -> str:
+    """Web 端 SQLite 数据库路径（每次调用动态读取环境变量）。
+
+    优先级：
+    1. 环境变量 ``IELTS_BUDDY_WEB_SQLITE_PATH``
+    2. ``~/.ielts-buddy/web_data.db``（与 CLI 的 ``data.db`` 物理隔离）
+    """
+    p = os.environ.get("IELTS_BUDDY_WEB_SQLITE_PATH", "").strip()
+    if p:
+        return p
+    return str(Path("~/.ielts-buddy/web_data.db").expanduser())
 
 
 # ===== CORS =====
@@ -117,5 +130,6 @@ __all__ = [
     "COOKIE_SAMESITE",
     "WEB_DB_MODE",
     "WEB_DB_URL",
+    "get_web_db_path",
     "CORS_ORIGINS",
 ]

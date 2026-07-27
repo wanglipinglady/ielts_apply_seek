@@ -17,9 +17,10 @@ def client() -> Iterator[TestClient]:
     关键点：每个测试 session 构造独立 ``app``，避免 module-level 单例
     跨测试状态污染。
     """
-    os.environ.setdefault("IELTS_BUDDY_ENV", "dev")
-    os.environ.setdefault("IELTS_BUDDY_JWT_SECRET", "test-secret-" + "x" * 32)
-    os.environ.setdefault("IELTS_BUDDY_WEB_DB_MODE", "sqlite")
+    # 必须在导入 web 模块前设置环境变量
+    os.environ["IELTS_BUDDY_ENV"] = "dev"
+    os.environ["IELTS_BUDDY_JWT_SECRET"] = "test-secret-" + "x" * 32
+    os.environ["IELTS_BUDDY_WEB_DB_MODE"] = "sqlite"
 
     from ielts_buddy.web.main import create_app
     from ielts_buddy.web.auth.repository import create_sqlite_web_user_repository
@@ -42,12 +43,21 @@ def web_db_path(tmp_path) -> str:
 
 
 @pytest.fixture
-def client_with_db(monkeypatch, web_db_path) -> Iterator[TestClient]:
-    """带 web_data.db 路径注入的 TestClient；f"""
-    monkeypatch.setenv("IELTS_BUDDY_ENV", "dev")
-    monkeypatch.setenv("IELTS_BUDDY_JWT_SECRET", "test-secret-" + "x" * 32)
-    monkeypatch.setenv("IELTS_BUDDY_WEB_DB_MODE", "sqlite")
-    monkeypatch.setenv("IELTS_BUDDY_WEB_SQLITE_PATH", web_db_path)
+def client_with_db(web_db_path) -> Iterator[TestClient]:
+    """带 web_data.db 路径注入的 TestClient。
+
+    必须在导入 web 模块前设置环境变量，否则 config.py 已经缓存了路径。
+    """
+    # 必须在导入前设置
+    os.environ["IELTS_BUDDY_ENV"] = "dev"
+    os.environ["IELTS_BUDDY_JWT_SECRET"] = "test-secret-" + "x" * 32
+    os.environ["IELTS_BUDDY_WEB_DB_MODE"] = "sqlite"
+    os.environ["IELTS_BUDDY_WEB_SQLITE_PATH"] = web_db_path
+
+    # 强制重新加载 config 模块（清除缓存）
+    import importlib
+    from ielts_buddy.web import config as web_config
+    importlib.reload(web_config)
 
     from ielts_buddy.web.main import create_app
 

@@ -1,28 +1,20 @@
 {% extends "base.html" %}
 
+{% block page_title %}首页{% endblock %}
+
 {% block content %}
-<section class="hero">
-  <h1>Web MVP Coming Online</h1>
-  <p class="lede">
-    当前是 <strong>阶段 0：骨架</strong>。
-    FastAPI 已就绪，模板与 HTMX 已挂载。
+<div style="text-align:center;padding:60px 20px;">
+  <h1 style="font-size:32px;margin-bottom:16px;">欢迎使用 IELTS Buddy</h1>
+  <p style="font-size:16px;color:var(--text-muted);margin-bottom:32px;">
+    你的雅思词汇学习助手，基于艾宾浩斯记忆曲线，科学规划复习。
   </p>
-  <div class="status-grid">
-    <div class="status-card">
-      <span class="status-label">后端</span>
-      <span class="status-value">FastAPI</span>
-    </div>
-    <div class="status-card">
-      <span class="status-label">渲染</span>
-      <span class="status-value">Jinja2</span>
-    </div>
-    <div class="status-card">
-      <span class="status-label">交互</span>
-      <span class="status-value">HTMX 1.9</span>
-    </div>
+  <div style="display:flex;gap:16px;justify-content:center;flex-wrap:wrap;">
+    {% if current_user %}
+      <a href="/dashboard" class="btn-primary" style="padding:14px 28px;font-size:16px;">进入学习</a>
+    {% else %}
+      <a href="/register" class="btn-primary" style="padding:14px 28px;font-size:16px;">立即注册</a>
+      <a href="/login" class="btn" style="padding:14px 28px;font-size:16px;">登录</a>
+    {% endif %}
   </div>
-  <p class="hint">
-    后续阶段将接入：登录 · Dashboard · 随机学习 · 复习 · 统计。
-  </p>
-</section>
+</div>
 {% endblock %}

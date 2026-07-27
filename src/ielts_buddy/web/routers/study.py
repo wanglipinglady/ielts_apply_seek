@@ -217,6 +217,7 @@ def page_study_random(
             "current_user": user,
             "word": word,
             "mode": "random",
+            "request": request,
         },
     )
 
@@ -247,6 +248,7 @@ def page_study_review(
             "word": word,
             "mode": "review",
             "due_remaining": due_remaining,
+            "request": request,
         },
     )
 

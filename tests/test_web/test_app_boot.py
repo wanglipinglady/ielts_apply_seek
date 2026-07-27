@@ -19,8 +19,8 @@ def test_index_page_returns_200(client) -> None:
 def test_index_shows_phase_label(client) -> None:
     """首页展示阶段标签（当前阶段由 main.py 模板上下文决定）。"""
     r = client.get("/")
-    # 阶段 2 起展示 "Phase 2"
-    assert "Phase 2" in r.text or "Phase&nbsp;2" in r.text
+    # 阶段 2 起展示 "阶段 2"
+    assert "阶段 2" in r.text
 
 
 def test_healthz(client) -> None:

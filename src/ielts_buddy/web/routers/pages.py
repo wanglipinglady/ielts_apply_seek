@@ -51,6 +51,7 @@ def page_dashboard(
             "phase": 2,
             "current_user": user,
             "summary": summary,
+            "request": request,
         },
     )
 
@@ -82,6 +83,7 @@ def page_stats(
             "level_dist": level_dist,
             "band": band,
             "trend": trend,
+            "request": request,
         },
     )
 

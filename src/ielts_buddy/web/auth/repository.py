@@ -178,12 +178,149 @@ def create_sqlite_web_user_repository(
     return SQLiteWebUserRepository(conn)
 
 
+# =============================================================
+# MySQL 实现（生产环境）
+# =============================================================
+
+_WEB_USERS_MYSQL_SCHEMA = """
+CREATE TABLE IF NOT EXISTS web_users (
+    id              BIGINT PRIMARY KEY AUTO_INCREMENT,
+    email           VARCHAR(255) NOT NULL,
+    password_hash   TEXT NOT NULL,
+    created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_login_at   DATETIME,
+    UNIQUE KEY uk_wu_email (email)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+"""
+
+
+class MySQLWebUserRepository:
+    """MySQL 实现的 web_users 仓储（生产环境）。
+
+    与 SQLite 版本接口完全一致。
+    """
+
+    def __init__(self, engine) -> None:
+        self._engine = engine
+        self._init_schema()
+
+    def _init_schema(self) -> None:
+        """初始化 MySQL 表结构。"""
+        from sqlalchemy import text
+        with self._engine.begin() as conn:
+            conn.execute(text(_WEB_USERS_MYSQL_SCHEMA))
+
+    def create(self, email: str, password_hash: str) -> WebUser:
+        email_norm = email.strip().lower()
+        now = datetime.now()
+        from sqlalchemy import insert, select, text
+        from sqlalchemy.exc import IntegrityError
+        try:
+            with self._engine.begin() as conn:
+                result = conn.execute(insert(t_web_users_mysql).values(
+                    email=email_norm,
+                    password_hash=password_hash,
+                    created_at=now,
+                ))
+                new_id = int(result.inserted_primary_key[0])
+        except IntegrityError:
+            raise WebUserEmailConflictError(
+                f"邮箱 '{email_norm}' 已被注册"
+            )
+        return WebUser(
+            id=new_id,
+            email=email_norm,
+            password_hash=password_hash,
+            created_at=now.isoformat(timespec="seconds"),
+            last_login_at=None,
+        )
+
+    def get_by_email(self, email: str) -> Optional[WebUser]:
+        email_norm = email.strip().lower()
+        from sqlalchemy import select
+        with self._engine.connect() as conn:
+            row = conn.execute(
+                select(t_web_users_mysql).where(
+                    t_web_users_mysql.c.email == email_norm
+                )
+            ).first()
+            if row is None:
+                return None
+            m = row._mapping
+            return WebUser(
+                id=m["id"],
+                email=m["email"],
+                password_hash=m["password_hash"],
+                created_at=m["created_at"].isoformat() if m["created_at"] else None,
+                last_login_at=m["last_login_at"].isoformat() if m["last_login_at"] else None,
+            )
+
+    def get_by_id(self, user_id: int) -> Optional[WebUser]:
+        from sqlalchemy import select
+        with self._engine.connect() as conn:
+            row = conn.execute(
+                select(t_web_users_mysql).where(t_web_users_mysql.c.id == user_id)
+            ).first()
+            if row is None:
+                return None
+            m = row._mapping
+            return WebUser(
+                id=m["id"],
+                email=m["email"],
+                password_hash=m["password_hash"],
+                created_at=m["created_at"].isoformat() if m["created_at"] else None,
+                last_login_at=m["last_login_at"].isoformat() if m["last_login_at"] else None,
+            )
+
+    def update_last_login(self, user_id: int, when: datetime | None = None) -> None:
+        from sqlalchemy import update
+        ts = when or datetime.now()
+        with self._engine.begin() as conn:
+            conn.execute(
+                update(t_web_users_mysql)
+                .where(t_web_users_mysql.c.id == user_id)
+                .values(last_login_at=ts)
+            )
+
+    def close(self) -> None:
+        # MySQL 连接由 Engine 管理，这里 no-op
+        pass
+
+
+# MySQL 表元数据（与 mysql_repo.py 中的其他表一致）
+from sqlalchemy import BigInteger, Column, DateTime, String, Table, text as sa_text
+
+_mysql_metadata = __import__("sqlalchemy", fromlist=["MetaData"]).MetaData()
+
+t_web_users_mysql = Table(
+    "web_users", _mysql_metadata,
+    Column("id", BigInteger, primary_key=True, autoincrement=True),
+    Column("email", String(255), nullable=False, unique=True),
+    Column("password_hash", String(512), nullable=False),
+    Column("created_at", DateTime, nullable=False, server_default=sa_text("CURRENT_TIMESTAMP")),
+    Column("last_login_at", DateTime, nullable=True),
+)
+
+
+def create_mysql_web_user_repository(connection_url: str | None = None):
+    """创建 MySQL Web 用户仓储。
+
+    Args:
+        connection_url: SQLAlchemy MySQL URL，默认使用 mysql_repo.py 中的配置
+    """
+    from ielts_buddy.repositories.mysql_repo import create_mysql_repositories
+    container = create_mysql_repositories(connection_url=connection_url)
+    return MySQLWebUserRepository(container._engine)
+
+
 __all__ = [
     "WebUser",
     "WebUserRepository",
     "SQLiteWebUserRepository",
+    "MySQLWebUserRepository",
     "WebUserNotFoundError",
     "WebUserEmailConflictError",
     "create_sqlite_web_user_repository",
+    "create_mysql_web_user_repository",
     "_SCHEMA",  # 测试用
 ]

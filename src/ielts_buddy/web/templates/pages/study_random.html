@@ -1,8 +1,9 @@
 {% extends "base.html" %}
 
+{% block page_title %}随机学习{% endblock %}
+
 {% block content %}
 <section class="study-page">
-  <h1>随机学习</h1>
   <p class="lede">从词库随机抽词，点击"认识"或"不认识"自动进入下一题。</p>
 
   {% include "partials/_study_card.html" %}

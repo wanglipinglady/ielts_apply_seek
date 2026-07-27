@@ -27,6 +27,7 @@ from ielts_buddy.web import config as web_config
 from ielts_buddy.web.auth.repository import (
     SQLiteWebUserRepository,
     create_sqlite_web_user_repository,
+    MySQLWebUserRepository,
 )
 from ielts_buddy.web.routers import auth as auth_routes
 from ielts_buddy.web.routers import pages as pages_routes
@@ -47,30 +48,15 @@ def _build_templates() -> Jinja2Templates:
     return templates
 
 
-def _resolve_web_sqlite_path() -> str:
-    """Web 端独立 SQLite 路径。
 
-    优先级：
-    1. 环境变量 ``IELTS_BUDDY_WEB_SQLITE_PATH``
-    2. ``~/.ielts-buddy/web_data.db``（与 CLI 的 ``data.db`` 物理隔离）
-
-    隔离理由：项目硬约束要求 Service / Repository 不动；当前 StatsService 等
-    内部用直 SQL（依赖 sqlite3.Connection），没法跑 MySQL。Web 端用独立
-    SQLite 文件既满足"多用户隔离"，又能让 Service 无修改复用。
-    阶段 4 会把 Service 重构成走 Repository，届时再切 MySQL。
-    """
-    p = os.environ.get("IELTS_BUDDY_WEB_SQLITE_PATH", "").strip()
-    if p:
-        return p
-    return str(Path("~/.ielts-buddy/web_data.db").expanduser())
 
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     """启动时：开 web_user_repo + 业务仓库容器；关闭时：关。
 
-    业务仓库容器在 Web 端固定走 SQLite（独立 db 文件），原因见
-    ``_resolve_web_sqlite_path`` 注释。
+    业务仓库容器在 Web 端固定走 SQLite（独立 db 文件）。
+    统一使用 web_config.WEB_DB_PATH。
     """
     # 测试覆盖：如果 app.state.web_user_repo 已被 conftest 注入，跳过
     if getattr(app.state, "web_user_repo", None) is None:
@@ -78,18 +64,29 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     # 阶段 2：业务仓库容器（学习记录 / 个人词库 / 题库 等）
     if getattr(app.state, "container", None) is None:
-        web_db = Path(_resolve_web_sqlite_path())
-        # 父目录不存在则创建（生产部署通常是空挂载）
-        web_db.parent.mkdir(parents=True, exist_ok=True)
-        app.state.container = create_repositories(
-            mode="local", db_path=web_db
-        )
-        # stats 直 SQL 用的连接：check_same_thread=False 跨 worker 安全
-        import sqlite3
-        app.state.web_stats_conn = sqlite3.connect(
-            str(web_db), check_same_thread=False
-        )
-        app.state.web_stats_conn.row_factory = sqlite3.Row
+        if web_config.WEB_DB_MODE == "online":
+            # MySQL 模式：使用远程数据库永久存储
+            from ielts_buddy.repositories.mysql_repo import (
+                create_mysql_repositories,
+            )
+            app.state.container = create_mysql_repositories(
+                connection_url=web_config.WEB_DB_URL or None
+            )
+            app.state.web_stats_conn = None  # MySQL 模式不需要 stats 连接
+        else:
+            # SQLite 模式：使用本地文件存储
+            web_db = Path(web_config.get_web_db_path())
+            # 父目录不存在则创建（生产部署通常是空挂载）
+            web_db.parent.mkdir(parents=True, exist_ok=True)
+            app.state.container = create_repositories(
+                mode="local", db_path=web_db
+            )
+            # stats 直 SQL 用的连接：check_same_thread=False 跨 worker 安全
+            import sqlite3
+            app.state.web_stats_conn = sqlite3.connect(
+                str(web_db), check_same_thread=False
+            )
+            app.state.web_stats_conn.row_factory = sqlite3.Row
     try:
         yield
     finally:
@@ -120,11 +117,23 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 def _open_default_user_repo():
-    """web_user_repo：dev 走临时文件 SQLite（lifespan 与请求共享）"""
-    import tempfile
-    tmp = tempfile.NamedTemporaryFile(prefix="ib_web_", suffix=".db", delete=False)
-    tmp.close()
-    return create_sqlite_web_user_repository(tmp.name)
+    """web_user_repo：根据配置选择 SQLite 或 MySQL 存储用户数据"""
+    if web_config.WEB_DB_MODE == "online":
+        # MySQL 模式：用户数据也存储在 MySQL
+        from ielts_buddy.web.auth.repository import (
+            MySQLWebUserRepository,
+        )
+        from ielts_buddy.repositories.mysql_repo import create_mysql_repositories
+        container = create_mysql_repositories(
+            connection_url=web_config.WEB_DB_URL or None
+        )
+        return MySQLWebUserRepository(container._engine)
+    else:
+        # SQLite 模式：使用本地文件存储
+        from pathlib import Path
+        db_path = Path(web_config.get_web_db_path())
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        return create_sqlite_web_user_repository(str(db_path))
 
 
 def create_app() -> FastAPI:
@@ -164,13 +173,29 @@ def create_app() -> FastAPI:
 
     @app.get("/", response_class=HTMLResponse)
     async def index(request: Request) -> HTMLResponse:
-        """阶段 0 占位首页。"""
+        """首页：展示欢迎信息 + 登录/进入学习入口。"""
+        # 检查用户是否已登录
+        user = None
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            token = auth_header[7:]
+            try:
+                from ielts_buddy.web.auth.security import decode_token
+                payload = decode_token(token)
+                if payload:
+                    from ielts_buddy.web.auth.repository import WebUserRepository
+                    repo = WebUserRepository(db_path=web_config.WEB_DB_PATH)
+                    user = repo.get_by_id(payload.get("sub"))
+            except Exception:
+                pass
         return templates.TemplateResponse(
             request,
             "pages/index.html",
             {
-                "title": "IELTS Buddy Web",
+                "title": "IELTS Buddy",
                 "phase": 2,
+                "current_user": user,
+                "request": request,
             },
         )
 

@@ -8,34 +8,72 @@
   <script src="/static/js/htmx.min.js"></script>
 </head>
 <body>
-  <header class="topbar">
-    <div class="topbar-inner">
-      <a href="/" class="brand">{{ app_name }}</a>
-      <nav class="nav">
-        <a href="/">首页</a>
+  <div class="app-shell">
+    {# === 侧边栏（PRD左右结构） === #}
+    <aside class="app-sidebar">
+      <div class="brand-block">
+        <span class="logo">IB</span><span class="name">IELTS Seek</span>
+      </div>
+
+      {# 学习导航组 #}
+      <div class="nav-group">
+        <div class="nav-group-title">学习</div>
+        <a href="/dashboard" class="nav-item {% if request.url.path == '/dashboard' %}active{% endif %}">
+          <span class="icon">⌂</span> 仪表盘
+        </a>
+        <a href="/study/random" class="nav-item {% if '/study/random' in request.url.path %}active{% endif %}">
+          <span class="icon">⚄</span> 随机学习
+        </a>
+        <a href="/study/review" class="nav-item {% if '/study/review' in request.url.path %}active{% endif %}">
+          <span class="icon">↻</span> 艾宾浩斯复习
+        </a>
+      </div>
+
+      {# 评估导航组 #}
+      <div class="nav-group">
+        <div class="nav-group-title">评估</div>
+        <a href="/stats" class="nav-item {% if request.url.path == '/stats' %}active{% endif %}">
+          <span class="icon">▤</span> 学习统计
+        </a>
+      </div>
+
+      {# 用户信息 #}
+      <div class="sidebar-user">
         {% if current_user %}
-          <a href="/dashboard">Dashboard</a>
-          <a href="/study/random">随机学习</a>
-          <a href="/study/review">复习</a>
-          <a href="/stats">统计</a>
-          <span class="user-chip">{{ current_user.email }}</span>
-          <form method="post" action="/api/auth/logout" class="logout-form"
+          <div class="user-info">
+            <span class="avatar">{{ current_user.email[0]|upper }}</span>
+            <span class="user-email">{{ current_user.email }}</span>
+          </div>
+          <form method="post" action="/api/auth/logout"
                 hx-post="/api/auth/logout" hx-swap="none"
                 hx-on::after-request="window.location.href='/login'">
-            <button type="submit" class="btn-link">登出</button>
+            <button type="submit" class="logout-btn">登出</button>
           </form>
         {% else %}
-          <a href="/login">登录</a>
-          <a href="/register">注册</a>
+          <a href="/login" class="nav-item"><span class="icon">→</span> 登录</a>
+          <a href="/register" class="nav-item"><span class="icon">+</span> 注册</a>
         {% endif %}
-        <span class="phase-tag">Phase {{ phase }}</span>
-      </nav>
-    </div>
-  </header>
+      </div>
+    </aside>
 
-  <main class="container">
-    {% block content %}{% endblock %}
-  </main>
+    {# === 主内容区 === #}
+    <main class="app-main">
+      <div class="app-header">
+        <div class="title-block">
+          <h2>{% block page_title %}{{ title }}{% endblock %}</h2>
+        </div>
+        {% if current_user %}
+        <div class="user-block">
+          <div class="avatar">{{ current_user.email[0]|upper }}</div>
+          <span>{{ current_user.email }}</span>
+        </div>
+        {% endif %}
+      </div>
+      <div class="main-content">
+        {% block content %}{% endblock %}
+      </div>
+    </main>
+  </div>
 
   <footer class="footer">
     <span>{{ app_name }} v{{ app_version }}</span>
