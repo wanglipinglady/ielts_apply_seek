@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="dashboard-hero">
+  <h1>欢迎，{{ current_user.email }}</h1>
+  <p class="lede">
+    今日学习 + 累计进度一目了然。点击进入：
+    <a href="/study/random">随机学习</a> ·
+    <a href="/study/review">复习</a> ·
+    <a href="/stats">完整统计</a>。
+  </p>
+
+  <div id="dashboard-cards" class="status-grid">
+    {% include "partials/_summary_cards.html" %}
+  </div>
+
+  <div class="dashboard-actions">
+    <a class="btn-primary" href="/study/random">开始今日学习</a>
+    <a class="btn-secondary" href="/stats">查看完整统计</a>
+  </div>
+</section>
+{% endblock %}

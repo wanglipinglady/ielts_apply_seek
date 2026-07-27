@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}{{ title }} · {{ app_name }}{% endblock %}</title>
+  <link rel="stylesheet" href="/static/css/app.css">
+  <script src="/static/js/htmx.min.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a href="/" class="brand">{{ app_name }}</a>
+      <nav class="nav">
+        <a href="/">首页</a>
+        {% if current_user %}
+          <a href="/dashboard">Dashboard</a>
+          <a href="/study/random">随机学习</a>
+          <a href="/study/review">复习</a>
+          <a href="/stats">统计</a>
+          <span class="user-chip">{{ current_user.email }}</span>
+          <form method="post" action="/api/auth/logout" class="logout-form"
+                hx-post="/api/auth/logout" hx-swap="none"
+                hx-on::after-request="window.location.href='/login'">
+            <button type="submit" class="btn-link">登出</button>
+          </form>
+        {% else %}
+          <a href="/login">登录</a>
+          <a href="/register">注册</a>
+        {% endif %}
+        <span class="phase-tag">Phase {{ phase }}</span>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container">
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="footer">
+    <span>{{ app_name }} v{{ app_version }}</span>
+    <span>· Web MVP 阶段 {{ phase }}</span>
+  </footer>
+</body>
+</html>

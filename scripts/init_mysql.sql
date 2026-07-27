@@ -175,10 +175,26 @@ CREATE TABLE IF NOT EXISTS cache_meta (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='缓存元数据';
 
 -- =============================================================
--- 10. 初始化数据
+-- 10. web_users（Web 端独立账号体系）
+-- -------------------------------------------------------------
+-- 与 CLI 的 users 表物理隔离：web_users.id 与 users.id 互不干扰
+-- 用 bcrypt 哈希（password_hash），邮箱唯一约束
+-- =============================================================
+CREATE TABLE IF NOT EXISTS web_users (
+    id              BIGINT          NOT NULL AUTO_INCREMENT,
+    email           VARCHAR(255)    NOT NULL,
+    password_hash   VARCHAR(255)    NOT NULL,
+    created_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_login_at   DATETIME        NULL,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_web_users_email (email)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Web 端用户表（与 CLI users 表隔离）';
+
+-- =============================================================
+-- 11. 初始化数据
 -- =============================================================
 
--- 10.1 系统分类种子（3-A 决策）
+-- 11.1 系统分类种子（3-A 决策）
 -- user_id=0 这一份是"模板"，业务层在用户首登时复制给具体用户
 -- UNIQUE KEY (user_id, name) 保证每个用户只有一份同名分类
 INSERT IGNORE INTO vocab_categories (user_id, name, description, is_system) VALUES

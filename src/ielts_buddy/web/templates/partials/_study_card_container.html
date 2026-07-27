@@ -1,0 +1,38 @@
+<div id="study-card">
+  {% if word is none %}
+    {% if empty_msg %}
+      <div class="hint">{{ empty_msg }}</div>
+    {% elif mode == "review" %}
+      <div class="hint">今日复习已完成 🎉</div>
+    {% else %}
+      <div class="hint">今日新词已学完 ✅ 休息一下，明天继续。</div>
+    {% endif %}
+  {% else %}
+    <article class="study-card">
+      <div class="study-word">
+        <span class="word">{{ word.word }}</span>
+        <span class="phonetic">{{ word.phonetic }}</span>
+      </div>
+      <dl class="study-meta">
+        {% if word.pos %}<dt>词性</dt><dd>{{ word.pos }}</dd>{% endif %}
+        <dt>释义</dt><dd class="answer" hidden>{{ word.meaning }}</dd>
+        <dd class="placeholder">（点击"显示答案"查看释义）</dd>
+        {% if word.example %}
+          <dt>例句</dt><dd>{{ word.example }}</dd>
+        {% endif %}
+      </dl>
+      <div class="study-actions">
+        <button type="button" class="btn-secondary" onclick="document.querySelector('.study-card .answer').hidden=false;document.querySelector('.study-card .placeholder').hidden=true;">显示答案</button>
+        <form hx-post="/api/study/answer"
+              hx-target="#study-card"
+              hx-swap="outerHTML"
+              style="display:inline;">
+          <input type="hidden" name="word" value="{{ word.word }}">
+          <input type="hidden" name="mode" value="{{ mode }}">
+          <button type="submit" name="correct" value="true" class="btn-primary btn-good">认识 ✓</button>
+          <button type="submit" name="correct" value="false" class="btn-primary btn-bad">不认识 ✗</button>
+        </form>
+      </div>
+    </article>
+  {% endif %}
+</div>

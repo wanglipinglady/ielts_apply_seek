@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="auth-card">
+  <h1>登录</h1>
+  <p class="lede">用注册时的邮箱和密码登录。</p>
+
+  <form id="login-form" class="auth-form"
+        hx-post="/api/auth/login"
+        hx-trigger="submit"
+        hx-swap="none"
+        hx-on::after-request="handleAuthResponse(event)">
+    <label class="field">
+      <span class="field-label">邮箱</span>
+      <input type="email" name="email" required autocomplete="email" />
+    </label>
+    <label class="field">
+      <span class="field-label">密码</span>
+      <input type="password" name="password" required autocomplete="current-password" />
+    </label>
+    <div id="login-error" class="auth-error" hidden></div>
+    <button type="submit" class="btn-primary">登录</button>
+  </form>
+
+  <p class="auth-foot">
+    还没有账号？<a href="/register">立即注册</a>
+  </p>
+</section>
+
+<script>
+  // 认证响应处理：服务器已设置 cookie，JS 同步到 localStorage 供 API 调用
+  function handleAuthResponse(event) {
+    const xhr = event.detail.xhr;
+    const errBox = document.getElementById('login-error');
+    if (xhr.status === 200 || xhr.status === 201) {
+      try {
+        const body = JSON.parse(xhr.responseText);
+        if (body.access_token) {
+          localStorage.setItem('ib_access_token', body.access_token);
+        }
+      } catch (_) { /* ignore */ }
+      window.location.href = '/dashboard';
+    } else {
+      let msg = '登录失败';
+      try {
+        const body = JSON.parse(xhr.responseText);
+        msg = body.detail || msg;
+      } catch (_) { /* ignore */ }
+      errBox.textContent = msg;
+      errBox.hidden = false;
+    }
+  }
+</script>
+{% endblock %}

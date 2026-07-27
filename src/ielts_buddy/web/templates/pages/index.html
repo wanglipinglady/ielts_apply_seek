@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="hero">
+  <h1>Web MVP Coming Online</h1>
+  <p class="lede">
+    当前是 <strong>阶段 0：骨架</strong>。
+    FastAPI 已就绪，模板与 HTMX 已挂载。
+  </p>
+  <div class="status-grid">
+    <div class="status-card">
+      <span class="status-label">后端</span>
+      <span class="status-value">FastAPI</span>
+    </div>
+    <div class="status-card">
+      <span class="status-label">渲染</span>
+      <span class="status-value">Jinja2</span>
+    </div>
+    <div class="status-card">
+      <span class="status-label">交互</span>
+      <span class="status-value">HTMX 1.9</span>
+    </div>
+  </div>
+  <p class="hint">
+    后续阶段将接入：登录 · Dashboard · 随机学习 · 复习 · 统计。
+  </p>
+</section>
+{% endblock %}

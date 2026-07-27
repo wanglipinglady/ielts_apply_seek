@@ -1,0 +1,37 @@
+{% if summary is defined and summary %}
+  {% set s = summary %}
+  <div class="status-card">
+    <span class="status-label">今日新学</span>
+    <span class="status-value">{{ s.today_new_words }}</span>
+  </div>
+  <div class="status-card">
+    <span class="status-label">今日复习</span>
+    <span class="status-value">{{ s.today_reviewed }}</span>
+  </div>
+  <div class="status-card">
+    <span class="status-label">总学词数</span>
+    <span class="status-value">{{ s.total_words }}</span>
+  </div>
+  <div class="status-card">
+    <span class="status-label">累计正确率</span>
+    <span class="status-value">{{ '%.0f%%' % (s.accuracy * 100) }}</span>
+  </div>
+  <div class="status-card">
+    <span class="status-label">已掌握</span>
+    <span class="status-value">{{ s.mastered }}</span>
+  </div>
+  <div class="status-card">
+    <span class="status-label">待复习</span>
+    <span class="status-value">{{ s.due_count }}</span>
+  </div>
+  <div class="status-card">
+    <span class="status-label">当前连续</span>
+    <span class="status-value">{{ s.current_streak }} 天</span>
+  </div>
+  <div class="status-card">
+    <span class="status-label">历史最长</span>
+    <span class="status-value">{{ s.max_streak }} 天</span>
+  </div>
+{% else %}
+  <div class="hint">暂无数据</div>
+{% endif %}

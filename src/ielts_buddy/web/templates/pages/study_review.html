@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="study-page">
+  <h1>今日复习</h1>
+  <p class="lede">基于艾宾浩斯曲线，今日待复习 {{ due_remaining }} 个词。</p>
+
+  {% include "partials/_study_card.html" %}
+</section>
+{% endblock %}

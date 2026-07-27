@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="stats-page">
+  <h1>学习统计</h1>
+  <p class="lede">{{ current_user.email }} · 完整学习数据。</p>
+
+  <!-- 摘要卡片 -->
+  <h2>摘要</h2>
+  <div class="status-grid">
+    {% set s = summary %}
+    <div class="status-card">
+      <span class="status-label">今日新学</span>
+      <span class="status-value">{{ s.today_new_words }}</span>
+    </div>
+    <div class="status-card">
+      <span class="status-label">今日复习</span>
+      <span class="status-value">{{ s.today_reviewed }}</span>
+    </div>
+    <div class="status-card">
+      <span class="status-label">总学词数</span>
+      <span class="status-value">{{ s.total_words }}</span>
+    </div>
+    <div class="status-card">
+      <span class="status-label">累计正确</span>
+      <span class="status-value">{{ s.total_correct }}</span>
+    </div>
+    <div class="status-card">
+      <span class="status-label">累计错误</span>
+      <span class="status-value">{{ s.total_wrong }}</span>
+    </div>
+    <div class="status-card">
+      <span class="status-label">累计正确率</span>
+      <span class="status-value">{{ '%.0f%%' % (s.accuracy * 100) }}</span>
+    </div>
+    <div class="status-card">
+      <span class="status-label">已掌握</span>
+      <span class="status-value">{{ s.mastered }}</span>
+    </div>
+    <div class="status-card">
+      <span class="status-label">待复习</span>
+      <span class="status-value">{{ s.due_count }}</span>
+    </div>
+  </div>
+
+  <!-- 记忆等级分布 -->
+  <h2>记忆等级分布</h2>
+  {% set max_count = level_dist | map(attribute='count') | max %}
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>等级</th>
+        <th>词数</th>
+        <th>分布</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in level_dist %}
+        <tr>
+          <td>L{{ item.level }}</td>
+          <td>{{ item.count }}</td>
+          <td>
+            {% if max_count > 0 %}
+              <div class="bar"><div class="bar-fill" style="width: {{ (item.count / max_count * 100) | int }}%;"></div></div>
+            {% else %}
+              <span class="muted">—</span>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <!-- Band 进度 -->
+  <h2>各 Band 掌握进度</h2>
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Band</th>
+        <th>词库总数</th>
+        <th>已掌握</th>
+        <th>比例</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in band %}
+        <tr>
+          <td>Band {{ item.band }}</td>
+          <td>{{ item.total }}</td>
+          <td>{{ item.mastered }}</td>
+          <td>
+            <div class="bar"><div class="bar-fill" style="width: {{ (item.ratio * 100) | int }}%;"></div></div>
+            <span class="muted">{{ '%.0f%%' % (item.ratio * 100) }}</span>
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <!-- 7 天趋势 -->
+  <h2>最近 7 天</h2>
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>日期</th>
+        <th>当日学习数</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in trend %}
+        <tr>
+          <td>{{ item.date }}</td>
+          <td>{{ item.studied }}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

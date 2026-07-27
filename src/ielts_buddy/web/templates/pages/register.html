@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="auth-card">
+  <h1>注册</h1>
+  <p class="lede">用邮箱注册一个 Web 端账号。密码至少 8 位。</p>
+
+  <form id="register-form" class="auth-form"
+        hx-post="/api/auth/register"
+        hx-trigger="submit"
+        hx-swap="none"
+        hx-on::after-request="handleRegisterResponse(event)">
+    <label class="field">
+      <span class="field-label">邮箱</span>
+      <input type="email" name="email" required autocomplete="email" />
+    </label>
+    <label class="field">
+      <span class="field-label">密码</span>
+      <input type="password" name="password" minlength="8" required autocomplete="new-password" />
+      <span class="field-hint">至少 8 位</span>
+    </label>
+    <div id="register-error" class="auth-error" hidden></div>
+    <button type="submit" class="btn-primary">注册并登录</button>
+  </form>
+
+  <p class="auth-foot">
+    已有账号？<a href="/login">直接登录</a>
+  </p>
+</section>
+
+<script>
+  // 注册响应处理：服务器已设置 cookie，JS 同步到 localStorage 供 API 调用
+  function handleRegisterResponse(event) {
+    const xhr = event.detail.xhr;
+    const errBox = document.getElementById('register-error');
+    if (xhr.status === 200 || xhr.status === 201) {
+      try {
+        const body = JSON.parse(xhr.responseText);
+        if (body.access_token) {
+          localStorage.setItem('ib_access_token', body.access_token);
+        }
+      } catch (_) { /* ignore */ }
+      window.location.href = '/dashboard';
+    } else {
+      let msg = '注册失败';
+      try {
+        const body = JSON.parse(xhr.responseText);
+        msg = body.detail || msg;
+      } catch (_) { /* ignore */ }
+      errBox.textContent = msg;
+      errBox.hidden = false;
+    }
+  }
+</script>
+{% endblock %}
