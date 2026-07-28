@@ -225,10 +225,16 @@ function closeDetail() {
     right: 0;
     bottom: 0;
     background: rgba(0, 0, 0, 0.5);
+    z-index: 1000;
+}
+
+/* 修复：仅当不处于 hidden 状态时才以 flex 布局显示。
+ * 否则裸 display: flex 会覆盖 HTML hidden 属性的 display: none。
+ */
+.report-detail:not([hidden]) {
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 1000;
 }
 
 .detail-header {

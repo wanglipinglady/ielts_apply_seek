@@ -77,16 +77,19 @@ def api_grade_submit(
         # 模拟 AI 批改（实际项目中应调用 LLM API）
         result = _mock_grade_essay(essay, task_type, topic)
 
-        # 保存批改记录
-        from ielts_buddy.core.models import GradeResult
-        grade_result = GradeResult(
-            overall_score=result["overall_score"],
-            task_type=task_type,
-            topic=topic or "",
-            essay_text=essay,
-            result_json=result,
-        )
-        container.grade.save_result(user.id, grade_result)
+        # 保存批改记录（最佳努力，失败不影响返回）
+        try:
+            from ielts_buddy.core.models import GradeResult
+            grade_result = GradeResult(
+                overall_score=result["overall_score"],
+                task_type=task_type,
+                topic=topic or "",
+                essay_text=essay,
+                result_json=result,
+            )
+            container.grade.save_result(user.id, grade_result)
+        except Exception as save_err:
+            print(f"[grade] 保存记录失败 (non-fatal): {save_err}")
 
         return {
             "success": True,

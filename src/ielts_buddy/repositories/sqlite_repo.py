@@ -155,6 +155,18 @@ CREATE TABLE IF NOT EXISTS cache_meta (
     key TEXT PRIMARY KEY,
     value TEXT
 );
+
+-- Web 端用户表（与业务表共存于同一个 db 文件）
+-- 字段含义与 MySQL 的 web_users 完全一致
+CREATE TABLE IF NOT EXISTS web_users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    email TEXT NOT NULL COLLATE NOCASE,
+    password_hash TEXT NOT NULL,
+    created_at TEXT,
+    last_login_at TEXT,
+    UNIQUE (email COLLATE NOCASE)
+);
+CREATE INDEX IF NOT EXISTS idx_wu_email ON web_users(email COLLATE NOCASE);
 """
 
 # 系统内置分类（每个用户独立一份，不使用 user_id=0 模板）
@@ -1386,7 +1398,9 @@ class SQLiteRepositoryContainer:
     ) -> None:
         self._db_path = db_path
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
-        self._conn = sqlite3.connect(str(db_path))
+        # check_same_thread=False 使连接可跨 FastAPI worker 线程复用
+        # (FastAPI 同步路由在线程池中执行，与 lifespan 所在线程不同)
+        self._conn = sqlite3.connect(str(db_path), check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         # 1) 先做迁移：旧表补齐 user_id / source / task_type 等列
         #    必须在 CREATE INDEX 之前，否则旧表会缺列导致索引创建失败

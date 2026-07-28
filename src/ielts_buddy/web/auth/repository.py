@@ -107,11 +107,16 @@ class SQLiteWebUserRepository:
     """SQLite 实现的 web_users 仓储。
 
     默认 email 唯一约束 + COLLATE NOCASE，实现大小写不敏感。
+
+    注意：``web_users`` 表 schema 已由业务库 ``sqlite_repo._SCHEMA`` 创建
+    （W3 改造：web_users 与业务表共存于同一个 db 文件，避免分叉）。
+    这里不再重复 executescript，只做 ``UNIQUE`` 索引（如果还没建）。
     """
 
     def __init__(self, conn: sqlite3.Connection) -> None:
         self._conn = conn
-        # 创建 schema（幂等）
+        # 兜底：如果业务库的 schema 还没升级到包含 web_users，
+        # 此处再尝试执行一遍 web_users 创建 SQL（幂等）。
         self._conn.executescript(_SCHEMA)
         self._conn.commit()
 

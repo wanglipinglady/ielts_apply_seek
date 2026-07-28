@@ -554,10 +554,16 @@ loadWords();
     right: 0;
     bottom: 0;
     background: rgba(0, 0, 0, 0.5);
+    z-index: 1000;
+}
+
+/* HTML `hidden` 属性默认为 display:none，但被 .modal 的样式覆盖。
+ * 修复：仅当 modal 不处于 hidden 状态时才以 flex 布局显示。
+ */
+.modal:not([hidden]) {
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 1000;
 }
 
 .modal-content {

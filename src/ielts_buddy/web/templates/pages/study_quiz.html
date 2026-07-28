@@ -209,9 +209,14 @@ function continueQuiz() {
     document.getElementById('quiz-card').hidden = false;
     document.getElementById('quiz-feedback').hidden = true;
 
-    // 获取下一题
-    fetch('/api/quiz/next?' + new URLSearchParams({session_id: currentSessionId}), {
-        method: 'POST'
+    // 获取下一题（使用 form body，与后端 Form() 接收格式匹配）
+    const formData = new URLSearchParams();
+    formData.append('session_id', currentSessionId);
+
+    fetch('/api/quiz/next', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: formData.toString()
     }).then(r => r.json()).then(data => {
         if (data.question) {
             currentIndex++;
@@ -219,6 +224,9 @@ function continueQuiz() {
         } else if (data.finished) {
             showResults(data.results);
         }
+    }).catch(err => {
+        console.error('获取下一题失败:', err);
+        alert('获取下一题失败: ' + err.message);
     });
 }
 

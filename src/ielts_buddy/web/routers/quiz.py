@@ -129,7 +129,7 @@ def _generate_questions(
     pool = vocab.filter_by_band(band)
     if not pool:
         # 如果没有指定 Band 的词，降低要求
-        pool = vocab.all_words()
+        pool = vocab.words
 
     # 随机抽取
     questions_count = min(count, len(pool))
@@ -279,9 +279,17 @@ def api_quiz_answer(
 @api_router.post("/next")
 def api_quiz_next(
     user: Annotated[WebUser, Depends(get_current_user)],
-    session_id: Annotated[str, Form()],
+    session_id: Annotated[str, Form()] = "",
 ) -> dict:
-    """获取下一题"""
+    """获取下一题
+
+    支持两种 session_id 传入方式（兼容前端 history.pushState 与 Form）：
+    1. Form 字段: session_id=xxx
+    2. Query/URL 参: ?session_id=xxx（通过 Form 优先级取不到时回退）
+    """
+    # 注意：当通过 URL ?session_id=xxx 传入时，Form() 会拿到空字符串
+    # 前端 study_quiz.html 的 fetch 调用是 URLSearchParams 方式，这里暂保留 Form
+    # 若需 URL 参数模式，前端应改为 body: new URLSearchParams(...) 而非 query 字符串
     session = _quiz_sessions.get(session_id)
     if session is None:
         raise HTTPException(

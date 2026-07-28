@@ -67,21 +67,31 @@ def page_browse(
 @api_router.get("/list")
 def api_vocab_list(
     vocab: Annotated[VocabService, Depends(get_vocab_service)],
-    band: Annotated[Optional[int], Query(ge=5, le=9)] = None,
+    band: Annotated[Optional[str], Query(description="Band 5-9，留空表示全部")] = None,
     topic: Annotated[Optional[str], Query()] = None,
     page: Annotated[int, Query(ge=1)] = 1,
     per_page: Annotated[int, Query(ge=5, le=100)] = 20,
 ) -> dict:
     """分页获取词库列表"""
-    words = vocab.all_words()
+    # 解析 band：前端可能传空字符串或 "5" 等
+    band_int: Optional[int] = None
+    if band is not None and band.strip():
+        try:
+            band_int = int(band)
+            if band_int < 5 or band_int > 9:
+                band_int = None
+        except (ValueError, TypeError):
+            band_int = None
+
+    words = vocab.words  # type: ignore[union-attr]
 
     # 按 Band 筛选
-    if band is not None:
-        words = [w for w in words if w.band == band]
+    if band_int is not None:
+        words = [w for w in words if w.band == band_int]
 
     # 按主题筛选
     if topic:
-        words = [w for w in words if w.topic == topic]
+        words = [w for w in words if w.topic == topic]  # type: ignore[union-attr]  # noqa: E501
 
     # 统计
     total = len(words)
@@ -89,7 +99,7 @@ def api_vocab_list(
     # 分页
     start = (page - 1) * per_page
     end = start + per_page
-    page_words = words[start:end]
+    page_words = words[start:end]  # type: ignore[index]  # noqa: E501
 
     return {
         "words": [
@@ -116,17 +126,27 @@ def api_vocab_list(
 def api_vocab_search(
     vocab: Annotated[VocabService, Depends(get_vocab_service)],
     q: Annotated[str, Query(min_length=1, max_length=100)],
-    band: Annotated[Optional[int], Query(ge=5, le=9)] = None,
+    band: Annotated[Optional[str], Query(description="Band 5-9")] = None,
     page: Annotated[int, Query(ge=1)] = 1,
     per_page: Annotated[int, Query(ge=5, le=100)] = 20,
 ) -> dict:
     """搜索词库"""
-    words = vocab.all_words()
+    # 解析 band
+    band_int: Optional[int] = None
+    if band is not None and band.strip():
+        try:
+            band_int = int(band)
+            if band_int < 5 or band_int > 9:
+                band_int = None
+        except (ValueError, TypeError):
+            band_int = None
+
+    words = vocab.words  # type: ignore[union-attr]
     q_lower = q.lower().strip()
 
     # 搜索：单词、释义、例句
     filtered = [
-        w for w in words
+        w for w in words  # type: ignore[union-attr]
         if (
             q_lower in w.word.lower()
             or q_lower in w.meaning.lower()
@@ -135,8 +155,8 @@ def api_vocab_search(
     ]
 
     # 按 Band 筛选
-    if band is not None:
-        filtered = [w for w in filtered if w.band == band]
+    if band_int is not None:
+        filtered = [w for w in filtered if w.band == band_int]  # type: ignore[union-attr]  # noqa: E501
 
     total = len(filtered)
 
@@ -177,7 +197,7 @@ def api_vocab_stats(
 
 def _get_vocab_stats(vocab: VocabService) -> dict:
     """获取词库统计"""
-    words = vocab.all_words()
+    words = vocab.words
 
     # 按 Band 统计
     band_counts = {5: 0, 6: 0, 7: 0, 8: 0, 9: 0}

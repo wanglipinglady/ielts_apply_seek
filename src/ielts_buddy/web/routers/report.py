@@ -11,7 +11,7 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta
 from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
@@ -129,7 +129,7 @@ def api_monthly_report(
 def api_generate_report(
     request: Request,
     user: Annotated[WebUser, Depends(get_current_user)],
-    report_type: str = "weekly",
+    report_type: Annotated[str, Form()] = "weekly",
 ) -> dict:
     """生成新报告"""
     container = _get_container(request)

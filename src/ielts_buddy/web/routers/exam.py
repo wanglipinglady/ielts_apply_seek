@@ -145,7 +145,7 @@ def _generate_exam_questions(
     """生成考试题目（混合英译中和中译英）"""
     pool = vocab.filter_by_band(band)
     if not pool:
-        pool = vocab.all_words()
+        pool = vocab.words
 
     selected = random.sample(pool, min(count, len(pool))) if pool else []
 

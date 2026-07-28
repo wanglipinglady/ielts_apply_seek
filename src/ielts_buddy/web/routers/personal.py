@@ -16,12 +16,12 @@ from __future__ import annotations
 
 from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
-from ielts_buddy.core.models import Word
+from ielts_buddy.core.models import PersonalWord
 from ielts_buddy.web.auth.deps import get_current_user, get_current_user_optional
 from ielts_buddy.web.auth.repository import WebUser
 
@@ -121,9 +121,9 @@ def page_personal(
 def api_personal_words(
     request: Request,
     user: Annotated[WebUser, Depends(get_current_user)],
-    category: Annotated[Optional[str], Form()] = None,
-    page: int = 1,
-    per_page: int = 20,
+    category: Annotated[Optional[str], Query(description="分类名")] = None,
+    page: Annotated[int, Query(ge=1, description="页码")] = 1,
+    per_page: Annotated[int, Query(ge=1, le=200, description="每页条数")] = 20,
 ) -> dict:
     """获取个人词库单词列表"""
     container = _get_container(request)
@@ -157,7 +157,7 @@ def api_add_word(
         raise HTTPException(status_code=500, detail="数据库未初始化")
 
     try:
-        w = Word(
+        w = PersonalWord(
             word=word.word,
             phonetic=word.phonetic or "",
             meaning=word.meaning,
@@ -166,6 +166,8 @@ def api_add_word(
             topic=word.topic or "",
             example=word.example or "",
             example_cn=word.example_cn or "",
+            note=word.note or "",
+            source="manual",
         )
         word_id = container.personal_vocab.add_word(user.id, w)
         return {"success": True, "id": word_id, "word": word.word}
@@ -441,7 +443,7 @@ def api_add_mistake(
         raise HTTPException(status_code=500, detail="数据库未初始化")
 
     try:
-        from ielts_buddy.core.models import Word as CoreWord
+        from ielts_buddy.core.models import PersonalWord as CorePersonal, Word as CoreWord
         # 从词库获取单词信息
         from ielts_buddy.web.main import app
         vocab_svc = getattr(app.state, "vocab_service", None)
@@ -450,18 +452,19 @@ def api_add_mistake(
             word_data = vocab_svc.get_word(word_name)
 
         if word_data:
-            w = CoreWord(
+            # PersonalWord 接受 Word 的全部字段（不包括 collocations/synonyms/etymology/is_custom）
+            w = CorePersonal(
                 word=word_data.word,
-                phonetic=word_data.phonetic,
-                meaning=word_data.meaning,
-                pos=word_data.pos,
-                band=word_data.band,
-                topic=word_data.topic,
-                example=word_data.example,
-                example_cn=word_data.example_cn,
+                phonetic=word_data.phonetic or "",
+                meaning=word_data.meaning or "",
+                pos=word_data.pos or "",
+                band=word_data.band if hasattr(word_data, "band") and word_data.band else 5,
+                topic=word_data.topic or "",
+                example=word_data.example or "",
+                example_cn=word_data.example_cn or "",
             )
         else:
-            w = CoreWord(word=word_name, meaning=context or "")
+            w = CorePersonal(word=word_name, meaning=context or "", band=5)
 
         result = container.personal_vocab.add_mistake(user.id, w, source="quiz_mistake")
         return {"success": True, "word": result.word}

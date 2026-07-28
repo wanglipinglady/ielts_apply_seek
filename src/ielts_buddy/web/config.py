@@ -79,7 +79,13 @@ COOKIE_SAMESITE: Final[str] = os.environ.get(
 # ===== 数据库 =====
 
 def _resolve_db_mode() -> str:
-    """Web 端默认强制 online（MySQL）；dev 可显式用 sqlite 走内存库。"""
+    """Web 端数据库模式。
+
+    默认 ``sqlite``：账号与业务数据统一存于 ``~/.ielts-buddy/web_data.db``，
+    零配置即可运行，重启服务不会丢账号（web_users 与业务表共存于同一文件）。
+
+    生产环境通过环境变量 ``IELTS_BUDDY_WEB_DB_MODE=online`` 切换到 MySQL。
+    """
     env = os.environ.get("IELTS_BUDDY_WEB_DB_MODE", "sqlite").strip().lower()
     if env in ("online", "mysql"):
         return "online"
