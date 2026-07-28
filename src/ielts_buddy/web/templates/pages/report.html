@@ -1,0 +1,316 @@
+{% extends "base.html" %}
+
+{% block page_title %}报告中心{% endblock %}
+
+{% block content %}
+<section class="report-page">
+  <div class="page-header">
+    <h2>学习报告</h2>
+    <div class="header-actions">
+      <button class="btn-secondary" onclick="generateReport('weekly')">生成周报</button>
+      <button class="btn-secondary" onclick="generateReport('monthly')">生成月报</button>
+    </div>
+  </div>
+
+  {# === 报告列表 === #}
+  <div class="report-list">
+    <h3>报告历史</h3>
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>报告</th>
+          <th>周期</th>
+          <th>状态</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for report in reports %}
+        <tr>
+          <td><strong>{{ report.title }}</strong></td>
+          <td>{{ report.period }}</td>
+          <td>
+            {% if report.status == 'current' %}
+            <span class="status-badge current">当前</span>
+            {% else %}
+            <span class="status-badge">已生成</span>
+            {% endif %}
+          </td>
+          <td>
+            <button class="action-btn" onclick="viewReport('{{ report.type }}', '{{ report.period }}')">查看</button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {# === 报告详情 === #}
+  <div id="report-detail" class="report-detail" hidden>
+    <div class="detail-header">
+      <h3 id="report-title">报告详情</h3>
+      <button class="close-btn" onclick="closeDetail()">×</button>
+    </div>
+    <div id="report-content" class="detail-content">
+      <div class="loading">加载中...</div>
+    </div>
+  </div>
+</section>
+
+<script>
+async function viewReport(type, period) {
+    const detail = document.getElementById('report-detail');
+    const content = document.getElementById('report-content');
+    const title = document.getElementById('report-title');
+
+    detail.hidden = false;
+    title.textContent = type === 'weekly' ? '周报详情' : '月报详情';
+    content.innerHTML = '<div class="loading">加载中...</div>';
+
+    try {
+        let url = type === 'weekly' ? '/api/report/weekly' : '/api/report/monthly';
+        const response = await fetch(url);
+        const data = await response.json();
+
+        if (data.success && data.report) {
+            renderReport(data.report, content);
+        }
+    } catch (error) {
+        content.innerHTML = '<div class="error">加载失败</div>';
+    }
+}
+
+function renderReport(report, container) {
+    const summary = report.summary || {};
+
+    let html = `
+        <div class="report-summary">
+            <div class="summary-grid">
+                <div class="summary-card">
+                    <div class="summary-label">学习单词</div>
+                    <div class="summary-value">${summary.total_words_learned || 0}</div>
+                </div>
+                <div class="summary-card">
+                    <div class="summary-label">复习次数</div>
+                    <div class="summary-value">${summary.total_reviews || 0}</div>
+                </div>
+                <div class="summary-card">
+                    <div class="summary-label">已掌握</div>
+                    <div class="summary-value">${summary.total_words_mastered || 0}</div>
+                </div>
+                <div class="summary-card">
+                    <div class="summary-label">待复习</div>
+                    <div class="summary-value accent">${summary.due_count || 0}</div>
+                </div>
+            </div>
+        </div>
+    `;
+
+    if (report.daily_data && report.daily_data.length > 0) {
+        html += `
+            <div class="daily-chart">
+                <h4>每日学习情况</h4>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>日期</th>
+                            <th>新学</th>
+                            <th>复习</th>
+                            <th>合计</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${report.daily_data.map(d => `
+                            <tr>
+                                <td>${d.date || '-'}</td>
+                                <td>${d.new_words || 0}</td>
+                                <td>${d.reviewed_words || 0}</td>
+                                <td>${(d.new_words || 0) + (d.reviewed_words || 0)}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        `;
+    }
+
+    container.innerHTML = html;
+}
+
+async function generateReport(type) {
+    try {
+        const response = await fetch('/api/report/generate', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: 'report_type=' + type
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            if (data.success) {
+                const content = document.getElementById('report-content');
+                document.getElementById('report-title').textContent =
+                    type === 'weekly' ? '周报详情' : '月报详情';
+                document.getElementById('report-detail').hidden = false;
+                renderReport(data.report, content);
+            }
+        } else {
+            alert('生成失败');
+        }
+    } catch (error) {
+        alert('生成失败: ' + error.message);
+    }
+}
+
+function closeDetail() {
+    document.getElementById('report-detail').hidden = true;
+}
+</script>
+
+<style>
+.report-page {
+    padding: 0;
+}
+
+.page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+}
+
+.header-actions {
+    display: flex;
+    gap: 12px;
+}
+
+.report-list {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 24px;
+}
+
+.report-list h3 {
+    margin: 0 0 16px;
+}
+
+.status-badge {
+    display: inline-block;
+    padding: 4px 10px;
+    background: var(--bg-primary);
+    border-radius: 12px;
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.status-badge.current {
+    background: var(--primary-light);
+    color: var(--primary-color);
+}
+
+.action-btn {
+    padding: 6px 12px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.report-detail {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.detail-header {
+    background: var(--bg-secondary);
+    border-radius: 12px 12px 0 0;
+    padding: 20px 24px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    max-width: 800px;
+}
+
+.detail-header h3 {
+    margin: 0;
+}
+
+.close-btn {
+    background: none;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    color: var(--text-muted);
+}
+
+.detail-content {
+    background: var(--bg-secondary);
+    border-radius: 0 0 12px 12px;
+    padding: 24px;
+    width: 100%;
+    max-width: 800px;
+    max-height: 80vh;
+    overflow-y: auto;
+}
+
+.report-summary {
+    margin-bottom: 24px;
+}
+
+.summary-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+}
+
+.summary-card {
+    padding: 20px;
+    background: var(--bg-primary);
+    border-radius: 10px;
+    text-align: center;
+}
+
+.summary-label {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+}
+
+.summary-value {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--text-main);
+}
+
+.summary-value.accent {
+    color: var(--accent-color);
+}
+
+.daily-chart h4 {
+    margin: 24px 0 12px;
+}
+
+.loading {
+    text-align: center;
+    padding: 40px;
+    color: var(--text-muted);
+}
+
+.error {
+    text-align: center;
+    padding: 40px;
+    color: #dc2626;
+}
+</style>
+{% endblock %}

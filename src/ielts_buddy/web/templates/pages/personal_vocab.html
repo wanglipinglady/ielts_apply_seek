@@ -1,0 +1,689 @@
+{% extends "base.html" %}
+
+{% block page_title %}个人词库{% endblock %}
+
+{% block content %}
+<section class="personal-page">
+  {# === 操作栏 === #}
+  <div class="action-bar">
+    <h2>个人词库 <span id="word-count" class="word-count">({{ word_count }} 个)</span></h2>
+    <div class="action-buttons">
+      <button type="button" class="btn-primary" onclick="showAddWordModal()">+ 添加单词</button>
+      <button type="button" class="btn-secondary" onclick="showImportModal()">批量导入</button>
+      <button type="button" class="btn-secondary" onclick="exportWords()">导出</button>
+    </div>
+  </div>
+
+  {# === 分类统计 === #}
+  <div class="category-stats">
+    <div class="stat-item" data-category="">
+      <span class="stat-label">全部</span>
+      <span class="stat-value" id="cat-all">{{ word_count }}</span>
+    </div>
+    <div class="stat-item" data-category="favorites">
+      <span class="stat-label">收藏夹</span>
+      <span class="stat-value" id="cat-favorites">{{ category_stats.get('favorites', 0) }}</span>
+    </div>
+    <div class="stat-item" data-category="mistakes">
+      <span class="stat-label">错词本</span>
+      <span class="stat-value" id="cat-mistakes">{{ category_stats.get('mistakes', 0) }}</span>
+    </div>
+  </div>
+
+  {# === 单词列表 === #}
+  <div class="word-list-panel">
+    <div id="loading" class="loading" hidden>加载中...</div>
+    <table class="data-table" id="words-table">
+      <thead>
+        <tr>
+          <th>单词</th>
+          <th>释义</th>
+          <th>Band</th>
+          <th>来源</th>
+          <th>笔记</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody id="words-tbody">
+        <tr><td colspan="6" class="empty-state">加载中...</td></tr>
+      </tbody>
+    </table>
+
+    {# === 分页 === #}
+    <div class="pagination" id="pagination" hidden>
+      <button id="prev-page" class="page-btn">上一页</button>
+      <span id="page-info">第 1 / 1 页</span>
+      <button id="next-page" class="page-btn">下一页</button>
+    </div>
+  </div>
+
+  {# === 添加单词弹窗 === #}
+  <div id="add-word-modal" class="modal" hidden>
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>添加单词</h3>
+        <button type="button" class="close-btn" onclick="closeAddWordModal()">×</button>
+      </div>
+      <form id="add-word-form" onsubmit="submitAddWord(event)">
+        <div class="form-group">
+          <label for="new-word">单词 *</label>
+          <input type="text" id="new-word" name="word" required>
+        </div>
+        <div class="form-group">
+          <label for="new-meaning">释义 *</label>
+          <input type="text" id="new-meaning" name="meaning" required>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="new-phonetic">音标</label>
+            <input type="text" id="new-phonetic" name="phonetic">
+          </div>
+          <div class="form-group">
+            <label for="new-pos">词性</label>
+            <input type="text" id="new-pos" name="pos">
+          </div>
+          <div class="form-group">
+            <label for="new-band">Band</label>
+            <select id="new-band" name="band">
+              <option value="5">5</option>
+              <option value="6">6</option>
+              <option value="7" selected>7</option>
+              <option value="8">8</option>
+              <option value="9">9</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="new-example">例句</label>
+          <textarea id="new-example" name="example" rows="2"></textarea>
+        </div>
+        <div class="form-group">
+          <label for="new-note">笔记</label>
+          <textarea id="new-note" name="note" rows="2"></textarea>
+        </div>
+        <div class="form-actions">
+          <button type="button" class="btn-secondary" onclick="closeAddWordModal()">取消</button>
+          <button type="submit" class="btn-primary">添加</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  {# === 编辑单词弹窗 === #}
+  <div id="edit-word-modal" class="modal" hidden>
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>编辑单词</h3>
+        <button type="button" class="close-btn" onclick="closeEditWordModal()">×</button>
+      </div>
+      <form id="edit-word-form" onsubmit="submitEditWord(event)">
+        <input type="hidden" id="edit-word-name" name="word_name">
+        <div class="form-group">
+          <label>单词</label>
+          <div id="edit-word-display" class="form-display"></div>
+        </div>
+        <div class="form-group">
+          <label for="edit-meaning">释义</label>
+          <input type="text" id="edit-meaning" name="meaning" required>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="edit-phonetic">音标</label>
+            <input type="text" id="edit-phonetic" name="phonetic">
+          </div>
+          <div class="form-group">
+            <label for="edit-pos">词性</label>
+            <input type="text" id="edit-pos" name="pos">
+          </div>
+          <div class="form-group">
+            <label for="edit-band">Band</label>
+            <select id="edit-band" name="band">
+              <option value="5">5</option>
+              <option value="6">6</option>
+              <option value="7">7</option>
+              <option value="8">8</option>
+              <option value="9">9</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="edit-example">例句</label>
+          <textarea id="edit-example" name="example" rows="2"></textarea>
+        </div>
+        <div class="form-group">
+          <label for="edit-note">笔记</label>
+          <textarea id="edit-note" name="note" rows="2"></textarea>
+        </div>
+        <div class="form-actions">
+          <button type="button" class="btn-secondary" onclick="closeEditWordModal()">取消</button>
+          <button type="submit" class="btn-primary">保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</section>
+
+<script>
+let currentPage = 1;
+let totalPages = 1;
+let currentCategory = '';
+let editingWord = '';
+
+// 加载单词列表
+async function loadWords() {
+    const tbody = document.getElementById('words-tbody');
+    const loading = document.getElementById('loading');
+    const pagination = document.getElementById('pagination');
+
+    loading.hidden = false;
+    tbody.innerHTML = '<tr><td colspan="6" class="empty-state">加载中...</td></tr>';
+
+    let url = `/api/personal/words?page=${currentPage}&per_page=20`;
+    if (currentCategory) {
+        url += `&category=${encodeURIComponent(currentCategory)}`;
+    }
+
+    try {
+        const response = await fetch(url);
+        const data = await response.json();
+
+        totalPages = data.total_pages || 1;
+
+        if (data.words && data.words.length > 0) {
+            tbody.innerHTML = data.words.map(w => `
+                <tr>
+                    <td><strong class="word-cell">${w.word}</strong></td>
+                    <td>${w.meaning || '-'}</td>
+                    <td><span class="band-tag band-${w.band}">${w.band}</span></td>
+                    <td><span class="source-tag">${w.source || 'manual'}</span></td>
+                    <td class="note-cell">${w.note || '-'}</td>
+                    <td>
+                        <button class="action-btn" onclick="editWord('${w.word}')">编辑</button>
+                        <button class="action-btn danger" onclick="deleteWord('${w.word}')">删除</button>
+                    </td>
+                </tr>
+            `).join('');
+        } else {
+            tbody.innerHTML = '<tr><td colspan="6" class="empty-state">暂无单词，点击"添加单词"开始</td></tr>';
+        }
+
+        updatePagination();
+    } catch (error) {
+        console.error('加载失败:', error);
+        tbody.innerHTML = '<tr><td colspan="6" class="empty-state">加载失败</td></tr>';
+    } finally {
+        loading.hidden = true;
+    }
+}
+
+function updatePagination() {
+    const pagination = document.getElementById('pagination');
+    const prevBtn = document.getElementById('prev-page');
+    const nextBtn = document.getElementById('next-page');
+    const pageInfo = document.getElementById('page-info');
+
+    if (totalPages <= 1) {
+        pagination.hidden = true;
+        return;
+    }
+
+    pagination.hidden = false;
+    prevBtn.disabled = currentPage <= 1;
+    nextBtn.disabled = currentPage >= totalPages;
+    pageInfo.textContent = `第 ${currentPage} / ${totalPages} 页`;
+}
+
+// 分类切换
+document.querySelectorAll('.stat-item').forEach(item => {
+    item.addEventListener('click', () => {
+        document.querySelectorAll('.stat-item').forEach(i => i.classList.remove('active'));
+        item.classList.add('active');
+        currentCategory = item.dataset.category || '';
+        currentPage = 1;
+        loadWords();
+    });
+});
+
+// 分页
+document.getElementById('prev-page').addEventListener('click', () => {
+    if (currentPage > 1) {
+        currentPage--;
+        loadWords();
+    }
+});
+
+document.getElementById('next-page').addEventListener('click', () => {
+    if (currentPage < totalPages) {
+        currentPage++;
+        loadWords();
+    }
+});
+
+// 添加单词弹窗
+function showAddWordModal() {
+    document.getElementById('add-word-modal').hidden = false;
+    document.getElementById('add-word-form').reset();
+}
+
+function closeAddWordModal() {
+    document.getElementById('add-word-modal').hidden = true;
+}
+
+async function submitAddWord(event) {
+    event.preventDefault();
+    const form = event.target;
+    const formData = new FormData(form);
+
+    const data = {
+        word: formData.get('word'),
+        meaning: formData.get('meaning'),
+        phonetic: formData.get('phonetic') || '',
+        pos: formData.get('pos') || '',
+        band: parseInt(formData.get('band')) || 5,
+        example: formData.get('example') || '',
+        note: formData.get('note') || '',
+    };
+
+    try {
+        const response = await fetch('/api/personal/words', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        });
+
+        if (response.ok) {
+            closeAddWordModal();
+            loadWords();
+            updateWordCount();
+        } else {
+            const error = await response.json();
+            alert('添加失败: ' + (error.detail || '未知错误'));
+        }
+    } catch (error) {
+        alert('添加失败: ' + error.message);
+    }
+}
+
+// 编辑单词
+async function editWord(wordName) {
+    editingWord = wordName;
+    document.getElementById('edit-word-name').value = wordName;
+    document.getElementById('edit-word-display').textContent = wordName;
+
+    // 获取当前单词信息
+    try {
+        const url = `/api/personal/words?page=1&per_page=100`;
+        const response = await fetch(url);
+        const data = await response.json();
+        const word = data.words.find(w => w.word === wordName);
+
+        if (word) {
+            document.getElementById('edit-meaning').value = word.meaning || '';
+            document.getElementById('edit-phonetic').value = word.phonetic || '';
+            document.getElementById('edit-pos').value = word.pos || '';
+            document.getElementById('edit-band').value = word.band || 5;
+            document.getElementById('edit-example').value = word.example || '';
+            document.getElementById('edit-note').value = word.note || '';
+        }
+    } catch (error) {
+        console.error('获取单词信息失败:', error);
+    }
+
+    document.getElementById('edit-word-modal').hidden = false;
+}
+
+function closeEditWordModal() {
+    document.getElementById('edit-word-modal').hidden = true;
+    editingWord = '';
+}
+
+async function submitEditWord(event) {
+    event.preventDefault();
+    const form = event.target;
+    const formData = new FormData(form);
+
+    const data = {
+        meaning: formData.get('meaning'),
+        phonetic: formData.get('phonetic') || null,
+        pos: formData.get('pos') || null,
+        band: parseInt(formData.get('band')) || null,
+        example: formData.get('example') || null,
+        note: formData.get('note') || null,
+    };
+
+    try {
+        const response = await fetch(`/api/personal/words/${editingWord}`, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        });
+
+        if (response.ok) {
+            closeEditWordModal();
+            loadWords();
+        } else {
+            const error = await response.json();
+            alert('保存失败: ' + (error.detail || '未知错误'));
+        }
+    } catch (error) {
+        alert('保存失败: ' + error.message);
+    }
+}
+
+// 删除单词
+async function deleteWord(wordName) {
+    if (!confirm(`确定要删除单词 "${wordName}" 吗？`)) return;
+
+    try {
+        const response = await fetch(`/api/personal/words/${wordName}`, {
+            method: 'DELETE'
+        });
+
+        if (response.ok) {
+            loadWords();
+            updateWordCount();
+        } else {
+            const error = await response.json();
+            alert('删除失败: ' + (error.detail || '未知错误'));
+        }
+    } catch (error) {
+        alert('删除失败: ' + error.message);
+    }
+}
+
+// 更新单词计数
+async function updateWordCount() {
+    try {
+        const response = await fetch('/api/personal/words?page=1&per_page=1');
+        const data = await response.json();
+        document.getElementById('word-count').textContent = `(${data.total} 个)`;
+        document.getElementById('cat-all').textContent = data.total;
+    } catch (error) {
+        console.error('更新计数失败:', error);
+    }
+}
+
+// 导入弹窗
+function showImportModal() {
+    alert('批量导入功能：支持 CSV/JSON 格式上传');
+}
+
+function exportWords() {
+    window.location.href = '/api/personal/export?format=csv';
+}
+
+// 初始化
+loadWords();
+</script>
+
+<style>
+.personal-page {
+    padding: 0;
+}
+
+.action-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.action-bar h2 {
+    margin: 0;
+    color: var(--text-main);
+}
+
+.word-count {
+    font-size: 14px;
+    font-weight: normal;
+    color: var(--text-muted);
+}
+
+.action-buttons {
+    display: flex;
+    gap: 12px;
+}
+
+.category-stats {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+}
+
+.stat-item {
+    flex: 1;
+    min-width: 100px;
+    padding: 14px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.stat-item:hover {
+    border-color: var(--primary-color);
+}
+
+.stat-item.active {
+    border-color: var(--primary-color);
+    background: var(--primary-light);
+}
+
+.stat-label {
+    display: block;
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+}
+
+.stat-value {
+    display: block;
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--primary-color);
+}
+
+.word-list-panel {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+.loading {
+    padding: 20px;
+    text-align: center;
+    color: var(--text-muted);
+}
+
+.band-tag {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.band-5 { background: #dbeafe; color: #2563eb; }
+.band-6 { background: #d1fae5; color: #059669; }
+.band-7 { background: #fef3c7; color: #d97706; }
+.band-8 { background: #fce7f3; color: #db2777; }
+.band-9 { background: #f3e8ff; color: #7c3aed; }
+
+.source-tag {
+    font-size: 11px;
+    padding: 2px 6px;
+    background: var(--bg-primary);
+    border-radius: 4px;
+    color: var(--text-muted);
+}
+
+.note-cell {
+    max-width: 150px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.action-btn {
+    padding: 4px 10px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 12px;
+    cursor: pointer;
+    margin-right: 4px;
+}
+
+.action-btn:hover {
+    background: var(--bg-primary);
+}
+
+.action-btn.danger {
+    color: #dc2626;
+    border-color: #fecaca;
+}
+
+.modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.modal-content {
+    background: var(--bg-secondary);
+    border-radius: 12px;
+    padding: 24px;
+    width: 100%;
+    max-width: 500px;
+    max-height: 90vh;
+    overflow-y: auto;
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.modal-header h3 {
+    margin: 0;
+}
+
+.close-btn {
+    background: none;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    color: var(--text-muted);
+}
+
+.form-group {
+    margin-bottom: 14px;
+}
+
+.form-group label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 6px;
+    font-size: 13px;
+}
+
+.form-group input,
+.form-group select,
+.form-group textarea {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    font-size: 14px;
+}
+
+.form-group textarea {
+    resize: vertical;
+}
+
+.form-display {
+    padding: 8px 12px;
+    background: var(--bg-primary);
+    border-radius: 6px;
+    color: var(--primary-color);
+    font-weight: 600;
+}
+
+.form-row {
+    display: flex;
+    gap: 12px;
+}
+
+.form-row .form-group {
+    flex: 1;
+}
+
+.form-actions {
+    display: flex;
+    gap: 12px;
+    justify-content: flex-end;
+    margin-top: 20px;
+}
+
+.btn-primary {
+    padding: 10px 20px;
+    background: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    cursor: pointer;
+}
+
+.btn-secondary {
+    padding: 10px 20px;
+    background: var(--bg-secondary);
+    color: var(--text-main);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    font-size: 14px;
+    cursor: pointer;
+}
+
+.pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 16px;
+    padding: 16px;
+    border-top: 1px solid var(--border-color);
+}
+
+.page-btn {
+    padding: 8px 16px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    font-size: 13px;
+    cursor: pointer;
+}
+
+.page-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.page-info {
+    font-size: 13px;
+    color: var(--text-muted);
+}
+</style>
+{% endblock %}

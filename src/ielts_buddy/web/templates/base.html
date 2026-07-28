@@ -27,6 +27,26 @@
         <a href="/study/review" class="nav-item {% if '/study/review' in request.url.path %}active{% endif %}">
           <span class="icon">↻</span> 艾宾浩斯复习
         </a>
+        <a href="/study/quiz" class="nav-item {% if '/study/quiz' in request.url.path %}active{% endif %}">
+          <span class="icon">✓</span> 词汇测验
+        </a>
+        <a href="/vocab/browse" class="nav-item {% if '/vocab/browse' in request.url.path %}active{% endif %}">
+          <span class="icon">☰</span> 词库浏览
+        </a>
+      </div>
+
+      {# 管理导航组 #}
+      <div class="nav-group">
+        <div class="nav-group-title">管理</div>
+        <a href="/personal" class="nav-item {% if request.url.path == '/personal' %}active{% endif %}">
+          <span class="icon">★</span> 个人词库
+        </a>
+        <a href="/plan" class="nav-item {% if request.url.path == '/plan' %}active{% endif %}">
+          <span class="icon">◷</span> 学习计划
+        </a>
+        <a href="/report" class="nav-item {% if request.url.path == '/report' %}active{% endif %}">
+          <span class="icon">▦</span> 报告中心
+        </a>
       </div>
 
       {# 评估导航组 #}
@@ -34,6 +54,12 @@
         <div class="nav-group-title">评估</div>
         <a href="/stats" class="nav-item {% if request.url.path == '/stats' %}active{% endif %}">
           <span class="icon">▤</span> 学习统计
+        </a>
+        <a href="/exam" class="nav-item {% if request.url.path == '/exam' %}active{% endif %}">
+          <span class="icon">▣</span> 模拟考试
+        </a>
+        <a href="/grade" class="nav-item {% if request.url.path == '/grade' %}active{% endif %}">
+          <span class="icon">✦</span> AI 批改
         </a>
       </div>
 

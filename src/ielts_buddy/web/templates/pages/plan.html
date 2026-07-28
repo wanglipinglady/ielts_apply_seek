@@ -1,0 +1,362 @@
+{% extends "base.html" %}
+
+{% block page_title %}学习计划{% endblock %}
+
+{% block content %}
+<section class="plan-page">
+  <div class="plan-header">
+    <h2>学习计划</h2>
+    <button class="btn-primary" onclick="showEditForm()">修改计划</button>
+  </div>
+
+  {# === 计划概览 === #}
+  <div class="plan-overview">
+    <div class="plan-card">
+      <div class="card-icon target">🎯</div>
+      <div class="card-content">
+        <div class="card-label">目标分数</div>
+        <div class="card-value">Band {{ plan.target_band }}</div>
+      </div>
+    </div>
+    <div class="plan-card">
+      <div class="card-icon words">📚</div>
+      <div class="card-content">
+        <div class="card-label">每日新词</div>
+        <div class="card-value">{{ plan.daily_new_words }} 个</div>
+      </div>
+    </div>
+    <div class="plan-card">
+      <div class="card-icon review">🔄</div>
+      <div class="card-content">
+        <div class="card-label">每日复习</div>
+        <div class="card-value">{{ plan.daily_review }} 个</div>
+      </div>
+    </div>
+    <div class="plan-card">
+      <div class="card-icon exam">📅</div>
+      <div class="card-content">
+        <div class="card-label">考试日期</div>
+        <div class="card-value">{{ plan.exam_date or '未设置' }}</div>
+      </div>
+    </div>
+  </div>
+
+  {# === 今日进度 === #}
+  <div class="today-progress">
+    <h3>今日进度</h3>
+    <div class="progress-grid">
+      <div class="progress-item">
+        <div class="progress-label">新学单词</div>
+        <div class="progress-value">{{ today_progress.new_words }} / {{ plan.daily_new_words }}</div>
+        <div class="progress-bar">
+          <div class="progress-fill" style="width: {{ (today_progress.new_words / plan.daily_new_words * 100)|round|int }}%"></div>
+        </div>
+      </div>
+      <div class="progress-item">
+        <div class="progress-label">复习单词</div>
+        <div class="progress-value">{{ today_progress.reviewed }} / {{ plan.daily_review }}</div>
+        <div class="progress-bar">
+          <div class="progress-fill" style="width: {{ (today_progress.reviewed / plan.daily_review * 100)|round|int }}%"></div>
+        </div>
+      </div>
+      <div class="progress-item">
+        <div class="progress-label">待复习</div>
+        <div class="progress-value accent">{{ today_progress.due_count }} 个</div>
+      </div>
+    </div>
+  </div>
+
+  {# === 编辑计划表单 === #}
+  <div id="edit-form" class="edit-form" hidden>
+    <h3>修改学习计划</h3>
+    <form id="plan-form" onsubmit="updatePlan(event)">
+      <div class="form-row">
+        <div class="form-group">
+          <label for="target-band">目标 Band</label>
+          <select id="target-band">
+            <option value="5.0">5.0</option>
+            <option value="5.5">5.5</option>
+            <option value="6.0">6.0</option>
+            <option value="6.5">6.5</option>
+            <option value="7.0" selected>7.0</option>
+            <option value="7.5">7.5</option>
+            <option value="8.0">8.0</option>
+            <option value="8.5">8.5</option>
+            <option value="9.0">9.0</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="daily-new">每日新词</label>
+          <input type="number" id="daily-new" value="{{ plan.daily_new_words }}" min="5" max="100">
+        </div>
+        <div class="form-group">
+          <label for="daily-review">每日复习</label>
+          <input type="number" id="daily-review" value="{{ plan.daily_review }}" min="10" max="200">
+        </div>
+      </div>
+      <div class="form-group">
+        <label for="exam-date">考试日期（可选）</label>
+        <input type="date" id="exam-date" value="{{ plan.exam_date or '' }}">
+      </div>
+      <div class="form-actions">
+        <button type="button" class="btn-secondary" onclick="hideEditForm()">取消</button>
+        <button type="submit" class="btn-primary">保存</button>
+      </div>
+    </form>
+  </div>
+
+  {# === 快捷入口 === #}
+  <div class="quick-actions">
+    <h3>快捷学习</h3>
+    <div class="action-grid">
+      <a href="/study/random" class="action-card">
+        <span class="action-icon">⚄</span>
+        <span class="action-name">随机学习</span>
+      </a>
+      <a href="/study/review" class="action-card">
+        <span class="action-icon">↻</span>
+        <span class="action-name">艾宾浩斯复习</span>
+      </a>
+      <a href="/study/quiz" class="action-card">
+        <span class="action-icon">✓</span>
+        <span class="action-name">词汇测验</span>
+      </a>
+      <a href="/exam" class="action-card">
+        <span class="action-icon">▣</span>
+        <span class="action-name">模拟考试</span>
+      </a>
+    </div>
+  </div>
+</section>
+
+<script>
+function showEditForm() {
+    document.getElementById('edit-form').hidden = false;
+}
+
+function hideEditForm() {
+    document.getElementById('edit-form').hidden = true;
+}
+
+async function updatePlan(event) {
+    event.preventDefault();
+
+    const targetBand = parseFloat(document.getElementById('target-band').value);
+    const dailyNew = parseInt(document.getElementById('daily-new').value);
+    const dailyReview = parseInt(document.getElementById('daily-review').value);
+    const examDate = document.getElementById('exam-date').value || null;
+
+    const formData = new FormData();
+    formData.append('target_band', targetBand);
+    formData.append('daily_new_words', dailyNew);
+    formData.append('daily_review', dailyReview);
+    if (examDate) formData.append('exam_date', examDate);
+
+    try {
+        const response = await fetch('/api/plan/update', {
+            method: 'POST',
+            body: formData
+        });
+
+        if (response.ok) {
+            alert('计划已更新');
+            location.reload();
+        } else {
+            alert('更新失败');
+        }
+    } catch (error) {
+        alert('更新失败: ' + error.message);
+    }
+}
+</script>
+
+<style>
+.plan-page {
+    padding: 0;
+}
+
+.plan-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+}
+
+.plan-overview {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-bottom: 32px;
+}
+
+.plan-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 20px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+}
+
+.card-icon {
+    font-size: 28px;
+}
+
+.card-content {
+    flex: 1;
+}
+
+.card-label {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+}
+
+.card-value {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text-main);
+}
+
+.today-progress {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 24px;
+}
+
+.today-progress h3 {
+    margin: 0 0 20px;
+    font-size: 16px;
+}
+
+.progress-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 24px;
+}
+
+.progress-item {
+    text-align: center;
+}
+
+.progress-label {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+}
+
+.progress-value {
+    font-size: 24px;
+    font-weight: 700;
+    margin-bottom: 8px;
+}
+
+.progress-value.accent {
+    color: var(--accent-color);
+}
+
+.progress-bar {
+    height: 8px;
+    background: var(--bg-primary);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--primary-color), var(--accent-color));
+    transition: width 0.3s ease;
+}
+
+.edit-form {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 24px;
+}
+
+.edit-form h3 {
+    margin: 0 0 20px;
+}
+
+.form-row {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 16px;
+}
+
+.form-group {
+    flex: 1;
+}
+
+.form-group label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 8px;
+    font-size: 13px;
+}
+
+.form-group input,
+.form-group select {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    font-size: 14px;
+}
+
+.form-actions {
+    display: flex;
+    gap: 12px;
+    justify-content: flex-end;
+    margin-top: 20px;
+}
+
+.quick-actions {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 24px;
+}
+
+.quick-actions h3 {
+    margin: 0 0 16px;
+}
+
+.action-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+}
+
+.action-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 20px;
+    background: var(--bg-primary);
+    border-radius: 12px;
+    text-decoration: none;
+    transition: all 0.2s;
+}
+
+.action-card:hover {
+    background: var(--primary-light);
+    transform: translateY(-2px);
+}
+
+.action-icon {
+    font-size: 28px;
+}
+
+.action-name {
+    font-size: 13px;
+    color: var(--text-main);
+}
+</style>
+{% endblock %}

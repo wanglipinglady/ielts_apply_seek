@@ -1,0 +1,371 @@
+{% extends "base.html" %}
+
+{% block page_title %}AI 批改{% endblock %}
+
+{% block content %}
+<section class="grade-page">
+  <div class="grade-form">
+    <h2>AI 作文批改</h2>
+    <p class="lede">提交您的 IELTS 作文，获取 AI 智能评分和改进建议。</p>
+
+    <form id="grade-form" onsubmit="submitEssay(event)">
+      <div class="form-group">
+        <label for="task-type">题型</label>
+        <select id="task-type" name="task_type">
+          <option value="task2" selected>Task 2 (议论文)</option>
+          <option value="task1_academic">Task 1 Academic (图表)</option>
+          <option value="task1_general">Task 1 General (书信)</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="topic">话题（可选）</label>
+        <input type="text" id="topic" name="topic" placeholder="例如：教育、环境、科技">
+      </div>
+
+      <div class="form-group">
+        <label for="essay">作文内容 *</label>
+        <textarea id="essay" name="essay" rows="15" required
+                  placeholder="在此粘贴您的作文..."></textarea>
+        <div class="word-count"><span id="word-count">0</span> 词</div>
+      </div>
+
+      <button type="submit" class="btn-primary" id="submit-btn">提交批改</button>
+    </form>
+  </div>
+
+  {# === 批改结果面板 === #}
+  <div id="grade-result" class="grade-result" hidden>
+    <h2>批改结果</h2>
+
+    <div class="score-overview">
+      <div class="overall-score">
+        <span class="score-value" id="overall-score">--</span>
+        <span class="score-label">总分 (Band)</span>
+      </div>
+      <div class="band-scores">
+        <div class="band-item">
+          <span class="band-name">任务回应</span>
+          <span class="band-value" id="band-task-response">--</span>
+        </div>
+        <div class="band-item">
+          <span class="band-name">连贯衔接</span>
+          <span class="band-value" id="band-coherence">--</span>
+        </div>
+        <div class="band-item">
+          <span class="band-name">词汇资源</span>
+          <span class="band-value" id="band-lexical">--</span>
+        </div>
+        <div class="band-item">
+          <span class="band-name">语法准确性</span>
+          <span class="band-value" id="band-grammar">--</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="result-section">
+      <h3>问题分析</h3>
+      <div id="error-analysis" class="error-list"></div>
+    </div>
+
+    <div class="result-section">
+      <h3>改进建议</h3>
+      <ul id="suggestions" class="suggestion-list"></ul>
+    </div>
+
+    <div class="result-actions">
+      <button class="btn-secondary" onclick="resetForm()">重新批改</button>
+      <button class="btn-secondary" onclick="saveToPersonal()">保存到个人词库</button>
+    </div>
+  </div>
+</section>
+
+<script>
+const essayInput = document.getElementById('essay');
+const wordCountSpan = document.getElementById('word-count');
+
+essayInput.addEventListener('input', () => {
+    const words = essayInput.value.trim().split(/\s+/).filter(w => w).length;
+    wordCountSpan.textContent = words;
+});
+
+async function submitEssay(event) {
+    event.preventDefault();
+
+    const essay = document.getElementById('essay').value.trim();
+    if (essay.length < 50) {
+        alert('作文内容太短，请至少输入 50 个单词');
+        return;
+    }
+
+    const taskType = document.getElementById('task-type').value;
+    const topic = document.getElementById('topic').value;
+
+    const submitBtn = document.getElementById('submit-btn');
+    submitBtn.disabled = true;
+    submitBtn.textContent = '批改中...';
+
+    const formData = new FormData();
+    formData.append('essay', essay);
+    formData.append('task_type', taskType);
+    if (topic) formData.append('topic', topic);
+
+    try {
+        const response = await fetch('/api/grade/submit', {
+            method: 'POST',
+            body: formData
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            showResults(data.result);
+        } else {
+            const error = await response.json();
+            alert('批改失败: ' + (error.detail || '未知错误'));
+        }
+    } catch (error) {
+        alert('批改失败: ' + error.message);
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = '提交批改';
+    }
+}
+
+function showResults(result) {
+    document.querySelector('.grade-form').hidden = true;
+    document.getElementById('grade-result').hidden = false;
+
+    document.getElementById('overall-score').textContent = result.overall_score;
+
+    const scores = result.band_scores;
+    document.getElementById('band-task-response').textContent = scores.task_response;
+    document.getElementById('band-coherence').textContent = scores.coherence;
+    document.getElementById('band-lexical').textContent = scores.lexical_resource;
+    document.getElementById('band-grammar').textContent = scores.grammar;
+
+    // 错误分析
+    const errorList = document.getElementById('error-analysis');
+    const errors = result.error_summary;
+    let errorHtml = '';
+
+    for (const [type, items] of Object.entries(errors)) {
+        if (items && items.length > 0) {
+            errorHtml += `<div class="error-category">
+                <h4>${type === 'grammar' ? '语法' : type === 'vocabulary' ? '词汇' : '连贯'}</h4>
+                <ul>${items.map(item => `<li>${item}</li>`).join('')}</ul>
+            </div>`;
+        }
+    }
+    errorList.innerHTML = errorHtml || '<p>未发现明显错误</p>';
+
+    // 建议
+    const suggestionList = document.getElementById('suggestions');
+    suggestionList.innerHTML = result.suggestions.map(s => `<li>${s}</li>`).join('');
+}
+
+function resetForm() {
+    document.querySelector('.grade-form').hidden = false;
+    document.getElementById('grade-result').hidden = true;
+    document.getElementById('grade-form').reset();
+    document.getElementById('word-count').textContent = '0';
+}
+
+function saveToPersonal() {
+    alert('功能开发中：保存批改结果到个人词库');
+}
+</script>
+
+<style>
+.grade-page {
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+.grade-form {
+    background: var(--bg-secondary);
+    border-radius: 12px;
+    padding: 32px;
+    border: 1px solid var(--border-color);
+}
+
+.grade-form h2 {
+    color: var(--primary-color);
+    margin-bottom: 8px;
+}
+
+.form-group {
+    margin-bottom: 20px;
+}
+
+.form-group label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 8px;
+}
+
+.form-group input,
+.form-group select,
+.form-group textarea {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    font-size: 14px;
+}
+
+.form-group textarea {
+    font-family: inherit;
+    resize: vertical;
+    line-height: 1.6;
+}
+
+.word-count {
+    text-align: right;
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 4px;
+}
+
+.grade-result {
+    background: var(--bg-secondary);
+    border-radius: 12px;
+    padding: 32px;
+    border: 1px solid var(--border-color);
+}
+
+.grade-result h2 {
+    color: var(--primary-color);
+    margin-bottom: 24px;
+}
+
+.score-overview {
+    display: flex;
+    gap: 32px;
+    margin-bottom: 32px;
+    flex-wrap: wrap;
+}
+
+.overall-score {
+    text-align: center;
+    padding: 24px 32px;
+    background: var(--primary-light);
+    border-radius: 12px;
+}
+
+.score-value {
+    display: block;
+    font-size: 64px;
+    font-weight: 700;
+    color: var(--primary-color);
+    font-family: var(--font-mono);
+}
+
+.score-label {
+    font-size: 14px;
+    color: var(--text-muted);
+}
+
+.band-scores {
+    flex: 1;
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+}
+
+.band-item {
+    padding: 16px;
+    background: var(--bg-primary);
+    border-radius: 8px;
+    text-align: center;
+}
+
+.band-name {
+    display: block;
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+}
+
+.band-value {
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--text-main);
+}
+
+.result-section {
+    margin-bottom: 24px;
+}
+
+.result-section h3 {
+    font-size: 16px;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.error-list {
+    display: grid;
+    gap: 16px;
+}
+
+.error-category {
+    padding: 12px;
+    background: #fef2f2;
+    border-radius: 8px;
+    border-left: 3px solid #ef4444;
+}
+
+.error-category h4 {
+    font-size: 13px;
+    margin-bottom: 8px;
+    color: #dc2626;
+}
+
+.error-category ul {
+    margin: 0;
+    padding-left: 20px;
+    font-size: 13px;
+    line-height: 1.8;
+}
+
+.suggestion-list {
+    padding-left: 20px;
+}
+
+.suggestion-list li {
+    margin-bottom: 8px;
+    line-height: 1.6;
+}
+
+.result-actions {
+    display: flex;
+    gap: 12px;
+    margin-top: 24px;
+}
+
+.btn-primary {
+    padding: 12px 32px;
+    background: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    cursor: pointer;
+}
+
+.btn-primary:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.btn-secondary {
+    padding: 12px 24px;
+    background: var(--bg-secondary);
+    color: var(--text-main);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    font-size: 14px;
+    cursor: pointer;
+}
+</style>
+{% endblock %}

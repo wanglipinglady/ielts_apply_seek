@@ -1,0 +1,566 @@
+{% extends "base.html" %}
+
+{% block page_title %}模拟考试{% endblock %}
+
+{% block content %}
+<section class="exam-page">
+  {# === 考试配置面板 === #}
+  <div id="exam-config" class="config-panel">
+    <h2>模拟考试</h2>
+    <p class="lede">从词库随机抽取题目，模拟真实考试环境。</p>
+
+    <form id="exam-form" onsubmit="startExam(event)">
+      <div class="form-row">
+        <div class="form-group">
+          <label for="exam-count">题目数量</label>
+          <input type="number" id="exam-count" value="30" min="10" max="50">
+        </div>
+        <div class="form-group">
+          <label for="exam-band">目标 Band</label>
+          <select id="exam-band">
+            <option value="7" selected>Band 7</option>
+            <option value="6">Band 6</option>
+            <option value="8">Band 8</option>
+            <option value="9">Band 9</option>
+            <option value="5">Band 5</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="exam-time">时长（分钟）</label>
+          <select id="exam-time">
+            <option value="20" selected>20 分钟</option>
+            <option value="15">15 分钟</option>
+            <option value="30">30 分钟</option>
+            <option value="45">45 分钟</option>
+          </select>
+        </div>
+      </div>
+      <button type="submit" class="btn-primary">开始考试</button>
+    </form>
+  </div>
+
+  {# === 考试进行中面板 === #}
+  <div id="exam-active" class="exam-active-panel" hidden>
+    <div class="exam-header">
+      <div class="exam-info">
+        <span id="exam-progress">第 1 / 30 题</span>
+        <span class="exam-mode" id="exam-mode">英译中</span>
+      </div>
+      <div class="exam-timer">
+        <span class="timer-icon">⏱</span>
+        <span id="exam-timer">20:00</span>
+      </div>
+    </div>
+
+    <div class="progress-bar-full">
+      <div id="exam-progress-bar" class="progress-fill"></div>
+    </div>
+
+    <div id="exam-card" class="exam-card">
+      <div class="exam-word">
+        <span id="exam-word" class="word-big">--</span>
+        <span id="exam-phonetic" class="phonetic">--</span>
+      </div>
+
+      <div class="exam-hint" id="exam-hint">请输入中文释义</div>
+
+      <form id="exam-answer-form" onsubmit="submitAnswer(event)">
+        <input type="hidden" id="exam-session-id" value="">
+        <input type="text" id="exam-answer" class="exam-input"
+               placeholder="输入答案..." autocomplete="off">
+        <div class="exam-actions">
+          <button type="submit" class="btn-primary">提交</button>
+          <button type="button" class="btn-secondary" onclick="skipQuestion()">跳过</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  {# === 考试结果面板 === #}
+  <div id="exam-result" class="result-panel" hidden>
+    <h2>考试完成</h2>
+
+    <div class="result-summary">
+      <div class="result-metric large">
+        <div class="metric-label">正确率</div>
+        <div id="result-accuracy" class="metric-value accent">--%</div>
+      </div>
+      <div class="result-metric">
+        <div class="metric-label">正确</div>
+        <div id="result-correct" class="metric-value correct">--</div>
+      </div>
+      <div class="result-metric">
+        <div class="metric-label">错误</div>
+        <div id="result-wrong" class="metric-value wrong">--</div>
+      </div>
+      <div class="result-metric">
+        <div class="metric-label">用时</div>
+        <div id="result-duration" class="metric-value">--</div>
+      </div>
+    </div>
+
+    <div id="band-breakdown" class="band-breakdown">
+      <h3>Band 分布</h3>
+      <div id="band-list" class="band-list"></div>
+    </div>
+
+    <div id="wrong-words-panel" class="wrong-panel" hidden>
+      <h3>弱项单词</h3>
+      <div id="wrong-words-list" class="wrong-words-list"></div>
+    </div>
+
+    <div class="result-actions">
+      <button class="btn-primary" onclick="restartExam()">再来一轮</button>
+      <a href="/dashboard" class="btn-secondary">返回仪表盘</a>
+    </div>
+  </div>
+</section>
+
+<script>
+let currentSessionId = '';
+let currentIndex = 1;
+let totalQuestions = 30;
+let timerInterval = null;
+
+function startExam(event) {
+    event.preventDefault();
+
+    const count = parseInt(document.getElementById('exam-count').value);
+    const band = parseInt(document.getElementById('exam-band').value);
+    const timeLimit = parseInt(document.getElementById('exam-time').value);
+
+    const formData = new FormData();
+    formData.append('count', count);
+    formData.append('band', band);
+    formData.append('time_limit', timeLimit);
+
+    fetch('/api/exam/start', {
+        method: 'POST',
+        body: formData
+    }).then(r => r.json()).then(data => {
+        if (data.session_id) {
+            currentSessionId = data.session_id;
+            totalQuestions = data.total;
+            currentIndex = 1;
+
+            document.getElementById('exam-config').hidden = true;
+            document.getElementById('exam-active').hidden = false;
+            document.getElementById('exam-result').hidden = true;
+
+            showQuestion(data.question);
+            startTimer(data.remaining_seconds);
+        }
+    });
+}
+
+function showQuestion(question) {
+    document.getElementById('exam-session-id').value = currentSessionId;
+    document.getElementById('exam-word').textContent = question.word;
+    document.getElementById('exam-phonetic').textContent = question.phonetic || '';
+    document.getElementById('exam-answer').value = '';
+    document.getElementById('exam-answer').focus();
+
+    // 更新模式提示
+    const modeText = question.mode === 'en2zh' ? '英译中' : '中译英';
+    document.getElementById('exam-mode').textContent = modeText;
+    document.getElementById('exam-hint').textContent =
+        question.mode === 'en2zh' ? '请输入中文释义' : '请输入英文单词';
+
+    updateProgress();
+}
+
+function updateProgress() {
+    const percent = (currentIndex / totalQuestions) * 100;
+    document.getElementById('exam-progress').textContent =
+        `第 ${currentIndex} / ${totalQuestions} 题`;
+    document.getElementById('exam-progress-bar').style.width = percent + '%';
+}
+
+function startTimer(seconds) {
+    if (timerInterval) clearInterval(timerInterval);
+
+    timerInterval = setInterval(() => {
+        seconds--;
+        if (seconds <= 0) {
+            clearInterval(timerInterval);
+            submitExam();
+        }
+        updateTimerDisplay(seconds);
+    }, 1000);
+}
+
+function updateTimerDisplay(seconds) {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    const display = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    document.getElementById('exam-timer').textContent = display;
+
+    if (seconds <= 60) {
+        document.getElementById('exam-timer').classList.add('warning');
+    }
+}
+
+function submitAnswer(event) {
+    event.preventDefault();
+
+    const sessionId = document.getElementById('exam-session-id').value;
+    const answer = document.getElementById('exam-answer').value;
+
+    if (!answer.trim()) {
+        alert('请输入答案');
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('session_id', sessionId);
+    formData.append('answer', answer);
+
+    fetch('/api/exam/answer', {
+        method: 'POST',
+        body: formData
+    }).then(r => r.json()).then(data => {
+        if (data.finished) {
+            clearInterval(timerInterval);
+            showResults(data.results);
+        } else {
+            currentIndex++;
+            showQuestion(data.question);
+        }
+    });
+}
+
+function skipQuestion() {
+    const sessionId = document.getElementById('exam-session-id').value;
+
+    const formData = new FormData();
+    formData.append('session_id', sessionId);
+
+    fetch('/api/exam/skip', {
+        method: 'POST',
+        body: formData
+    }).then(r => r.json()).then(data => {
+        if (data.finished) {
+            clearInterval(timerInterval);
+            showResults(data.results);
+        } else {
+            currentIndex++;
+            showQuestion(data.question);
+        }
+    });
+}
+
+function submitExam() {
+    const sessionId = document.getElementById('exam-session-id').value;
+
+    const formData = new FormData();
+    formData.append('session_id', sessionId);
+
+    fetch('/api/exam/submit', {
+        method: 'POST',
+        body: formData
+    }).then(r => r.json()).then(data => {
+        showResults(data.results);
+    });
+}
+
+function showResults(results) {
+    document.getElementById('exam-active').hidden = true;
+    document.getElementById('exam-result').hidden = false;
+
+    const accuracy = Math.round(results.accuracy * 100);
+    document.getElementById('result-accuracy').textContent = accuracy + '%';
+    document.getElementById('result-correct').textContent = results.correct;
+    document.getElementById('result-wrong').textContent = results.wrong;
+
+    const mins = Math.floor(results.duration / 60);
+    const secs = results.duration % 60;
+    document.getElementById('result-duration').textContent =
+        `${mins}分${secs}秒`;
+
+    // Band 分布
+    const bandList = document.getElementById('band-list');
+    const breakdown = results.band_breakdown || {};
+    if (Object.keys(breakdown).length > 0) {
+        document.getElementById('band-breakdown').hidden = false;
+        bandList.innerHTML = Object.entries(breakdown).map(([band, data]) =>
+            `<div class="band-item">
+                <span class="band-label">Band ${band}</span>
+                <span class="band-correct">✓ ${data.correct}</span>
+                <span class="band-wrong">✗ ${data.wrong}</span>
+            </div>`
+        ).join('');
+    }
+
+    // 弱项单词
+    if (results.wrong_words && results.wrong_words.length > 0) {
+        document.getElementById('wrong-words-panel').hidden = false;
+        const wrongList = document.getElementById('wrong-words-list');
+        wrongList.innerHTML = results.wrong_words.map(w =>
+            `<span class="wrong-word">${w}</span>`
+        ).join('');
+    }
+}
+
+function restartExam() {
+    document.getElementById('exam-config').hidden = false;
+    document.getElementById('exam-active').hidden = true;
+    document.getElementById('exam-result').hidden = true;
+    if (timerInterval) clearInterval(timerInterval);
+}
+</script>
+
+<style>
+.exam-page {
+    max-width: 700px;
+    margin: 0 auto;
+}
+
+.config-panel {
+    background: var(--bg-secondary);
+    border-radius: 12px;
+    padding: 32px;
+    border: 1px solid var(--border-color);
+}
+
+.config-panel h2 {
+    color: var(--primary-color);
+    margin-bottom: 8px;
+}
+
+.exam-active-panel {
+    background: var(--bg-secondary);
+    border-radius: 12px;
+    border: 1px solid var(--border-color);
+    overflow: hidden;
+}
+
+.exam-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 24px;
+    background: var(--bg-primary);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.exam-info {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+}
+
+.exam-progress {
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.exam-mode {
+    padding: 4px 10px;
+    background: var(--primary-light);
+    color: var(--primary-color);
+    border-radius: 12px;
+    font-size: 12px;
+}
+
+.exam-timer {
+    font-size: 20px;
+    font-weight: 700;
+    font-family: var(--font-mono);
+    color: var(--primary-color);
+}
+
+.exam-timer.warning {
+    color: #dc2626;
+}
+
+.timer-icon {
+    margin-right: 4px;
+}
+
+.progress-bar-full {
+    height: 4px;
+    background: var(--bg-primary);
+}
+
+.progress-bar-full .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--primary-color), var(--accent-color));
+    transition: width 0.3s ease;
+}
+
+.exam-card {
+    padding: 40px 24px;
+    text-align: center;
+}
+
+.word-big {
+    display: block;
+    font-size: 48px;
+    font-weight: 700;
+    color: var(--primary-color);
+    font-family: var(--font-serif);
+}
+
+.phonetic {
+    display: block;
+    font-size: 16px;
+    color: var(--text-muted);
+    margin-top: 8px;
+}
+
+.exam-hint {
+    margin: 24px 0 16px;
+    color: var(--text-muted);
+}
+
+.exam-input {
+    width: 100%;
+    max-width: 400px;
+    padding: 14px 16px;
+    border: 2px solid var(--border-color);
+    border-radius: 8px;
+    font-size: 18px;
+    text-align: center;
+}
+
+.exam-input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+}
+
+.exam-actions {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    margin-top: 20px;
+}
+
+.result-panel {
+    background: var(--bg-secondary);
+    border-radius: 12px;
+    padding: 32px;
+    border: 1px solid var(--border-color);
+    text-align: center;
+}
+
+.result-summary {
+    display: flex;
+    gap: 16px;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin: 24px 0;
+}
+
+.result-metric {
+    padding: 20px 24px;
+    background: var(--bg-primary);
+    border-radius: 12px;
+    min-width: 100px;
+}
+
+.result-metric.large {
+    min-width: 140px;
+}
+
+.metric-label {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+}
+
+.metric-value {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--text-main);
+}
+
+.metric-value.accent {
+    color: var(--primary-color);
+    font-size: 36px;
+}
+
+.metric-value.correct { color: #10b981; }
+.metric-value.wrong { color: #ef4444; }
+
+.band-breakdown,
+.wrong-panel {
+    margin: 24px 0;
+    text-align: left;
+}
+
+.band-breakdown h3,
+.wrong-panel h3 {
+    font-size: 16px;
+    margin-bottom: 12px;
+}
+
+.band-list {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.band-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    background: var(--bg-primary);
+    border-radius: 8px;
+}
+
+.band-label {
+    font-weight: 600;
+}
+
+.band-correct { color: #10b981; }
+.band-wrong { color: #ef4444; }
+
+.wrong-words-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.wrong-word {
+    padding: 6px 12px;
+    background: #fee2e2;
+    color: #dc2626;
+    border-radius: 16px;
+    font-size: 13px;
+}
+
+.result-actions {
+    display: flex;
+    gap: 16px;
+    justify-content: center;
+    margin-top: 32px;
+}
+
+.form-row {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+.form-group {
+    flex: 1;
+}
+
+.form-group label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 8px;
+    font-size: 13px;
+}
+
+.form-group input,
+.form-group select {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    font-size: 14px;
+}
+</style>
+{% endblock %}
