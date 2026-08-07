@@ -16,6 +16,7 @@ threadpool 模型。
 from __future__ import annotations
 
 from functools import lru_cache
+from typing import Any
 
 from fastapi import Depends, Request
 
@@ -48,12 +49,13 @@ def get_container(request: Request) -> SQLiteRepositoryContainer:
 
 
 def get_stats_conn(request: Request):
-    """阶段 2：StatsService 用的独立 SQLite 连接（``check_same_thread=False``）。"""
+    """阶段 2：StatsService 用的独立 SQLite 连接（``check_same_thread=False``）。
+
+    注意：MySQL 模式下 web_stats_conn 为 None，此时 get_stats_service 会
+    降级使用 StatsService（通过容器访问 MySQL）。
+    """
     conn = getattr(request.app.state, "web_stats_conn", None)
-    if conn is None:
-        raise RuntimeError(
-            "app.state.web_stats_conn 未初始化；检查 create_app() 的 lifespan"
-        )
+    # MySQL 模式下 conn 为 None，这是正常的，get_stats_service 会处理
     return conn
 
 
@@ -83,20 +85,95 @@ def get_vocab_service() -> VocabService:
 
 
 # =============================================================
-# 统计服务（Web 端自研版）
+# 统计服务（Web 端自研版 + MySQL 兼容）
 # =============================================================
+
+
+class WebStatsServiceWrapper:
+    """统计服务包装器：支持 SQLite（WebStatsService）和 MySQL（StatsService）两种模式。
+
+    MySQL 模式下透明降级使用 StatsService（通过容器访问）。
+    """
+
+    def __init__(
+        self,
+        sqlite_conn,
+        container,
+        user_id: int,
+    ) -> None:
+        self._sqlite_conn = sqlite_conn
+        self._container = container
+        self._user_id = user_id
+        self._is_mysql = container is not None and hasattr(container, 'learning')
+
+    def _get_sqlite_svc(self) -> WebStatsService:
+        """获取 SQLite 服务（延迟构造）。"""
+        if not hasattr(self, '_sqlite_svc') or self._sqlite_svc is None:
+            self._sqlite_svc = WebStatsService(self._sqlite_conn, self._user_id)
+        return self._sqlite_svc
+
+    def _get_mysql_svc(self):
+        """获取 MySQL 服务（延迟构造）。"""
+        if not hasattr(self, '_mysql_svc') or self._mysql_svc is None:
+            from ielts_buddy.services.stats_service import StatsService
+            # MySQL 模式下直接用容器创建 StatsService
+            self._mysql_svc = StatsService.__new__(StatsService)
+            self._mysql_svc._container = self._container
+            self._mysql_svc._repo = self._container.learning
+            self._mysql_svc._user_id = self._user_id
+        return self._mysql_svc
+
+    def total_stats(self) -> dict[str, Any]:
+        if self._is_mysql:
+            return self._get_mysql_svc().total_stats()
+        return self._get_sqlite_svc().total_stats()
+
+    def today_stats(self) -> dict[str, Any]:
+        if self._is_mysql:
+            return self._get_mysql_svc().today_stats()
+        return self._get_sqlite_svc().today_stats()
+
+    def due_count(self) -> int:
+        if self._is_mysql:
+            return self._get_mysql_svc().due_count()
+        return self._get_sqlite_svc().due_count()
+
+    def level_distribution(self) -> dict[int, int]:
+        if self._is_mysql:
+            return self._get_mysql_svc().level_distribution()
+        return self._get_sqlite_svc().level_distribution()
+
+    def get_streak(self) -> tuple[int, int]:
+        if self._is_mysql:
+            return self._get_mysql_svc().get_streak()
+        return self._get_sqlite_svc().get_streak()
+
+    def get_daily_trend(self, days: int = 7) -> list[tuple[str, int, float]]:
+        if self._is_mysql:
+            return self._get_mysql_svc().get_daily_trend(days)
+        return self._get_sqlite_svc().get_daily_trend(days)
+
+    def get_band_progress(self) -> list[tuple[int, int, int, float]]:
+        if self._is_mysql:
+            return self._get_mysql_svc().get_band_progress()
+        return self._get_sqlite_svc().get_band_progress()
+
+    def get_history(self, days: int = 7) -> list[dict[str, Any]]:
+        if self._is_mysql:
+            return self._get_mysql_svc().get_history(days)
+        return self._get_sqlite_svc().get_history(days)
 
 
 def get_stats_service(
     conn=Depends(get_stats_conn),
-) -> WebStatsService:
-    """为当前 web 用户构造一个 ``WebStatsService``。
+    container=Depends(get_container),
+) -> WebStatsServiceWrapper:
+    """为当前 web 用户构造一个统计服务。
 
-    注意：本依赖**不** Depends ``get_user_id``（那个是强制认证的）；
-    ``user_id`` 由路由层在拿到可选 user 后注入。
+    - MySQL 模式：使用 StatsService 通过容器访问 MySQL
+    - SQLite 模式：使用 WebStatsService 直连 SQLite
     """
-    # 拿不到 user 时 user_id=0 表示"无数据"，路由层会先判 None → 跳登录
-    return WebStatsService(conn, user_id=0)
+    return WebStatsServiceWrapper(sqlite_conn=conn, container=container, user_id=0)
 
 
 # =============================================================

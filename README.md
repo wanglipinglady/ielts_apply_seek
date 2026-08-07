@@ -3,7 +3,17 @@
 > **在你写代码的地方，顺便把雅思考了。**
 
 IELTS Buddy 是一款面向程序员的雅思备考 CLI 工具，将词汇学习、写作辅助、口语练习和科学复习整合到终端中。
+# 1. 进入项目目录
+cd d:\0000-maven\self-program\ielts_apply_seek
 
+# 2. 安装/更新依赖
+pip install -e .
+
+# 3. 启动 Web 服务
+python -m ielts_buddy.web --port 8000
+
+# 4. 浏览器访问
+# http://127.0.0.1:8000
 ![Python](https://img.shields.io/badge/Python-3.10+-blue?logo=python)
 ![Tests](https://img.shields.io/badge/Tests-637%20passed-brightgreen)
 ![Vocab](https://img.shields.io/badge/Vocab-4485%20words-orange)

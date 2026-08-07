@@ -9,14 +9,13 @@ from fastapi.templating import Jinja2Templates
 
 from ielts_buddy.web.auth.deps import get_current_user_optional
 from ielts_buddy.web.auth.repository import WebUser
-from ielts_buddy.web.services import get_stats_service
+from ielts_buddy.web.services import get_stats_service, WebStatsServiceWrapper
 from ielts_buddy.web.stats_schemas import (
     BandProgressItem,
     DailyTrendItem,
     LevelDistributionItem,
     StatsSummary,
 )
-from ielts_buddy.web.stats_service import WebStatsService
 
 
 router = APIRouter(tags=["pages"])
@@ -26,7 +25,7 @@ def _get_templates(request: Request) -> Jinja2Templates:
     return request.app.state.templates
 
 
-def _bind_user(svc: WebStatsService, user: WebUser) -> WebStatsService:
+def _bind_user(svc: WebStatsServiceWrapper, user: WebUser) -> WebStatsServiceWrapper:
     """拿到可选 user 后，把 user_id 绑到 service 上。"""
     svc._user_id = int(user.id)  # type: ignore[attr-defined]
     return svc
@@ -36,7 +35,7 @@ def _bind_user(svc: WebStatsService, user: WebUser) -> WebStatsService:
 def page_dashboard(
     request: Request,
     user: Annotated[Optional[WebUser], Depends(get_current_user_optional)],
-    svc: Annotated[WebStatsService, Depends(get_stats_service)],
+    svc: Annotated[WebStatsServiceWrapper, Depends(get_stats_service)],
 ) -> HTMLResponse:
     """Dashboard 页：欢迎语 + 摘要卡片。"""
     if user is None:
@@ -60,7 +59,7 @@ def page_dashboard(
 def page_stats(
     request: Request,
     user: Annotated[Optional[WebUser], Depends(get_current_user_optional)],
-    svc: Annotated[WebStatsService, Depends(get_stats_service)],
+    svc: Annotated[WebStatsServiceWrapper, Depends(get_stats_service)],
 ) -> HTMLResponse:
     """Stats 页：summary + level + band + trend 全量。"""
     if user is None:
@@ -89,11 +88,11 @@ def page_stats(
 
 
 # =============================================================
-# 内部：从 WebStatsService 拉数据 → schema 对象
+# 内部：从统计服务拉数据 → schema 对象
 # =============================================================
 
 
-def _build_summary(svc: WebStatsService) -> StatsSummary:
+def _build_summary(svc) -> StatsSummary:
     total = svc.total_stats()
     today = svc.today_stats()
     due = svc.due_count()
@@ -113,7 +112,7 @@ def _build_summary(svc: WebStatsService) -> StatsSummary:
     )
 
 
-def _build_level_distribution(svc: WebStatsService) -> list[LevelDistributionItem]:
+def _build_level_distribution(svc) -> list[LevelDistributionItem]:
     dist = svc.level_distribution()
     return [
         LevelDistributionItem(level=lv, count=dist.get(lv, 0))
@@ -121,7 +120,7 @@ def _build_level_distribution(svc: WebStatsService) -> list[LevelDistributionIte
     ]
 
 
-def _build_band_progress(svc: WebStatsService) -> list[BandProgressItem]:
+def _build_band_progress(svc) -> list[BandProgressItem]:
     rows = svc.get_band_progress()
     return [
         BandProgressItem(band=b, total=t, mastered=m, ratio=r)
@@ -129,7 +128,7 @@ def _build_band_progress(svc: WebStatsService) -> list[BandProgressItem]:
     ]
 
 
-def _build_trend(svc: WebStatsService) -> list[DailyTrendItem]:
+def _build_trend(svc) -> list[DailyTrendItem]:
     rows = svc.get_daily_trend(days=7)
     return [
         DailyTrendItem(date=d, studied=c) for d, c, _acc in rows
