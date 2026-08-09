@@ -19,10 +19,11 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from ielts_buddy.core.models import Word
+from ielts_buddy.repositories import SQLiteRepositoryContainer
 from ielts_buddy.services.vocab_service import VocabService
 from ielts_buddy.web.auth.deps import get_current_user, get_current_user_optional
 from ielts_buddy.web.auth.repository import WebUser
-from ielts_buddy.web.services import get_vocab_service
+from ielts_buddy.web.services import get_container, get_vocab_service
 
 
 router = APIRouter(tags=["quiz"])
@@ -222,6 +223,7 @@ def api_quiz_answer(
     user: Annotated[WebUser, Depends(get_current_user)],
     session_id: Annotated[str, Form()],
     answer: Annotated[str, Form()],
+    container: Annotated[SQLiteRepositoryContainer, Depends(get_container)],
 ) -> dict:
     """提交答案"""
     session = _quiz_sessions.get(session_id)
@@ -255,7 +257,7 @@ def api_quiz_answer(
     result = session.answer_question(answer, is_correct)
 
     # 记录到学习记录
-    _record_learning(user.id, q["word_data"], is_correct)
+    _record_learning(user.id, q["word_data"], is_correct, container)
 
     # 返回下一题或结束
     if session.is_finished():
@@ -387,17 +389,20 @@ def api_quiz_finish(
     return {"results": results}
 
 
-def _record_learning(user_id: int, word_data: dict, correct: bool) -> None:
-    """将测验结果记录到学习记录"""
+def _record_learning(
+    user_id: int, word_data: dict, correct: bool, container
+) -> None:
+    """将测验结果记录到学习记录（依赖注入容器，SQLite/MySQL 双模式都 OK）"""
+    if container is None or not hasattr(container, "learning"):
+        return
     try:
-        from ielts_buddy.web.main import app
-        container = getattr(app.state, "container", None)
-        if container is not None and hasattr(container, "learning"):
-            word = Word(**word_data)
-            container.learning.upsert_record(user_id, word, correct, source="quiz")
-    except Exception:
-        # 忽略记录错误，不影响测验流程
-        pass
+        word = Word(**word_data)
+        container.learning.upsert_record(user_id, word, correct, source="quiz")
+    except Exception as e:
+        import logging
+        logging.getLogger("ielts_buddy.web.quiz").warning(
+            "[quiz] _record_learning 失败: %s", e
+        )
 
 
 __all__ = ["router", "api_router"]

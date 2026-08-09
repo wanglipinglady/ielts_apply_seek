@@ -80,7 +80,6 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
                 connection_url=web_config.WEB_DB_URL or None
             )
             app.state.container = container
-            app.state.web_stats_conn = None  # MySQL 模式不需要 stats 连接
         else:
             # SQLite 模式：使用本地文件存储
             web_db = Path(web_config.get_web_db_path())
@@ -89,12 +88,6 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
             app.state.container = create_repositories(
                 mode="local", db_path=web_db
             )
-            # stats 直 SQL 用的连接：check_same_thread=False 跨 worker 安全
-            import sqlite3
-            app.state.web_stats_conn = sqlite3.connect(
-                str(web_db), check_same_thread=False
-            )
-            app.state.web_stats_conn.row_factory = sqlite3.Row
 
     # 关键：用业务容器同一份 engine 构造 web_user_repo，避免账号与数据分叉
     if getattr(app.state, "web_user_repo", None) is None:
@@ -119,14 +112,6 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
             except Exception:
                 pass
             app.state.container = None
-        # stats 连接关
-        stats_conn = getattr(app.state, "web_stats_conn", None)
-        if stats_conn is not None:
-            try:
-                stats_conn.close()
-            except Exception:
-                pass
-            app.state.web_stats_conn = None
 
 
 def _open_default_user_repo():

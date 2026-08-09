@@ -486,6 +486,16 @@ class SQLiteLearningRepository:
         ).fetchall()
         return [row["word"] for row in rows]
 
+    def get_learned_words(self, user_id: int) -> list[str]:
+        """返回用户学过的所有词（任意时间），用于\"挑没学过的词\"。
+        注意：与 get_learned_words_today 不同 —— 后者只看今天的。
+        """
+        rows = self._conn.execute(
+            "SELECT word FROM learning_records WHERE user_id = ?",
+            (user_id,),
+        ).fetchall()
+        return [row["word"] for row in rows]
+
 
 # =============================================================
 # 2. SQLitePersonalVocabRepository
@@ -1105,6 +1115,28 @@ class SQLiteExamRepository:
         )
         self._conn.commit()
         return report
+
+    def save_exam_session(self, user_id: int, session: ExamSession) -> None:
+        """显式落库考试 session（被 Service 层 / web router 调用）。
+
+        注：与 MySQL 版同名同语义。exam_sessions 表已有 id (session_id)、
+        user_id、questions (json 字符串)、time_limit、started_at、band_filter
+        等字段；这里只插入，让后续 submit_answer/finish_exam 走 UPDATE。
+        """
+        questions_json = json.dumps(
+            [q.model_dump() for q in session.questions], ensure_ascii=False
+        )
+        with self._conn:
+            self._conn.execute(
+                """INSERT OR REPLACE INTO exam_sessions
+                   (id, user_id, questions, time_limit, started_at, band_filter)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (
+                    session.id, user_id, questions_json,
+                    session.time_limit, session.started_at,
+                    session.band_filter,
+                ),
+            )
 
     def get_exam_history(
         self,

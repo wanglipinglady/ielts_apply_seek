@@ -443,6 +443,14 @@ class MySQLLearningRepository:
             """), {"uid": user_id, "today": today_dt}).fetchall()
         return [r[0] for r in rows]
 
+    def get_learned_words(self, user_id: int) -> list[str]:
+        """返回用户学过的所有词（任意时间）。"""
+        with self._engine.connect() as conn:
+            rows = conn.execute(text(
+                "SELECT word FROM learning_records WHERE user_id = :uid"
+            ), {"uid": user_id}).fetchall()
+        return [r[0] for r in rows]
+
 
 # =============================================================
 # 2. MySQLPersonalVocabRepository

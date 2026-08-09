@@ -22,8 +22,10 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
 from ielts_buddy.core.models import PersonalWord
+from ielts_buddy.repositories import SQLiteRepositoryContainer
 from ielts_buddy.web.auth.deps import get_current_user, get_current_user_optional
 from ielts_buddy.web.auth.repository import WebUser
+from ielts_buddy.web.services import get_container
 
 
 router = APIRouter(tags=["personal"])
@@ -67,8 +69,7 @@ def _get_templates(request: Request) -> Jinja2Templates:
 
 def _get_container(request: Request):
     """获取仓库容器"""
-    from ielts_buddy.web.main import app
-    return getattr(app.state, "container", None)
+    return getattr(request.app.state, "container", None)
 
 
 # =============================================================

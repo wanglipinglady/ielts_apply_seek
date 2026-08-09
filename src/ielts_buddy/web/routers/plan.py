@@ -27,8 +27,7 @@ def _get_templates(request: Request) -> Jinja2Templates:
 
 
 def _get_container(request: Request):
-    from ielts_buddy.web.main import app
-    return getattr(app.state, "container", None)
+    return getattr(request.app.state, "container", None)
 
 
 # =============================================================

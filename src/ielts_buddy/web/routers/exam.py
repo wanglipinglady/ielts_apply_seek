@@ -19,10 +19,11 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from ielts_buddy.core.models import Word
+from ielts_buddy.repositories import SQLiteRepositoryContainer
 from ielts_buddy.services.vocab_service import VocabService
 from ielts_buddy.web.auth.deps import get_current_user, get_current_user_optional
 from ielts_buddy.web.auth.repository import WebUser
-from ielts_buddy.web.services import get_vocab_service
+from ielts_buddy.web.services import get_container, get_vocab_service
 
 
 router = APIRouter(tags=["exam"])
@@ -244,6 +245,7 @@ def api_exam_answer(
     user: Annotated[WebUser, Depends(get_current_user)],
     session_id: Annotated[str, Form()],
     answer: Annotated[str, Form()],
+    container: Annotated[SQLiteRepositoryContainer, Depends(get_container)],
 ) -> dict:
     """提交答案"""
     session = _exam_sessions.get(session_id)
@@ -270,8 +272,8 @@ def api_exam_answer(
 
     result = session.answer_question(answer, is_correct)
 
-    # 记录到学习记录
-    _record_learning(user.id, q["word_data"], is_correct)
+    # 记录到学习记录（注入的 container，SQLite/MySQL 双模式都 OK）
+    _record_learning(user.id, q["word_data"], is_correct, container)
 
     if session.is_finished():
         return {
@@ -320,6 +322,7 @@ def api_exam_skip(
 def api_exam_submit(
     user: Annotated[WebUser, Depends(get_current_user)],
     session_id: Annotated[str, Form()],
+    container: Annotated[SQLiteRepositoryContainer, Depends(get_container)],
 ) -> dict:
     """交卷"""
     session = _exam_sessions.get(session_id)
@@ -335,8 +338,8 @@ def api_exam_submit(
     results = session.get_results()
     del _exam_sessions[session_id]
 
-    # 存储结果到数据库
-    _save_exam_result(user.id, results)
+    # 存储结果到数据库（注入的 container，SQLite/MySQL 双模式都 OK）
+    _save_exam_result(user.id, results, container)
 
     return {"results": results}
 
@@ -367,44 +370,49 @@ def api_exam_status(
     }
 
 
-def _record_learning(user_id: int, word_data: dict, correct: bool) -> None:
-    """记录到学习记录"""
+def _record_learning(
+    user_id: int, word_data: dict, correct: bool, container
+) -> None:
+    """记录到学习记录（依赖注入业务容器，避免私有访问 app.state）。
+
+    调用方传入 ``container``（已在路由函数通过 ``Depends(get_container)`` 拿）。
+    """
+    if container is None or not hasattr(container, "learning"):
+        return  # container 未就绪就静默跳过（启动期可能）
     try:
-        from ielts_buddy.web.main import app
-        container = getattr(app.state, "container", None)
-        if container is not None and hasattr(container, "learning"):
-            word = Word(**word_data)
-            container.learning.upsert_record(user_id, word, correct, source="exam")
-    except Exception:
-        pass
+        word = Word(**word_data)
+        container.learning.upsert_record(user_id, word, correct, source="exam")
+    except Exception as e:
+        # 不静默吞：记录日志，至少让运维能看到
+        import logging
+        logging.getLogger("ielts_buddy.web.exam").warning(
+            "[exam] _record_learning 失败: %s", e
+        )
 
 
-def _save_exam_result(user_id: int, results: dict) -> None:
-    """保存考试结果"""
+def _save_exam_result(user_id: int, results: dict, container) -> None:
+    """保存考试结果（依赖注入业务容器）。"""
+    if container is None or not hasattr(container, "exam"):
+        return
     try:
-        from ielts_buddy.web.main import app
-        container = getattr(app.state, "container", None)
-        if container is not None and hasattr(container, "exam"):
-            from ielts_buddy.core.models import ExamSession as ExamSessionModel
-            import json
-            session = ExamSessionModel(
-                id=results["session_id"],
-                user_id=user_id,
-                questions=[],
-                time_limit=results["time_limit"],
-                started_at=datetime.now().isoformat(timespec="seconds"),
-            )
-            session.finish(
-                score=results["correct"],
-                total=results["total"],
-                accuracy=results["accuracy"],
-                band_breakdown=results["band_breakdown"],
-                weak_words=results["wrong_words"],
-                duration=results["duration"],
-            )
-            container.exam.save_exam_session(user_id, session)
-    except Exception:
-        pass
+        from ielts_buddy.core.models import ExamSession as ExamSessionModel
+        # 直接构造（ExamSession 模型没有 finish() 方法；之前路由用了
+        # session.finish(...) 但 Pydantic BaseModel 没有这个方法，
+        # 之前的 except: pass 把这个 bug 掩盖了）。
+        session = ExamSessionModel(
+            id=results["session_id"],
+            user_id=user_id,
+            questions=[],
+            time_limit=results["time_limit"],
+            started_at=datetime.now().isoformat(timespec="seconds"),
+            finished_at=datetime.now().isoformat(timespec="seconds"),
+        )
+        container.exam.save_exam_session(user_id, session)
+    except Exception as e:
+        import logging
+        logging.getLogger("ielts_buddy.web.exam").warning(
+            "[exam] _save_exam_result 失败: %s", e
+        )
 
 
 __all__ = ["router", "api_router"]

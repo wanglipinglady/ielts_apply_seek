@@ -47,16 +47,6 @@ def get_container(request: Request) -> SQLiteRepositoryContainer:
     return container
 
 
-def get_stats_conn(request: Request):
-    """阶段 2：StatsService 用的独立 SQLite 连接（``check_same_thread=False``）。"""
-    conn = getattr(request.app.state, "web_stats_conn", None)
-    if conn is None:
-        raise RuntimeError(
-            "app.state.web_stats_conn 未初始化；检查 create_app() 的 lifespan"
-        )
-    return conn
-
-
 def get_user_id(
     user: WebUser = Depends(get_current_user),
 ) -> int:
@@ -88,14 +78,29 @@ def get_vocab_service() -> VocabService:
 
 
 def get_stats_service(
-    conn=Depends(get_stats_conn),
+    container: SQLiteRepositoryContainer = Depends(get_container),
 ) -> WebStatsService:
     """为当前 web 用户构造一个 ``WebStatsService``。
+
+    关键：之前依赖 ``get_stats_conn`` 拿独立 SQLite 连接（SQLite-only），
+    导致 MySQL 模式下 web 端 stats 直接 RuntimeError。现在改为依赖
+    ``get_container``（业务容器），从容器拿适配当前 db mode 的连接：
+
+    - SQLite 模式：``container._conn``（sqlite3.Connection）
+    - MySQL 模式：``container._engine``（sqlalchemy.Engine）
+
+    WebStatsService 内部 duck typing 自动适配。
 
     注意：本依赖**不** Depends ``get_user_id``（那个是强制认证的）；
     ``user_id`` 由路由层在拿到可选 user 后注入。
     """
     # 拿不到 user 时 user_id=0 表示"无数据"，路由层会先判 None → 跳登录
+    # _conn 是 SQLite，_engine 是 MySQL，两者至少有一个
+    conn = getattr(container, "_conn", None) or getattr(container, "_engine", None)
+    if conn is None:
+        raise RuntimeError(
+            "业务容器既无 _conn 也无 _engine，请检查 repositories 工厂实现"
+        )
     return WebStatsService(conn, user_id=0)
 
 
