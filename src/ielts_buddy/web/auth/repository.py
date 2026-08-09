@@ -70,6 +70,14 @@ class WebUserRepository(Protocol):
         """更新 last_login_at。when=None 时用当前时间。"""
         ...
 
+    def set_password(self, user_id: int, new_password_hash: str) -> bool:
+        """重置指定用户的密码 hash。成功返回 True；用户不存在返回 False。
+
+        注意：调用方应传入 ``hash_password(plain)`` 的结果，不要把明文
+        传过来。service 层负责校验明文 + 加盐哈希。
+        """
+        ...
+
     def close(self) -> None:
         """关闭底层连接 / 释放资源。"""
         ...
@@ -164,6 +172,15 @@ class SQLiteWebUserRepository:
             (ts, user_id),
         )
         self._conn.commit()
+
+    def set_password(self, user_id: int, new_password_hash: str) -> bool:
+        """SQLite 实现：覆盖密码 hash。"""
+        cur = self._conn.execute(
+            "UPDATE web_users SET password_hash = ? WHERE id = ?",
+            (new_password_hash, user_id),
+        )
+        self._conn.commit()
+        return cur.rowcount > 0
 
     def close(self) -> None:
         # SQLite 连接由调用方管理；这里 no-op 保持接口对称
@@ -286,6 +303,17 @@ class MySQLWebUserRepository:
                 .where(t_web_users_mysql.c.id == user_id)
                 .values(last_login_at=ts)
             )
+
+    def set_password(self, user_id: int, new_password_hash: str) -> bool:
+        """MySQL 实现：覆盖密码 hash。"""
+        from sqlalchemy import update
+        with self._engine.begin() as conn:
+            result = conn.execute(
+                update(t_web_users_mysql)
+                .where(t_web_users_mysql.c.id == user_id)
+                .values(password_hash=new_password_hash)
+            )
+            return result.rowcount > 0
 
     def close(self) -> None:
         # MySQL 连接由 Engine 管理，这里 no-op

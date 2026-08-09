@@ -56,6 +56,35 @@ class AuthErrorResponse(BaseModel):
     code: str  # INVALID_CREDENTIALS / EMAIL_TAKEN / TOKEN_INVALID / ...
 
 
+class ChangePasswordRequest(BaseModel):
+    """用户自助改密请求体。"""
+    old_password: str = Field(min_length=1, max_length=128)
+    new_password: str = Field(min_length=8, max_length=128)
+
+
+class ChangePasswordResponse(BaseModel):
+    """用户自助改密响应（仅返回 ok，不返回新密码明文）。"""
+    ok: bool = True
+
+
+class ResetPasswordRequest(BaseModel):
+    """管理员重置密码请求体（按 email 重置）。"""
+    email: EmailStr
+
+
+class ResetPasswordResponse(BaseModel):
+    """管理员重置密码响应：**一次性返回新明文密码**，调用方需立即保存。
+
+    安全注意：
+    - 这是**只此一次**的机会显示明文密码
+    - 响应到达客户端后，服务器端**不保留**明文密码（只存 bcrypt hash）
+    - 丢失 = 需再次重置
+    """
+    email: str
+    new_password: str  # 8-12 位随机生成的明文密码
+    user_id: int
+
+
 __all__ = [
     "RegisterRequest",
     "LoginRequest",
@@ -63,4 +92,8 @@ __all__ = [
     "UserResponse",
     "TokenResponse",
     "AuthErrorResponse",
+    "ChangePasswordRequest",
+    "ChangePasswordResponse",
+    "ResetPasswordRequest",
+    "ResetPasswordResponse",
 ]

@@ -4,6 +4,8 @@
 """
 from __future__ import annotations
 
+import secrets
+import string
 from dataclasses import dataclass
 
 from ielts_buddy.web.auth.repository import (
@@ -143,6 +145,64 @@ class WebAuthService:
         """便捷：取当前用户。"""
         return self._repo.get_by_id(user_id)
 
+    # ---- 改密 / 重置密码 ----
+
+    def change_password(
+        self, user_id: int, old_password: str, new_password: str,
+    ) -> None:
+        """用户自助改密：需要校验旧密码。
+
+        Raises:
+            AuthError("USER_NOT_FOUND", ...)    用户不存在
+            AuthError("INVALID_CREDENTIALS", ...) 旧密码错
+            AuthError("WEAK_PASSWORD", ...)     新密码太弱
+        """
+        if len(new_password) < 8:
+            raise AuthError("WEAK_PASSWORD", "新密码至少 8 位")
+
+        user = self._repo.get_by_id(user_id)
+        if user is None:
+            raise AuthError("USER_NOT_FOUND", "用户不存在")
+
+        if not verify_password(old_password, user.password_hash):
+            # 故意不区分"用户不存在"与"密码错"——统一返回 INVALID_CREDENTIALS
+            raise AuthError("INVALID_CREDENTIALS", "旧密码错误")
+
+        new_hash = hash_password(new_password)
+        ok = self._repo.set_password(user_id, new_hash)
+        if not ok:
+            raise AuthError("USER_NOT_FOUND", "用户不存在")
+
+    def reset_password(self, email: str) -> tuple[WebUser, str]:
+        """管理员重置密码：按 email 找到用户，生成随机明文密码并写入 hash。
+
+        返回 (user, new_plain_password)：
+        - user：被重置的用户
+        - new_plain_password：调用方**必须**立即展示给用户（一次性）
+
+        Raises:
+            AuthError("USER_NOT_FOUND", ...) 邮箱不存在
+            AuthError("INVALID_EMAIL", ...)  邮箱格式错
+        """
+        email_norm = email.strip().lower()
+        if not email_norm or "@" not in email_norm:
+            raise AuthError("INVALID_EMAIL", "邮箱格式无效")
+
+        user = self._repo.get_by_email(email_norm)
+        if user is None:
+            # 与登录保持一致：避免邮箱枚举攻击
+            raise AuthError("INVALID_CREDENTIALS", "邮箱或密码错误")
+
+        # 生成强随机明文密码（10 位：4 字母 + 2 数字 + 4 字母）
+        new_plain = _generate_random_password(length=10)
+        new_hash = hash_password(new_plain)
+        ok = self._repo.set_password(user.id, new_hash)
+        if not ok:
+            raise AuthError("USER_NOT_FOUND", "用户不存在")
+
+        # 把 user 也回一份给调用方（用于响应里打印 email 等）
+        return user, new_plain
+
     # ---- 内部 ----
 
     def _build_login_result(self, user: WebUser) -> LoginResult:
@@ -162,4 +222,28 @@ __all__ = [
     "WebAuthService",
     "AuthError",
     "LoginResult",
+    "_generate_random_password",
 ]
+
+
+def _generate_random_password(length: int = 10) -> str:
+    """生成易记但难猜的随机密码（字母 + 数字，至少 1 个数字）。
+
+    算法：
+    - 取小写字母 + 大写字母 + 数字 组成字符池
+    - 保证至少 1 个数字（避免纯字母字典攻击）
+    - 用 ``secrets.choice`` 保证密码学随机性
+    - 最终密码会被 bcrypt 哈希（72 字节限制内），长度 10 完全够
+    """
+    if length < 8:
+        raise ValueError("length 必须 ≥ 8")
+    alphabet = string.ascii_letters + string.digits
+    while True:
+        # 至少 1 个数字
+        chars = [secrets.choice(string.digits)]  # 保证 1 个数字
+        chars += [secrets.choice(alphabet) for _ in range(length - 1)]
+        secrets.SystemRandom().shuffle(chars)
+        pwd = "".join(chars)
+        # 二次保险：确保生成的密码看起来"够强"
+        if any(c.isdigit() for c in pwd) and any(c.isalpha() for c in pwd):
+            return pwd

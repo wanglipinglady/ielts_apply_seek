@@ -1402,6 +1402,13 @@ class SQLiteRepositoryContainer:
         # (FastAPI 同步路由在线程池中执行，与 lifespan 所在线程不同)
         self._conn = sqlite3.connect(str(db_path), check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
+        # WAL 模式允许多读一写并发，避免同进程内"短事务被前一个长事务锁住"
+        # 报 "attempt to write a readonly database" 的误报。
+        # 在 in-memory db（"::memory::"）上 WAL 不会生效，try 即可。
+        try:
+            self._conn.execute("PRAGMA journal_mode=WAL")
+        except sqlite3.DatabaseError:
+            pass
         # 1) 先做迁移：旧表补齐 user_id / source / task_type 等列
         #    必须在 CREATE INDEX 之前，否则旧表会缺列导致索引创建失败
         _migrate_legacy_schema(self._conn)

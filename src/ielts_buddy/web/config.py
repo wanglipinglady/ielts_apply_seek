@@ -62,6 +62,32 @@ REFRESH_TOKEN_TTL_SECONDS: Final[int] = int(
 )
 
 
+def _resolve_admin_reset_token() -> str:
+    """解析 admin reset 接口的预共享 token。
+
+    - dev 环境：未设置时使用占位 ``dev-admin-token``，并 warn（方便本地开发）
+    - prod 环境：未设置时抛 RuntimeError（拒绝启动不安全的服务）
+    """
+    secret = os.environ.get("IELTS_BUDDY_ADMIN_RESET_TOKEN", "").strip()
+    if secret:
+        return secret
+    if os.environ.get("IELTS_BUDDY_ENV", "dev") == "prod":
+        raise RuntimeError(
+            "生产环境必须设置 IELTS_BUDDY_ADMIN_RESET_TOKEN "
+            "（admin 重置密码接口的预共享密钥）"
+        )
+    fallback = "dev-admin-token"
+    warnings.warn(
+        "ADMIN_RESET_TOKEN 未设置，dev 环境使用占位 "
+        f"{fallback!r}；生产环境必须设置独立长密钥。",
+        stacklevel=2,
+    )
+    return fallback
+
+
+ADMIN_RESET_TOKEN: Final[str] = _resolve_admin_reset_token()
+
+
 # ===== Cookie =====
 
 REFRESH_COOKIE_NAME: Final[str] = os.environ.get(
@@ -131,6 +157,7 @@ __all__ = [
     "JWT_ALGORITHM",
     "ACCESS_TOKEN_TTL_SECONDS",
     "REFRESH_TOKEN_TTL_SECONDS",
+    "ADMIN_RESET_TOKEN",
     "REFRESH_COOKIE_NAME",
     "COOKIE_SECURE",
     "COOKIE_SAMESITE",
