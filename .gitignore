@@ -1,4 +1,45 @@
+# ===== Python =====
 __pycache__/
 *.pyc
+*.pyo
 *.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# ===== 虚拟环境（绝对不要提交！4700+ 文件 + 50MB+）=====
+.venv/
+venv/
+env/
+ENV/
+.python-version
+
+# ===== 敏感配置（绝对不要提交！含 JWT_SECRET 等）=====
+.env
+.env.*
+!.env.example
+
+# ===== 数据文件（数据库、缓存、词库）=====
+*.db
+*.sqlite
+*.sqlite3
+data/
 .ib/
+
+# ===== 日志 / 临时输出 =====
+*.log
+logs/
+*.tmp
+.cache/
+
+# ===== IDE / OS =====
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# ===== 项目特定：避免提交数据库、覆盖率报告 =====
+coverage.xml
+.coverage
