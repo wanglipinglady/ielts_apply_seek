@@ -9,7 +9,8 @@ from fastapi.templating import Jinja2Templates
 
 from ielts_buddy.web.auth.deps import get_current_user_optional
 from ielts_buddy.web.auth.repository import WebUser
-from ielts_buddy.web.services import get_stats_service, WebStatsServiceWrapper
+from ielts_buddy.web.services import get_stats_service
+from ielts_buddy.web.stats_service import WebStatsService
 from ielts_buddy.web.stats_schemas import (
     BandProgressItem,
     DailyTrendItem,
@@ -25,7 +26,7 @@ def _get_templates(request: Request) -> Jinja2Templates:
     return request.app.state.templates
 
 
-def _bind_user(svc: WebStatsServiceWrapper, user: WebUser) -> WebStatsServiceWrapper:
+def _bind_user(svc: WebStatsService, user: WebUser) -> WebStatsService:
     """拿到可选 user 后，把 user_id 绑到 service 上。"""
     svc._user_id = int(user.id)  # type: ignore[attr-defined]
     return svc
@@ -35,7 +36,7 @@ def _bind_user(svc: WebStatsServiceWrapper, user: WebUser) -> WebStatsServiceWra
 def page_dashboard(
     request: Request,
     user: Annotated[Optional[WebUser], Depends(get_current_user_optional)],
-    svc: Annotated[WebStatsServiceWrapper, Depends(get_stats_service)],
+    svc: Annotated[WebStatsService, Depends(get_stats_service)],
 ) -> HTMLResponse:
     """Dashboard 页：欢迎语 + 摘要卡片。"""
     if user is None:
@@ -59,7 +60,7 @@ def page_dashboard(
 def page_stats(
     request: Request,
     user: Annotated[Optional[WebUser], Depends(get_current_user_optional)],
-    svc: Annotated[WebStatsServiceWrapper, Depends(get_stats_service)],
+    svc: Annotated[WebStatsService, Depends(get_stats_service)],
 ) -> HTMLResponse:
     """Stats 页：summary + level + band + trend 全量。"""
     if user is None:
