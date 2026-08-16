@@ -192,11 +192,23 @@ def create_sqlite_web_user_repository(
 ) -> SQLiteWebUserRepository:
     """便捷构造：传入 ``":memory:"``（默认）用于测试，传入文件路径用于本地开发。
 
-    注：连接所有权归仓储。FastAPI 同步端点会在 threadpool 跑，sqlite3 默认
-    不允许跨线程，所以这里关掉 check_same_thread。
+    注：
+    1. 连接所有权归仓储。FastAPI 同步端点会在 threadpool 跑，sqlite3 默认
+       不允许跨线程，所以这里关掉 check_same_thread。
+    2. 启用 WAL 模式 + busy_timeout：允许多个 web 进程同时读、单写者写入，
+       避免数据库锁导致的 500 Internal Server Error（IDE 自动启动 8000 端口
+       的 web 和用户手动启动 8765 端口的 web 共存场景）。
     """
-    conn = sqlite3.connect(db_path, check_same_thread=False)
+    conn = sqlite3.connect(db_path, check_same_thread=False, timeout=10.0)
     conn.row_factory = sqlite3.Row
+    # WAL 模式 + busy_timeout：让多进程并发时不会直接 lock failed
+    try:
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=10000")
+        conn.execute("PRAGMA synchronous=NORMAL")
+    except sqlite3.Error:
+        # :memory: 模式或权限问题都不影响主流程
+        pass
     return SQLiteWebUserRepository(conn)
 
 
