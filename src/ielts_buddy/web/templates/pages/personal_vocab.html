@@ -292,6 +292,28 @@ function closeAddWordModal() {
     document.getElementById('fallback-fields').hidden = true;
 }
 
+// Toast 通知（非阻塞，自动消失）
+function showToast(message, type = 'info', duration = 2400) {
+    // 移除旧的 toast（避免堆叠）
+    const old = document.getElementById('app-toast');
+    if (old) old.remove();
+
+    const toast = document.createElement('div');
+    toast.id = 'app-toast';
+    toast.className = `toast ${type}`;
+    toast.textContent = message;
+    document.body.appendChild(toast);
+
+    // 强制 reflow 后加 show 类，触发淡入
+    void toast.offsetWidth;
+    toast.classList.add('show');
+
+    setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 300);
+    }, duration);
+}
+
 // Phase 1 改造：输入单词时实时查词库，决定显示预览还是 fallback
 let autocompleteTimer = null;
 async function onWordInput() {
@@ -316,6 +338,15 @@ async function onWordInput() {
                 document.getElementById('autocomplete-preview').hidden = true;
                 document.getElementById('fallback-fields').hidden = false;
                 document.getElementById('new-meaning').required = true;
+                // 自动聚焦 + 平滑滚动到释义输入框（让用户看到要手填的字段）
+                const m = document.getElementById('new-meaning');
+                m.focus();
+                m.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                // 视觉提示：短暂抖动 fallback 卡片
+                const fb = document.getElementById('fallback-fields');
+                fb.classList.remove('shake');
+                void fb.offsetWidth; // 强制 reflow 重启动画
+                fb.classList.add('shake');
             }
         } catch (err) {
             console.error('查询词库失败', err);
@@ -357,6 +388,13 @@ async function submitAddWord(event) {
         if (formData.get('band')) data.band = parseInt(formData.get('band'));
     }
 
+    // 按钮进入 loading 状态（避免重复点击 + 让用户看到正在提交）
+    const btn = form.querySelector('button[type="submit"]');
+    const originalText = btn.textContent;
+    btn.disabled = true;
+    btn.classList.add('loading');
+    btn.textContent = '提交中';
+
     try {
         const response = await fetch('/api/personal/words', {
             method: 'POST',
@@ -366,17 +404,21 @@ async function submitAddWord(event) {
 
         if (response.ok) {
             const body = await response.json();
-            const tag = body.autocompleted ? '（自动补全）' : '（手填）';
-            console.log(`✓ ${body.word} ${tag}`);
+            const tag = body.autocompleted ? '自动补全' : '手填';
             closeAddWordModal();
             loadWords();
             updateWordCount();
+            showToast(`✓ 已加入「${body.word}」（${tag}）`, 'success');
         } else {
             const error = await response.json();
-            alert('添加失败: ' + (error.detail || '未知错误'));
+            showToast('添加失败: ' + (error.detail || '未知错误'), 'error');
         }
     } catch (error) {
-        alert('添加失败: ' + error.message);
+        showToast('添加失败: ' + error.message, 'error');
+    } finally {
+        btn.disabled = false;
+        btn.classList.remove('loading');
+        btn.textContent = originalText;
     }
 }
 
@@ -728,6 +770,26 @@ loadWords();
     border-radius: 8px;
     font-size: 14px;
     cursor: pointer;
+    min-width: 110px;
+    transition: background 0.2s;
+}
+.btn-primary:disabled {
+    background: var(--text-muted);
+    cursor: not-allowed;
+}
+.btn-primary.loading::after {
+    content: '';
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    margin-left: 8px;
+    border: 2px solid #fff;
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+}
+@keyframes spin {
+    to { transform: rotate(360deg); }
 }
 
 .btn-secondary {
@@ -831,6 +893,43 @@ loadWords();
     margin-bottom: 8px;
     font-weight: 500;
 }
+
+/* Fallback 区域出现的瞬间抖动，让用户注意到 */
+@keyframes fallback-shake {
+    0%, 100% { transform: translateX(0); }
+    20% { transform: translateX(-6px); }
+    40% { transform: translateX(6px); }
+    60% { transform: translateX(-4px); }
+    80% { transform: translateX(4px); }
+}
+.fallback-fields.shake {
+    animation: fallback-shake 0.4s ease-in-out;
+}
+
+/* === Toast 通知 === */
+.toast {
+    position: fixed;
+    top: 24px;
+    left: 50%;
+    transform: translateX(-50%) translateY(-20px);
+    padding: 12px 20px;
+    border-radius: 8px;
+    font-size: 14px;
+    color: white;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    z-index: 2000;
+    opacity: 0;
+    transition: opacity 0.25s, transform 0.25s;
+    pointer-events: none;
+    max-width: 90vw;
+}
+.toast.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+}
+.toast.success { background: #10b981; }
+.toast.error   { background: #ef4444; }
+.toast.info    { background: #3b82f6; }
 
 .pagination {
     display: flex;
