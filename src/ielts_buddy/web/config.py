@@ -150,6 +150,26 @@ CORS_ORIGINS: Final[tuple[str, ...]] = tuple(
 ) or ("http://127.0.0.1:8000", "http://localhost:8000")
 
 
+# ===== LLM (联网查词 / 文章翻译共用) =====
+
+LLM_ENABLED: Final[bool] = bool(
+    os.environ.get("IELTS_BUDDY_LLM_API_KEY", "").strip()
+    or os.environ.get("IELTS_BUDDY_LLM_BASE_URL", "").strip()
+)
+LLM_API_KEY: Final[str] = os.environ.get("IELTS_BUDDY_LLM_API_KEY", "").strip()
+LLM_BASE_URL: Final[str] = os.environ.get(
+    "IELTS_BUDDY_LLM_BASE_URL", "https://api.minimaxi.com/v1"
+)
+LLM_MODEL: Final[str] = os.environ.get(
+    "IELTS_BUDDY_LLM_MODEL", "MiniMax-M2.7-highspeed"
+)
+LLM_TIMEOUT_SECONDS: Final[float] = float(
+    os.environ.get("IELTS_BUDDY_LLM_TIMEOUT", "30")
+)
+# dry-run 模式：未设置 API key 时，返回 mock 数据，让前端能正常显示
+LLM_DRY_RUN: Final[bool] = not bool(LLM_API_KEY)
+
+
 __all__ = [
     "WEB_HOST",
     "WEB_PORT",

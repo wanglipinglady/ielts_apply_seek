@@ -35,6 +35,7 @@ from ielts_buddy.web.routers import stats as stats_routes
 from ielts_buddy.web.routers import study as study_routes
 from ielts_buddy.web.routers import quiz as quiz_routes
 from ielts_buddy.web.routers import browse as browse_routes
+from ielts_buddy.web.routers import lookup as lookup_routes
 from ielts_buddy.web.routers import personal as personal_routes
 from ielts_buddy.web.routers import exam as exam_routes
 from ielts_buddy.web.routers import grade as grade_routes
@@ -236,6 +237,7 @@ def create_app() -> FastAPI:
     # 阶段 2：词库浏览
     app.include_router(browse_routes.router)
     app.include_router(browse_routes.api_router)
+    app.include_router(lookup_routes.api_router)
 
     # 阶段 3：个人词库
     app.include_router(personal_routes.router)

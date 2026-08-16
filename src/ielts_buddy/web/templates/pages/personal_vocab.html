@@ -8,9 +8,46 @@
   <div class="action-bar">
     <h2>个人词库 <span id="word-count" class="word-count">({{ word_count }} 个)</span></h2>
     <div class="action-buttons">
-      <button type="button" class="btn-primary" onclick="showAddWordModal()">+ 添加单词</button>
       <button type="button" class="btn-secondary" onclick="showImportModal()">批量导入</button>
       <button type="button" class="btn-secondary" onclick="exportWords()">导出</button>
+    </div>
+  </div>
+
+  {# === 流式输入面板（重构：代替原模态弹窗） === #}
+  <div class="quick-add-panel">
+    <div class="quick-add-row">
+      <label for="quick-word" class="quick-label">单词</label>
+      <input type="text"
+             id="quick-word"
+             class="quick-word-input"
+             placeholder="输入单词后回车（焦点始终停留在此输入框）"
+             autocomplete="off"
+             spellcheck="false"
+             onkeydown="onQuickWordKey(event)">
+      <span id="quick-status" class="quick-status"></span>
+    </div>
+
+    <div id="quick-result" class="quick-result" hidden>
+      <div class="quick-row">
+        <label>音标</label>
+        <input type="text" id="quick-phonetic" class="quick-editable" placeholder="自动补全">
+      </div>
+      <div class="quick-row">
+        <label>释义</label>
+        <input type="text" id="quick-meaning" class="quick-editable" placeholder="自动补全">
+      </div>
+      <div class="quick-row quick-row-narrow">
+        <label>词性</label>
+        <input type="text" id="quick-pos" class="quick-editable narrow">
+        <label class="quick-label-band">Band</label>
+        <input type="number" id="quick-band" class="quick-editable narrow" min="5" max="9">
+        <label class="quick-label-band">备注</label>
+        <input type="text" id="quick-note" class="quick-editable" placeholder="可选">
+      </div>
+      <div class="quick-actions">
+        <button type="button" class="btn-secondary" onclick="quickSkip()">跳过</button>
+        <button type="button" class="btn-primary" id="quick-confirm" onclick="quickConfirm()">确认加入</button>
+      </div>
     </div>
   </div>
 
@@ -57,78 +94,7 @@
     </div>
   </div>
 
-  {# === 添加单词弹窗（Phase 1 改造：自动补全） === #}
-  <div id="add-word-modal" class="modal" hidden>
-    <div class="modal-content">
-      <div class="modal-header">
-        <h3>添加单词</h3>
-        <button type="button" class="close-btn" onclick="closeAddWordModal()">×</button>
-      </div>
-      <form id="add-word-form" onsubmit="submitAddWord(event)">
-        <div class="form-group">
-          <label for="new-word">单词 *</label>
-          <input type="text" id="new-word" name="word" required autofocus
-                 oninput="onWordInput()">
-        </div>
-        <div class="form-group">
-          <label for="new-note">笔记（可选）</label>
-          <textarea id="new-note" name="note" rows="2" placeholder="自己的记忆要点"></textarea>
-        </div>
-
-        {# === 自动补全预览卡片（默认隐藏，输入单词后查词库展示） === #}
-        <div id="autocomplete-preview" class="autocomplete-preview" hidden>
-          <div class="preview-header">
-            <span class="preview-title">📖 自动补全结果</span>
-            <span id="autocomplete-source" class="preview-source"></span>
-          </div>
-          <div id="autocomplete-body" class="preview-body">
-            <div class="preview-row">
-              <span class="preview-word" id="preview-word"></span>
-              <span class="preview-phonetic" id="preview-phonetic"></span>
-              <span class="preview-pos" id="preview-pos"></span>
-              <span class="preview-band" id="preview-band"></span>
-            </div>
-            <div class="preview-meaning" id="preview-meaning"></div>
-            <div class="preview-example" id="preview-example" hidden></div>
-          </div>
-        </div>
-
-        {# === fallback 区域：词库查不到时显示 === #}
-        <div id="fallback-fields" class="fallback-fields" hidden>
-          <div class="fallback-hint">⚠️ 词库未收录此词，请手动补充：</div>
-          <div class="form-group">
-            <label for="new-meaning">释义 *</label>
-            <input type="text" id="new-meaning" name="meaning">
-          </div>
-          <div class="form-row">
-            <div class="form-group">
-              <label for="new-phonetic">音标</label>
-              <input type="text" id="new-phonetic" name="phonetic">
-            </div>
-            <div class="form-group">
-              <label for="new-pos">词性</label>
-              <input type="text" id="new-pos" name="pos">
-            </div>
-            <div class="form-group">
-              <label for="new-band">Band</label>
-              <select id="new-band" name="band">
-                <option value="5">5</option>
-                <option value="6">6</option>
-                <option value="7" selected>7</option>
-                <option value="8">8</option>
-                <option value="9">9</option>
-              </select>
-            </div>
-          </div>
-        </div>
-
-        <div class="form-actions">
-          <button type="button" class="btn-secondary" onclick="closeAddWordModal()">取消</button>
-          <button type="submit" class="btn-primary">确认加入</button>
-        </div>
-      </form>
-    </div>
-  </div>
+  {# === 添加单词弹窗已移除，由头部流式输入面板代替 === #}
 
   {# === 编辑单词弹窗 === #}
   <div id="edit-word-modal" class="modal" hidden>
@@ -280,21 +246,179 @@ document.getElementById('next-page').addEventListener('click', () => {
     }
 });
 
-// 添加单词弹窗
-function showAddWordModal() {
-    document.getElementById('add-word-modal').hidden = false;
-    document.getElementById('add-word-form').reset();
+// =============================================================
+// 流式输入面板（Phase 2 重构）
+// =============================================================
+
+// 当前正在编辑/查看的单词上下文
+let currentQuickWord = null;          // { word, source, confidence, ... }
+let quickLookupAbort = null;           // AbortController 用于取消进行中的 lookup
+
+function setQuickStatus(text, type = 'info') {
+    const el = document.getElementById('quick-status');
+    el.textContent = text;
+    el.className = 'quick-status quick-status-' + type;
 }
 
-function closeAddWordModal() {
-    document.getElementById('add-word-modal').hidden = true;
-    document.getElementById('autocomplete-preview').hidden = true;
-    document.getElementById('fallback-fields').hidden = true;
+function clearQuickResult() {
+    document.getElementById('quick-result').hidden = true;
+    document.getElementById('quick-phonetic').value = '';
+    document.getElementById('quick-meaning').value = '';
+    document.getElementById('quick-pos').value = '';
+    document.getElementById('quick-band').value = '';
+    document.getElementById('quick-note').value = '';
+    currentQuickWord = null;
+}
+
+async function onQuickWordKey(event) {
+    // Enter → 查词
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    const word = document.getElementById('quick-word').value.trim();
+    if (!word) return;
+
+    // 取消上一次进行中的查询
+    if (quickLookupAbort) quickLookupAbort.abort();
+    quickLookupAbort = new AbortController();
+
+    setQuickStatus('查询中…', 'info');
+    clearQuickResult();
+
+    try {
+        const r = await fetch(
+            `/api/lookup/word?word=${encodeURIComponent(word)}`,
+            { signal: quickLookupAbort.signal, headers: { 'Accept': 'application/json' } }
+        );
+        if (!r.ok) {
+            setQuickStatus(`查询失败 (HTTP ${r.status})`, 'error');
+            return;
+        }
+        const data = await r.json();
+        applyLookupResult(word, data);
+    } catch (err) {
+        if (err.name === 'AbortError') return;
+        console.error('lookup failed', err);
+        setQuickStatus('查询失败: ' + err.message, 'error');
+    }
+}
+
+function applyLookupResult(inputWord, data) {
+    // data 由 /api/lookup/word 返回
+    currentQuickWord = {
+        word: data.word || inputWord,
+        source: data.source,
+        confidence: data.confidence,
+    };
+
+    // 自动填表单（用户可编辑）
+    document.getElementById('quick-phonetic').value = data.phonetic || '';
+    document.getElementById('quick-meaning').value =
+        data.meaning_cn || data.meaning_en || '';
+    document.getElementById('quick-pos').value = data.pos || '';
+    document.getElementById('quick-band').value = data.band || '';
+
+    // 显示/隐藏结果区
+    document.getElementById('quick-result').hidden = false;
+
+    // 状态行 + 来源标识
+    const sourceLabel = {
+        builtin:       '✓ 词库已有（精选 4770 词）',
+        dictionary_api: '✓ 联网词典',
+        llm:           '✓ LLM 补全',
+        mock:          '⚠️ 离线 mock（未配置 API key）',
+        none:          '✗ 未找到',
+    }[data.source] || data.source;
+
+    const confLabel = data.confidence === 'high' ? '高精度'
+                    : data.confidence === 'medium' ? '中精度'
+                    : '低精度';
+    setQuickStatus(`${sourceLabel} · ${confLabel}`, data.source === 'none' ? 'warn' : 'success');
+
+    // 例句填到 note（如果有），用户可改
+    if (data.example) {
+        const note = data.example_cn
+            ? `${data.example}\n${data.example_cn}`
+            : data.example;
+        document.getElementById('quick-note').value = note;
+    }
+}
+
+async function quickConfirm() {
+    if (!currentQuickWord) {
+        setQuickStatus('请先输入单词并回车查询', 'warn');
+        return;
+    }
+    const word = currentQuickWord.word;
+    const phonetic = document.getElementById('quick-phonetic').value.trim();
+    const meaning = document.getElementById('quick-meaning').value.trim();
+    const pos = document.getElementById('quick-pos').value.trim();
+    const bandRaw = document.getElementById('quick-band').value;
+    const note = document.getElementById('quick-note').value.trim();
+
+    // 校验：必须有 meaning
+    if (!meaning) {
+        setQuickStatus('请填写释义后再加入', 'warn');
+        document.getElementById('quick-meaning').focus();
+        return;
+    }
+
+    const btn = document.getElementById('quick-confirm');
+    const originalText = btn.textContent;
+    btn.disabled = true;
+    btn.classList.add('loading');
+    btn.textContent = '加入中';
+
+    try {
+        const data = { word: word, meaning: meaning };
+        if (phonetic) data.phonetic = phonetic;
+        if (pos) data.pos = pos;
+        if (bandRaw) data.band = parseInt(bandRaw);
+        if (note) data.note = note;
+
+        const r = await fetch('/api/personal/words', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data),
+        });
+        if (r.ok) {
+            const body = await r.json();
+            const tag = body.autocompleted ? '自动补全' : '手填';
+            showToast(`✓ 已加入「${body.word}」（${tag}）`, 'success');
+            // 清空输入框 + 结果区 + 焦点回到 word 输入框
+            document.getElementById('quick-word').value = '';
+            clearQuickResult();
+            setQuickStatus('', 'info');
+            document.getElementById('quick-word').focus();
+            loadWords();
+            updateWordCount();
+        } else {
+            const error = await r.json();
+            const msg = error.detail || '未知错误';
+            if (r.status === 409) {
+                setQuickStatus(`「${word}」已存在于个人词库`, 'warn');
+                showToast('该单词已在词库中', 'info');
+            } else {
+                showToast('添加失败: ' + msg, 'error');
+            }
+        }
+    } catch (error) {
+        showToast('添加失败: ' + error.message, 'error');
+    } finally {
+        btn.disabled = false;
+        btn.classList.remove('loading');
+        btn.textContent = originalText;
+    }
+}
+
+function quickSkip() {
+    document.getElementById('quick-word').value = '';
+    clearQuickResult();
+    setQuickStatus('', 'info');
+    document.getElementById('quick-word').focus();
 }
 
 // Toast 通知（非阻塞，自动消失）
 function showToast(message, type = 'info', duration = 2400) {
-    // 移除旧的 toast（避免堆叠）
     const old = document.getElementById('app-toast');
     if (old) old.remove();
 
@@ -304,7 +428,6 @@ function showToast(message, type = 'info', duration = 2400) {
     toast.textContent = message;
     document.body.appendChild(toast);
 
-    // 强制 reflow 后加 show 类，触发淡入
     void toast.offsetWidth;
     toast.classList.add('show');
 
@@ -312,114 +435,6 @@ function showToast(message, type = 'info', duration = 2400) {
         toast.classList.remove('show');
         setTimeout(() => toast.remove(), 300);
     }, duration);
-}
-
-// Phase 1 改造：输入单词时实时查词库，决定显示预览还是 fallback
-let autocompleteTimer = null;
-async function onWordInput() {
-    const word = document.getElementById('new-word').value.trim();
-    clearTimeout(autocompleteTimer);
-    if (!word) {
-        document.getElementById('autocomplete-preview').hidden = true;
-        document.getElementById('fallback-fields').hidden = true;
-        return;
-    }
-    // 300ms debounce
-    autocompleteTimer = setTimeout(async () => {
-        try {
-            const r = await fetch(`/api/vocab/search?q=${encodeURIComponent(word)}`);
-            const data = await r.json();
-            // 精确匹配一个
-            const hit = (data.words || []).find(w => w.word.toLowerCase() === word.toLowerCase());
-            if (hit) {
-                showAutocompletePreview(hit);
-                document.getElementById('fallback-fields').hidden = true;
-            } else {
-                document.getElementById('autocomplete-preview').hidden = true;
-                document.getElementById('fallback-fields').hidden = false;
-                document.getElementById('new-meaning').required = true;
-                // 自动聚焦 + 平滑滚动到释义输入框（让用户看到要手填的字段）
-                const m = document.getElementById('new-meaning');
-                m.focus();
-                m.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                // 视觉提示：短暂抖动 fallback 卡片
-                const fb = document.getElementById('fallback-fields');
-                fb.classList.remove('shake');
-                void fb.offsetWidth; // 强制 reflow 重启动画
-                fb.classList.add('shake');
-            }
-        } catch (err) {
-            console.error('查询词库失败', err);
-        }
-    }, 300);
-}
-
-function showAutocompletePreview(w) {
-    document.getElementById('preview-word').textContent = w.word;
-    document.getElementById('preview-phonetic').textContent = w.phonetic || '';
-    document.getElementById('preview-pos').textContent = w.pos || '';
-    document.getElementById('preview-band').textContent = w.band ? `Band ${w.band}` : '';
-    document.getElementById('preview-band').className = 'preview-band band-tag band-' + (w.band || 5);
-    document.getElementById('preview-meaning').textContent = w.meaning || '';
-    if (w.example) {
-        document.getElementById('preview-example').hidden = false;
-        document.getElementById('preview-example').textContent = '例：' + w.example;
-    } else {
-        document.getElementById('preview-example').hidden = true;
-    }
-    document.getElementById('autocomplete-source').textContent =
-        w.topic ? 'topic: ' + w.topic : '';
-    document.getElementById('autocomplete-preview').hidden = false;
-}
-
-async function submitAddWord(event) {
-    event.preventDefault();
-    const form = event.target;
-    const formData = new FormData(form);
-
-    // 只发 word + note +（fallback 时）手动填的字段
-    const data = { word: formData.get('word').trim() };
-    if (formData.get('note')) data.note = formData.get('note');
-    // fallback 字段（fallback 区域显示时才发）
-    if (!document.getElementById('fallback-fields').hidden) {
-        if (formData.get('meaning')) data.meaning = formData.get('meaning');
-        if (formData.get('phonetic')) data.phonetic = formData.get('phonetic');
-        if (formData.get('pos')) data.pos = formData.get('pos');
-        if (formData.get('band')) data.band = parseInt(formData.get('band'));
-    }
-
-    // 按钮进入 loading 状态（避免重复点击 + 让用户看到正在提交）
-    const btn = form.querySelector('button[type="submit"]');
-    const originalText = btn.textContent;
-    btn.disabled = true;
-    btn.classList.add('loading');
-    btn.textContent = '提交中';
-
-    try {
-        const response = await fetch('/api/personal/words', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(data)
-        });
-
-        if (response.ok) {
-            const body = await response.json();
-            const tag = body.autocompleted ? '自动补全' : '手填';
-            closeAddWordModal();
-            loadWords();
-            updateWordCount();
-            showToast(`✓ 已加入「${body.word}」（${tag}）`, 'success');
-        } else {
-            const error = await response.json();
-            showToast('添加失败: ' + (error.detail || '未知错误'), 'error');
-        }
-    } catch (error) {
-        showToast('添加失败: ' + error.message, 'error');
-    } finally {
-        btn.disabled = false;
-        btn.classList.remove('loading');
-        btn.textContent = originalText;
-    }
 }
 
 // 编辑单词
@@ -532,6 +547,8 @@ function exportWords() {
 
 // 初始化
 loadWords();
+// 流式输入面板：页面加载后自动聚焦到单词输入框
+document.getElementById('quick-word').focus();
 </script>
 
 <style>
@@ -800,6 +817,113 @@ loadWords();
     border-radius: 8px;
     font-size: 14px;
     cursor: pointer;
+}
+
+/* === Phase 2：流式输入面板 === */
+.quick-add-panel {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 16px 20px;
+    margin-bottom: 20px;
+}
+
+.quick-add-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.quick-label {
+    font-weight: 600;
+    color: var(--text-main);
+    font-size: 14px;
+    min-width: 36px;
+}
+
+.quick-word-input {
+    flex: 1;
+    padding: 10px 14px;
+    font-size: 16px;
+    border: 2px solid var(--primary-color);
+    border-radius: 8px;
+    background: var(--bg-primary);
+    color: var(--text-main);
+    outline: none;
+    transition: box-shadow 0.2s, border-color 0.2s;
+}
+.quick-word-input:focus {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.18);
+}
+
+.quick-status {
+    font-size: 13px;
+    padding: 4px 10px;
+    border-radius: 6px;
+    background: var(--bg-primary);
+    color: var(--text-muted);
+    min-width: 120px;
+    text-align: center;
+    transition: background 0.2s, color 0.2s;
+}
+.quick-status-success { background: rgba(16, 185, 129, 0.12); color: #059669; }
+.quick-status-warn    { background: rgba(245, 158, 11, 0.12); color: #d97706; }
+.quick-status-error   { background: rgba(239, 68, 68, 0.12); color: #dc2626; }
+.quick-status-info    { background: rgba(59, 130, 246, 0.12); color: #2563eb; }
+
+.quick-result {
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    animation: slide-down 0.25s ease-out;
+}
+@keyframes slide-down {
+    from { opacity: 0; transform: translateY(-8px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+.quick-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.quick-row label {
+    min-width: 48px;
+    color: var(--text-muted);
+    font-size: 13px;
+}
+.quick-editable {
+    flex: 1;
+    padding: 7px 12px;
+    font-size: 14px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-primary);
+    color: var(--text-main);
+}
+.quick-editable.narrow {
+    flex: 0 0 80px;
+}
+.quick-editable:focus {
+    border-color: var(--primary-color);
+    outline: none;
+}
+.quick-label-band {
+    margin-left: 4px;
+    color: var(--text-muted);
+    font-size: 13px;
+    min-width: auto;
+}
+
+.quick-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+    margin-top: 6px;
 }
 
 /* === Phase 1：自动补全预览卡片 === */

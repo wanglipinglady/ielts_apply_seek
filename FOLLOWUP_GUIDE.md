@@ -283,3 +283,48 @@ api_add_word(word: WordCreate):
 - 双模式（SQLite + MySQL）100% 通过
 - 全量回归 7 个测试套件 100% 通过
 
+
+## Phase 2：个人词库流式输入面板（2026-08-16）
+
+### 改动
+
+新增"流式输入"体验，**替代之前的模态弹窗**。一个输入框 + 一行状态 + 可编辑补全结果区。
+
+### 用户流程
+
+1. 页面加载 → 自动聚焦到单词输入框
+2. 输入单词（焦点不跳）
+3. **回车** → 自动三层查询：内置词库(4770 词) → 词典 API → LLM 兜底
+4. 状态行显示来源（"✓ 词库已有"/"✓ 联网词典"/"✓ LLM 补全"/"⚠️ mock"）
+5. 音标/释义/词性/Band/备注自动填入（**用户可修改**）
+6. 确认加入 → 清空输入框 + 焦点回到单词输入框 + toast 提示
+
+### 三层查词 fallback
+
+```
+内置词库 (vocab_service.get_word)        O(1)，4770 词
+   ↓ 找不到
+free dictionary API (api.dictionaryapi.dev)   英文词典，免费，无需 key
+   ↓ 失败/缺中文
+LLM (openai SDK → MiniMax)              需要 IELTS_BUDDY_LLM_API_KEY
+   ↓ 未配置 / 失败
+mock 数据（dry-run 模式）              占位符，让前端仍能演示
+```
+
+### 配置
+
+```bash
+# .env 或环境变量
+IELTS_BUDDY_LLM_API_KEY=sk-xxx       # LLM API key
+IELTS_BUDDY_LLM_BASE_URL=https://api.minimaxi.com/v1   # OpenAI 兼容
+IELTS_BUDDY_LLM_MODEL=MiniMax-M2.7-highspeed
+```
+
+未设置 `LLM_API_KEY` 时启用 dry-run，返回 mock 数据，前端可正常演示。
+
+### 新增文件
+
+- `src/ielts_buddy/web/llm_service.py` — LLM 服务（lookup_word + translate）
+- `src/ielts_buddy/web/lookup_client.py` — free dictionary API 客户端
+- `src/ielts_buddy/web/routers/lookup.py` — GET /api/lookup/word 三层 fallback
+
