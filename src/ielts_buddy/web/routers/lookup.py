@@ -34,8 +34,8 @@ _dict_client: DictionaryClient | None = None
 def _get_dict_client() -> DictionaryClient:
     global _dict_client
     if _dict_client is None:
-        # 缩短到 4s：避免用户等太久，超时即快速 fallback
-        _dict_client = DictionaryClient(timeout=4.0)
+        # 超时 8s + 重试 1 次：公共服务不稳定，给足时间
+        _dict_client = DictionaryClient(timeout=8.0, max_retries=1)
     return _dict_client
 
 

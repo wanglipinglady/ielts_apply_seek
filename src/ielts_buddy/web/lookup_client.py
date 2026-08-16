@@ -52,36 +52,65 @@ class DictionaryAPIResult:
 
 
 class DictionaryClient:
-    """free dictionary API 客户端。"""
+    """free dictionary API 客户端。
+
+    设计要点：
+    1. **重试机制**：公共服务不稳定（偶发 502/timeout），失败时重试 1 次
+    2. **区分 404 vs 5xx**：404 = 词典没收这个词（终态），5xx/timeout = 网络问题（重试）
+    3. **超时加长到 8s**：公共服务首请求可能较慢
+    """
 
     BASE_URL = "https://api.dictionaryapi.dev/api/v2/entries/en"
 
-    def __init__(self, timeout: float = 8.0):
+    def __init__(self, timeout: float = 8.0, max_retries: int = 1):
         self.timeout = timeout
+        self.max_retries = max_retries
 
     async def lookup(self, word: str) -> Optional[DictionaryAPIResult]:
-        """查询单词；返回 None 表示没找到 / 网络错误。"""
+        """查询单词；返回 None 表示没找到 / 网络错误（重试耗尽后）。"""
         word = word.strip().lower()
         if not word:
             return None
         url = f"{self.BASE_URL}/{word}"
-        try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                resp = await client.get(url)
+
+        # 重试循环：max_retries=1 意味着最多请求 2 次
+        last_err: Optional[str] = None
+        for attempt in range(self.max_retries + 1):
+            try:
+                async with httpx.AsyncClient(timeout=self.timeout) as client:
+                    resp = await client.get(url)
+
+                # 404 是终态：词典没收这个词，不需要重试
                 if resp.status_code == 404:
                     return None
-                if resp.status_code != 200:
-                    logger.warning(f"词典 API 状态 {resp.status_code}: {word}")
-                    return None
-                data = resp.json()
-        except (httpx.HTTPError, httpx.TimeoutException) as e:
-            logger.warning(f"词典 API 网络错误: {e}")
-            return None
-        except Exception as e:
-            logger.warning(f"词典 API 解析错误: {e}")
-            return None
 
-        return self._parse(word, data)
+                # 200 OK：解析
+                if resp.status_code == 200:
+                    return self._parse(word, resp.json())
+
+                # 5xx / 其他错误：记录 + 重试
+                last_err = f"HTTP {resp.status_code}"
+                logger.warning(
+                    f"词典 API {last_err} (尝试 {attempt + 1}/{self.max_retries + 1}): {word}"
+                )
+                if attempt < self.max_retries:
+                    continue  # 重试
+                return None
+
+            except (httpx.HTTPError, httpx.TimeoutException) as e:
+                last_err = f"{type(e).__name__}: {e}"
+                logger.warning(
+                    f"词典 API 网络错误 (尝试 {attempt + 1}/{self.max_retries + 1}): {last_err}"
+                )
+                if attempt < self.max_retries:
+                    continue  # 重试
+                return None
+            except Exception as e:
+                # JSON 解析错误：重试也无用，直接返回
+                logger.warning(f"词典 API 解析错误: {e}")
+                return None
+
+        return None
 
     @staticmethod
     def _parse(word: str, data: list) -> Optional[DictionaryAPIResult]:
