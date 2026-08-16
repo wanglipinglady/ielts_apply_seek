@@ -323,9 +323,9 @@ function applyLookupResult(inputWord, data) {
     // 状态行 + 来源标识
     const sourceLabel = {
         builtin:       '✓ 词库已有（精选 4770 词）',
-        dictionary_api: '✓ 联网词典',
-        llm:           '✓ LLM 补全',
-        mock:          '⚠️ 离线 mock（未配置 API key）',
+        dictionary_api: '✓ 联网词典（英文释义，可手动改中文）',
+        llm:           '✓ LLM 补全（中文释义）',
+        mock:          '⚠️ 离线 mock（请设置 IELTS_BUDDY_LLM_API_KEY 启用 LLM）',
         none:          '✗ 未找到',
     }[data.source] || data.source;
 

@@ -5,6 +5,12 @@ GET /api/lookup/word?word=xxx
 - 第二层调用 free dictionary API（无 key，免费，约 1s）
 - 第三层调用 LLM（需 API key，最准确，约 3-10s）
 - LLM 未配置时返回 mock 数据（dry-run）
+
+设计要点：
+1. 词典 API 命中后**不再强行等 LLM 翻译**：用英文释义直接返回，
+   confidence 标记为 medium；中文用户能在前端手动翻译
+2. LLM 第三层只用于"词典 API 也查不到"的兜底
+3. dry-run 模式下 LLM 返回 mock 占位符，让前端可演示
 """
 from __future__ import annotations
 
@@ -28,7 +34,8 @@ _dict_client: DictionaryClient | None = None
 def _get_dict_client() -> DictionaryClient:
     global _dict_client
     if _dict_client is None:
-        _dict_client = DictionaryClient(timeout=8.0)
+        # 缩短到 4s：避免用户等太久，超时即快速 fallback
+        _dict_client = DictionaryClient(timeout=4.0)
     return _dict_client
 
 
@@ -73,78 +80,47 @@ async def api_lookup_word(
             "confidence": "high",
         }
 
-    # ========== 第二层：free dictionary API（异步）==========
+    # ========== 第二层：free dictionary API（异步，4s 超时）==========
     dict_client = _get_dict_client()
+    dict_result = None
     try:
         dict_result = await dict_client.lookup(word_clean)
     except Exception as e:
-        dict_result = None
         from ielts_buddy.web.llm_service import logger as _logger
         _logger.warning(f"Dictionary API lookup failed: {e}")
 
     if dict_result and not dict_result.is_empty():
-        # 词典 API 给了英文释义 + 例句，但中文需要 LLM 翻译
-        llm = get_llm_service()
-        meaning_cn = ""
-        example_cn = ""
-        try:
-            if llm.is_available():
-                # 让 LLM 翻译英文释义到中文
-                from ielts_buddy.web.llm_service import LLMService
-                # 复用 LLM 的 translate 方法
-                if dict_result.meaning_en:
-                    trans = llm.translate(dict_result.meaning_en)
-                    meaning_cn = trans.translation
-                if dict_result.example:
-                    trans = llm.translate(dict_result.example)
-                    example_cn = trans.translation
-        except Exception:
-            pass
+        # 词典 API 命中 → 直接返回英文释义（中文用户可手动修改）
+        # 不再阻塞等 LLM 翻译
         return {
             "word": word_clean,
             "phonetic": dict_result.phonetic,
             "pos": dict_result.pos,
-            "meaning_cn": meaning_cn,    # LLM 翻译（可能空）
+            "meaning_cn": "",                  # 空：让用户填或编辑
             "meaning_en": dict_result.meaning_en,
             "example": dict_result.example,
-            "example_cn": example_cn,
+            "example_cn": "",
             "band": None,
             "topic": "",
             "source": "dictionary_api",
-            "confidence": "high" if meaning_cn else "medium",
+            "confidence": "high",
         }
 
     # ========== 第三层：LLM 兜底（slow but accurate）==========
     llm = get_llm_service()
-    if llm.is_available() or llm.dry_run:
-        llm_result = llm.lookup_word(word_clean)
-        return {
-            "word": llm_result.word,
-            "phonetic": llm_result.phonetic,
-            "pos": llm_result.pos,
-            "meaning_cn": llm_result.meaning_cn,
-            "meaning_en": llm_result.meaning_en,
-            "example": llm_result.example,
-            "example_cn": llm_result.example_cn,
-            "band": None,
-            "topic": "",
-            "source": llm_result.source,  # llm / mock / error
-            "confidence": llm_result.confidence,
-        }
-
-    # ========== 全部失败 ==========
+    llm_result = llm.lookup_word(word_clean)
     return {
-        "word": word_clean,
-        "phonetic": "",
-        "pos": "",
-        "meaning_cn": "",
-        "meaning_en": "",
-        "example": "",
-        "example_cn": "",
+        "word": llm_result.word,
+        "phonetic": llm_result.phonetic,
+        "pos": llm_result.pos,
+        "meaning_cn": llm_result.meaning_cn,
+        "meaning_en": llm_result.meaning_en,
+        "example": llm_result.example,
+        "example_cn": llm_result.example_cn,
         "band": None,
         "topic": "",
-        "source": "none",
-        "confidence": "low",
+        "source": llm_result.source,  # llm / mock / error
+        "confidence": llm_result.confidence,
     }
 
 
