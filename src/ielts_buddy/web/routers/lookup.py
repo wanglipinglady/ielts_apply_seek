@@ -1,20 +1,21 @@
-"""联网查词路由：内置词库 → 词典 API → LLM 三层 fallback。
+"""联网查词路由：内置词库 → 词典 API + MyMemory 翻译 → LLM 三层 fallback。
 
 GET /api/lookup/word?word=xxx
 - 第一层命中内置词库（4770 词，免费 O(1)）
-- 第二层调用 free dictionary API（无 key，免费，约 1s）
+- 第二层调用 free dictionary API（无 key，免费，约 1s）+ MyMemory 翻译英中（无 key，免费，并行）
 - 第三层调用 LLM（需 API key，最准确，约 3-10s）
 - LLM 未配置时返回 mock 数据（dry-run）
 
 设计要点：
-1. 词典 API 命中后**不再强行等 LLM 翻译**：用英文释义直接返回，
-   confidence 标记为 medium；中文用户能在前端手动翻译
-2. LLM 第三层只用于"词典 API 也查不到"的兜底
-3. dry-run 模式下 LLM 返回 mock 占位符，让前端可演示
+1. 词典 API 命中后**并行**调 MyMemory 翻译英文→中文（不阻塞）
+2. MyMemory 翻译失败/低质量（quality<0.5）→ 仍用英文释义，让用户手填
+3. LLM 第三层只在"词典 API 也查不到"时触发
+4. dry-run 模式下 LLM 返回 mock 占位符
 """
 from __future__ import annotations
 
-from typing import Annotated
+import asyncio
+from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, Query
 
@@ -22,21 +23,43 @@ from ielts_buddy.services.vocab_service import VocabService
 from ielts_buddy.web.llm_service import get_llm_service
 from ielts_buddy.web.lookup_client import DictionaryClient
 from ielts_buddy.web.services import get_vocab_service
+from ielts_buddy.web.translation_client import MyMemoryClient
 
 
 api_router = APIRouter(prefix="/api/lookup", tags=["lookup"])
 
 
-# 单例 DictionaryClient
-_dict_client: DictionaryClient | None = None
+# 单例客户端
+_dict_client: Optional[DictionaryClient] = None
+_translate_client: Optional[MyMemoryClient] = None
 
 
 def _get_dict_client() -> DictionaryClient:
     global _dict_client
     if _dict_client is None:
-        # 超时 8s + 重试 1 次：公共服务不稳定，给足时间
         _dict_client = DictionaryClient(timeout=8.0, max_retries=1)
     return _dict_client
+
+
+def _get_translate_client() -> MyMemoryClient:
+    global _translate_client
+    if _translate_client is None:
+        _translate_client = MyMemoryClient(timeout=4.0)
+    return _translate_client
+
+
+async def _translate_to_cn(text: str) -> str:
+    """异步翻译英文到中文；返回空字符串表示失败。"""
+    if not text:
+        return ""
+    client = _get_translate_client()
+    try:
+        result = await client.translate(text)
+        if result and result.is_valid() and result.quality >= 0.5:
+            return result.translated
+    except Exception:
+        pass
+    return ""
 
 
 @api_router.get("/word")
@@ -44,7 +67,7 @@ async def api_lookup_word(
     word: Annotated[str, Query(min_length=1, max_length=100)],
     vocab: Annotated[VocabService, Depends(get_vocab_service)],
 ) -> dict:
-    """联网查单词：内置词库 → 词典 API → LLM 三层 fallback。
+    """联网查单词：内置词库 → 词典 API + MyMemory 翻译 → LLM 三层 fallback。
 
     返回字段：
     - word: 查询的单词
@@ -80,7 +103,7 @@ async def api_lookup_word(
             "confidence": "high",
         }
 
-    # ========== 第二层：free dictionary API（异步，4s 超时）==========
+    # ========== 第二层：词典 API + MyMemory 翻译（并行）==========
     dict_client = _get_dict_client()
     dict_result = None
     try:
@@ -90,20 +113,26 @@ async def api_lookup_word(
         _logger.warning(f"Dictionary API lookup failed: {e}")
 
     if dict_result and not dict_result.is_empty():
-        # 词典 API 命中 → 直接返回英文释义（中文用户可手动修改）
-        # 不再阻塞等 LLM 翻译
+        # 并行翻译英文释义 + 例句 → 中文
+        # MyMemory 失败/低质量时仍返回英文，前端用户可手动修改
+        meaning_cn, example_cn = await asyncio.gather(
+            _translate_to_cn(dict_result.meaning_en or ""),
+            _translate_to_cn(dict_result.example or ""),
+        )
+        # 翻译质量决定 confidence：有中文释义 → high，否则 medium
+        confidence = "high" if meaning_cn else "medium"
         return {
             "word": word_clean,
             "phonetic": dict_result.phonetic,
             "pos": dict_result.pos,
-            "meaning_cn": "",                  # 空：让用户填或编辑
+            "meaning_cn": meaning_cn,           # MyMemory 翻译（可能空）
             "meaning_en": dict_result.meaning_en,
             "example": dict_result.example,
-            "example_cn": "",
+            "example_cn": example_cn,
             "band": None,
             "topic": "",
             "source": "dictionary_api",
-            "confidence": "high",
+            "confidence": confidence,
         }
 
     # ========== 第三层：LLM 兜底（slow but accurate）==========
@@ -119,7 +148,7 @@ async def api_lookup_word(
         "example_cn": llm_result.example_cn,
         "band": None,
         "topic": "",
-        "source": llm_result.source,  # llm / mock / error
+        "source": llm_result.source,
         "confidence": llm_result.confidence,
     }
 
