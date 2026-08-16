@@ -57,7 +57,7 @@
     </div>
   </div>
 
-  {# === 添加单词弹窗 === #}
+  {# === 添加单词弹窗（Phase 1 改造：自动补全） === #}
   <div id="add-word-modal" class="modal" hidden>
     <div class="modal-content">
       <div class="modal-header">
@@ -67,43 +67,64 @@
       <form id="add-word-form" onsubmit="submitAddWord(event)">
         <div class="form-group">
           <label for="new-word">单词 *</label>
-          <input type="text" id="new-word" name="word" required>
+          <input type="text" id="new-word" name="word" required autofocus
+                 oninput="onWordInput()">
         </div>
         <div class="form-group">
-          <label for="new-meaning">释义 *</label>
-          <input type="text" id="new-meaning" name="meaning" required>
+          <label for="new-note">笔记（可选）</label>
+          <textarea id="new-note" name="note" rows="2" placeholder="自己的记忆要点"></textarea>
         </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label for="new-phonetic">音标</label>
-            <input type="text" id="new-phonetic" name="phonetic">
+
+        {# === 自动补全预览卡片（默认隐藏，输入单词后查词库展示） === #}
+        <div id="autocomplete-preview" class="autocomplete-preview" hidden>
+          <div class="preview-header">
+            <span class="preview-title">📖 自动补全结果</span>
+            <span id="autocomplete-source" class="preview-source"></span>
           </div>
-          <div class="form-group">
-            <label for="new-pos">词性</label>
-            <input type="text" id="new-pos" name="pos">
-          </div>
-          <div class="form-group">
-            <label for="new-band">Band</label>
-            <select id="new-band" name="band">
-              <option value="5">5</option>
-              <option value="6">6</option>
-              <option value="7" selected>7</option>
-              <option value="8">8</option>
-              <option value="9">9</option>
-            </select>
+          <div id="autocomplete-body" class="preview-body">
+            <div class="preview-row">
+              <span class="preview-word" id="preview-word"></span>
+              <span class="preview-phonetic" id="preview-phonetic"></span>
+              <span class="preview-pos" id="preview-pos"></span>
+              <span class="preview-band" id="preview-band"></span>
+            </div>
+            <div class="preview-meaning" id="preview-meaning"></div>
+            <div class="preview-example" id="preview-example" hidden></div>
           </div>
         </div>
-        <div class="form-group">
-          <label for="new-example">例句</label>
-          <textarea id="new-example" name="example" rows="2"></textarea>
+
+        {# === fallback 区域：词库查不到时显示 === #}
+        <div id="fallback-fields" class="fallback-fields" hidden>
+          <div class="fallback-hint">⚠️ 词库未收录此词，请手动补充：</div>
+          <div class="form-group">
+            <label for="new-meaning">释义 *</label>
+            <input type="text" id="new-meaning" name="meaning">
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="new-phonetic">音标</label>
+              <input type="text" id="new-phonetic" name="phonetic">
+            </div>
+            <div class="form-group">
+              <label for="new-pos">词性</label>
+              <input type="text" id="new-pos" name="pos">
+            </div>
+            <div class="form-group">
+              <label for="new-band">Band</label>
+              <select id="new-band" name="band">
+                <option value="5">5</option>
+                <option value="6">6</option>
+                <option value="7" selected>7</option>
+                <option value="8">8</option>
+                <option value="9">9</option>
+              </select>
+            </div>
+          </div>
         </div>
-        <div class="form-group">
-          <label for="new-note">笔记</label>
-          <textarea id="new-note" name="note" rows="2"></textarea>
-        </div>
+
         <div class="form-actions">
           <button type="button" class="btn-secondary" onclick="closeAddWordModal()">取消</button>
-          <button type="submit" class="btn-primary">添加</button>
+          <button type="submit" class="btn-primary">确认加入</button>
         </div>
       </form>
     </div>
@@ -267,6 +288,57 @@ function showAddWordModal() {
 
 function closeAddWordModal() {
     document.getElementById('add-word-modal').hidden = true;
+    document.getElementById('autocomplete-preview').hidden = true;
+    document.getElementById('fallback-fields').hidden = true;
+}
+
+// Phase 1 改造：输入单词时实时查词库，决定显示预览还是 fallback
+let autocompleteTimer = null;
+async function onWordInput() {
+    const word = document.getElementById('new-word').value.trim();
+    clearTimeout(autocompleteTimer);
+    if (!word) {
+        document.getElementById('autocomplete-preview').hidden = true;
+        document.getElementById('fallback-fields').hidden = true;
+        return;
+    }
+    // 300ms debounce
+    autocompleteTimer = setTimeout(async () => {
+        try {
+            const r = await fetch(`/api/vocab/search?q=${encodeURIComponent(word)}`);
+            const data = await r.json();
+            // 精确匹配一个
+            const hit = (data.words || []).find(w => w.word.toLowerCase() === word.toLowerCase());
+            if (hit) {
+                showAutocompletePreview(hit);
+                document.getElementById('fallback-fields').hidden = true;
+            } else {
+                document.getElementById('autocomplete-preview').hidden = true;
+                document.getElementById('fallback-fields').hidden = false;
+                document.getElementById('new-meaning').required = true;
+            }
+        } catch (err) {
+            console.error('查询词库失败', err);
+        }
+    }, 300);
+}
+
+function showAutocompletePreview(w) {
+    document.getElementById('preview-word').textContent = w.word;
+    document.getElementById('preview-phonetic').textContent = w.phonetic || '';
+    document.getElementById('preview-pos').textContent = w.pos || '';
+    document.getElementById('preview-band').textContent = w.band ? `Band ${w.band}` : '';
+    document.getElementById('preview-band').className = 'preview-band band-tag band-' + (w.band || 5);
+    document.getElementById('preview-meaning').textContent = w.meaning || '';
+    if (w.example) {
+        document.getElementById('preview-example').hidden = false;
+        document.getElementById('preview-example').textContent = '例：' + w.example;
+    } else {
+        document.getElementById('preview-example').hidden = true;
+    }
+    document.getElementById('autocomplete-source').textContent =
+        w.topic ? 'topic: ' + w.topic : '';
+    document.getElementById('autocomplete-preview').hidden = false;
 }
 
 async function submitAddWord(event) {
@@ -274,15 +346,16 @@ async function submitAddWord(event) {
     const form = event.target;
     const formData = new FormData(form);
 
-    const data = {
-        word: formData.get('word'),
-        meaning: formData.get('meaning'),
-        phonetic: formData.get('phonetic') || '',
-        pos: formData.get('pos') || '',
-        band: parseInt(formData.get('band')) || 5,
-        example: formData.get('example') || '',
-        note: formData.get('note') || '',
-    };
+    // 只发 word + note +（fallback 时）手动填的字段
+    const data = { word: formData.get('word').trim() };
+    if (formData.get('note')) data.note = formData.get('note');
+    // fallback 字段（fallback 区域显示时才发）
+    if (!document.getElementById('fallback-fields').hidden) {
+        if (formData.get('meaning')) data.meaning = formData.get('meaning');
+        if (formData.get('phonetic')) data.phonetic = formData.get('phonetic');
+        if (formData.get('pos')) data.pos = formData.get('pos');
+        if (formData.get('band')) data.band = parseInt(formData.get('band'));
+    }
 
     try {
         const response = await fetch('/api/personal/words', {
@@ -292,6 +365,9 @@ async function submitAddWord(event) {
         });
 
         if (response.ok) {
+            const body = await response.json();
+            const tag = body.autocompleted ? '（自动补全）' : '（手填）';
+            console.log(`✓ ${body.word} ${tag}`);
             closeAddWordModal();
             loadWords();
             updateWordCount();
@@ -662,6 +738,98 @@ loadWords();
     border-radius: 8px;
     font-size: 14px;
     cursor: pointer;
+}
+
+/* === Phase 1：自动补全预览卡片 === */
+.autocomplete-preview {
+    margin-top: 12px;
+    padding: 12px 14px;
+    background: linear-gradient(135deg, rgba(96, 165, 250, 0.08), rgba(167, 139, 250, 0.08));
+    border: 1px solid rgba(96, 165, 250, 0.25);
+    border-radius: 10px;
+    font-size: 14px;
+}
+
+.preview-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+    font-size: 12px;
+}
+
+.preview-title {
+    font-weight: 600;
+    color: var(--primary-color);
+}
+
+.preview-source {
+    color: var(--text-muted);
+    font-size: 11px;
+}
+
+.preview-row {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 6px;
+}
+
+.preview-word {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text-main);
+}
+
+.preview-phonetic {
+    font-family: 'Cambria Math', serif;
+    color: var(--text-muted);
+    font-size: 13px;
+}
+
+.preview-pos {
+    background: var(--bg-secondary);
+    padding: 1px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.preview-band {
+    padding: 1px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.preview-meaning {
+    margin-top: 4px;
+    color: var(--text-main);
+    line-height: 1.5;
+}
+
+.preview-example {
+    margin-top: 6px;
+    color: var(--text-muted);
+    font-size: 12px;
+    font-style: italic;
+}
+
+/* === Phase 1：fallback 区域 === */
+.fallback-fields {
+    margin-top: 12px;
+    padding: 12px 14px;
+    background: rgba(251, 191, 36, 0.08);
+    border: 1px dashed rgba(251, 191, 36, 0.4);
+    border-radius: 10px;
+}
+
+.fallback-hint {
+    color: #d97706;
+    font-size: 13px;
+    margin-bottom: 8px;
+    font-weight: 500;
 }
 
 .pagination {

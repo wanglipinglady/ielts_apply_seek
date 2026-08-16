@@ -242,3 +242,44 @@ A: 在 `repositories/` 创建Repository类，使用SQLAlchemy定义模型。
 
 **最后更新**: 2026-07-27
 **下次评审**: 2026-08-10
+
+## Phase 1：个人词库自动补全（2026-08-16）
+
+### 改动
+
+`POST /api/personal/words` 现在只需传 `word`，系统自动从 4485 词库补全音标/释义/词性/band/topic/example。
+
+### 用户体验
+
+- 输入单词 → 实时显示词库补全预览（紫色卡片）
+- 词库查不到 → 弹出 fallback 黄色区域，手填 meaning/phonetic/pos/band
+- 用户输入永远优先于自动补全
+
+### 后端逻辑
+
+```
+api_add_word(word: WordCreate):
+    db_word = vocab.get_word(word.word)  # 查词库
+    if db_word found:
+        phonetic = user_input OR db_word.phonetic
+        meaning  = user_input OR db_word.meaning
+        ...
+    if not meaning:  # 兜底
+        raise HTTPException(400, "词库查不到，请手填 meaning")
+    return add to personal_vocab
+```
+
+### 词库加载
+
+`web/services.py:_vocab_service_singleton`：
+- 旧：`load_all()` → 精选 526 词
+- 新：`load_all() + load_master()` → 合并去重 4770 词
+
+`vocab_service.py:load_master` 改追加模式（去重），不再覆盖精选。
+
+### 测试
+
+- `phase1_personal_vocab_test.py`：50 个常见词自动补全（49/50 成功）
+- 双模式（SQLite + MySQL）100% 通过
+- 全量回归 7 个测试套件 100% 通过
+

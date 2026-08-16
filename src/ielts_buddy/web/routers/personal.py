@@ -23,9 +23,10 @@ from pydantic import BaseModel
 
 from ielts_buddy.core.models import PersonalWord
 from ielts_buddy.repositories import SQLiteRepositoryContainer
+from ielts_buddy.services.vocab_service import VocabService
 from ielts_buddy.web.auth.deps import get_current_user, get_current_user_optional
 from ielts_buddy.web.auth.repository import WebUser
-from ielts_buddy.web.services import get_container
+from ielts_buddy.web.services import get_container, get_vocab_service
 
 
 router = APIRouter(tags=["personal"])
@@ -33,12 +34,17 @@ api_router = APIRouter(prefix="/api/personal", tags=["personal-api"])
 
 
 class WordCreate(BaseModel):
-    """添加单词请求"""
+    """添加单词请求
+
+    Phase 1 (个人词库改造)：原来必填 meaning，现在改为可选。
+    - 用户只填 word + note → 系统自动从词库补全
+    - 词库查不到 → 用户手动补 meaning/phonetic/pos（fallback 路径）
+    """
     word: str
-    phonetic: Optional[str] = ""
-    meaning: str
-    pos: Optional[str] = ""
-    band: int = 5
+    phonetic: Optional[str] = ""          # 选填（fallback 才用）
+    meaning: Optional[str] = ""           # 改为选填（fallback 才用）
+    pos: Optional[str] = ""               # 选填
+    band: Optional[int] = None            # 选填（自动补）
     topic: Optional[str] = ""
     example: Optional[str] = ""
     example_cn: Optional[str] = ""
@@ -151,27 +157,69 @@ def api_add_word(
     request: Request,
     user: Annotated[WebUser, Depends(get_current_user)],
     word: WordCreate,
+    vocab: Annotated[VocabService, Depends(get_vocab_service)],
 ) -> dict:
-    """添加单词到个人词库"""
+    """添加单词到个人词库（Phase 1 改造：自动从词库补全）
+
+    行为：
+    1. 先用 ``vocab.get_word(word.word)`` 查内置词库
+    2. 找到了 → 自动补全 phonetic / meaning / pos / band / topic / example
+    3. 找不到 → 用户必须手动提供 meaning（fallback 路径），其他字段保持空
+    4. 用户填写的字段（即使词库有）会**覆盖**自动补全的值（用户永远有最终决定权）
+    """
     container = _get_container(request)
     if container is None:
         raise HTTPException(status_code=500, detail="数据库未初始化")
 
+    # Step 1：查内置词库
+    db_word = vocab.get_word(word.word.strip())
+
+    # Step 2：合并字段（用户输入优先，回落到词库，再回落到空串）
+    phonetic = word.phonetic or (db_word.phonetic if db_word else "")
+    meaning = word.meaning or (db_word.meaning if db_word else "")
+    pos = word.pos or (db_word.pos if db_word else "")
+    band = word.band if word.band is not None else (db_word.band if db_word else 5)
+    topic = word.topic or (db_word.topic if db_word else "")
+    example = word.example or (db_word.example if db_word else "")
+    example_cn = word.example_cn or (db_word.example_cn if db_word else "")
+
+    # Step 3：fallback 校验 —— 词库查不到且用户没填 meaning → 拒
+    if not meaning:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"词库中找不到 '{word.word}'，请手动填写 meaning 后再提交"
+            ),
+        )
+
     try:
         w = PersonalWord(
-            word=word.word,
-            phonetic=word.phonetic or "",
-            meaning=word.meaning,
-            pos=word.pos or "",
-            band=word.band,
-            topic=word.topic or "",
-            example=word.example or "",
-            example_cn=word.example_cn or "",
+            word=word.word.strip(),
+            phonetic=phonetic,
+            meaning=meaning,
+            pos=pos,
+            band=band,
+            topic=topic,
+            example=example,
+            example_cn=example_cn,
             note=word.note or "",
             source="manual",
         )
         word_id = container.personal_vocab.add_word(user.id, w)
-        return {"success": True, "id": word_id, "word": word.word}
+        # 返回完整记录，前端预览卡片可以展示补全结果
+        return {
+            "success": True,
+            "id": word_id,
+            "word": w.word,
+            "phonetic": w.phonetic,
+            "meaning": w.meaning,
+            "pos": w.pos,
+            "band": w.band,
+            "topic": w.topic,
+            "example": w.example,
+            "example_cn": w.example_cn,
+            "autocompleted": db_word is not None,
+        }
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
     except Exception as e:

@@ -272,31 +272,40 @@ class VocabService:
         self._source = "curated"
 
     def load_master(self) -> None:
-        """加载大词库（vocab_master.json），优先使用 SQLite 缓存"""
-        if self._source == "master":
-            return  # 已加载
+        """加载大词库（vocab_master.json），优先使用 SQLite 缓存
 
+        Phase 1 改造：load_master() 现在是**追加**模式（去重）而不是覆盖：
+        - 调用 load_all() + load_master() → 合并精选 526 + master 4485，去重后总词数
+        - 这样精选库里有的 `important` 等词不会被 master 覆盖丢失
+        - 同词重复时，保留先加载的（精选词优先，因为人工编辑过）
+        """
         cache_path = _get_cache_db_path()
         if _cache_is_valid(cache_path):
-            # 从缓存加载
+            # 从缓存加载（缓存是 master 全量，append 进去）
             cached_words = _load_from_cache(cache_path)
-            self._words = cached_words
+            existing = self._ensure_word_index()
+            new_words = [w for w in cached_words
+                        if w.word.lower() not in existing]
+            self._words.extend(new_words)
         else:
             # 从 JSON 加载并构建缓存
             path = _builtin_data_path(_MASTER_FILE)
             raw = _load_json_file(path)
-            self._words = []
+            new_words = []
+            existing = self._ensure_word_index()
             for item in raw:
                 normalized = _normalize_master_entry(item)
-                self._words.append(Word(**normalized))
-            # 异步写缓存（不阻塞主流程）
+                w = Word(**normalized)
+                if w.word.lower() not in existing:  # 去重
+                    new_words.append(w)
+            self._words.extend(new_words)
+            # 写缓存（不阻塞主流程）
             try:
                 _build_cache(self._words, cache_path)
             except Exception:
                 pass  # 缓存写入失败不影响使用
 
         self._loaded_bands = {w.band for w in self._words}
-        self._source = "master"
         self._invalidate_indexes()
 
     def load_custom(self, path: Path) -> None:

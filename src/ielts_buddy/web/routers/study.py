@@ -188,8 +188,10 @@ def api_study_answer(
         "empty_msg": empty_msg,
         "request": request,
     }
+    # 只返回 _study_card.html 片段（不含 base.html），HTMX 用 outerHTML
+    # 替换到 #study-card 节点，避免每次答题都嵌套整个页面（侧边栏重复）
     return _get_templates(request).TemplateResponse(
-        request, "pages/study_review.html" if mode == "review" else "pages/study_random.html", ctx
+        request, "partials/_study_card.html", ctx
     )
 
 

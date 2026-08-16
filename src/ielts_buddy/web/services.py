@@ -61,9 +61,14 @@ def get_user_id(
 
 @lru_cache(maxsize=1)
 def _vocab_service_singleton() -> VocabService:
-    """VocabService 内部维护词库索引，整个进程共享一份。"""
+    """VocabService 内部维护词库索引，整个进程共享一份。
+
+    同时加载精选五档（~1k 词）+ master 大词库（4485 词），这样 web 端
+    "输入单词 → 自动补全"功能才能覆盖到大部分雅思词汇。
+    """
     svc = VocabService()
-    svc.load_all()
+    svc.load_all()        # 精选 band 5-9
+    svc.load_master()     # master 大词库 4485 条（与 load_all 合并去重）
     return svc
 
 
