@@ -126,6 +126,74 @@ class LLMService:
             logger.error(f"LLM 查词失败: {e}")
             return self._mock_word_lookup(word, error=str(e))
 
+    # ----- 公共方法：IPA → DJ 音标转换 -----
+
+    def convert_to_dj_phonetic(
+        self,
+        word: str,
+        ipa_phonetic: str,
+    ) -> str:
+        """将 IPA 国际音标转为 DJ 教材音标（英式宽式）。
+
+        仅在 LLM 可用（api_key 已配置 + 非 dry-run）时返回有效结果；
+        否则返回原 IPA，让用户知道降级了。
+
+        使用场景：词典 API 返回 IPA（如 /ˌsɛ.ɹən.ˈdɪ.pɪ.ti/），
+        但 IELTS 教材用 DJ（如 [ˌserənˈdɪpəti]）。
+        调用 LLM 做 IPA→DJ 转写，确保用户拿到的是教材一致的形式。
+
+        Returns:
+            DJ 风格音标（带 [ ] 或不带皆可）；失败时返回原 IPA。
+        """
+        ipa = (ipa_phonetic or "").strip()
+        if not ipa or not self.is_available():
+            return ipa_phonetic  # 失败/无 key：返回原 IPA
+
+        try:
+            client = self._ensure_client()
+            if client is None:
+                return ipa_phonetic
+
+            prompt = (
+                f'将以下英文单词 "{word}" 的国际音标 (IPA) 转为 DJ 教材音标'
+                f'（英式宽式，Daniel Jones 体系）。\n\n'
+                f'IPA: {ipa}\n\n'
+                f'要求：\n'
+                f'1. 输出严格的 DJ 音标（用 / / 包裹，去掉 ɹ 颜色化、ʳ 标记等 IPA 细节）\n'
+                f'2. 只输出音标本身，不要任何解释或前缀\n'
+                f'3. 如 /əˈfɛ.mə.ɹəl/ → /ɪˈfemərəl/ 风格\n'
+                f'4. 如 /ˌsɛ.ɹən.ˈdɪ.pɪ.ti/ → /ˌserənˈdɪpəti/\n'
+            )
+            resp = client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "你是英语语音学专家，专门做 IPA→DJ 音标转写。"
+                        "输出严格、不解释。",
+                    },
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.0,
+            )
+            content = (resp.choices[0].message.content or "").strip()
+            # 清理：去掉 markdown 代码块标记、行首说明
+            content = re.sub(r"^```[a-z]*\n?", "", content)
+            content = re.sub(r"\n?```$", "", content)
+            # 去掉前后引号
+            content = content.strip().strip("'\"").strip()
+            # 提取第一个音标（如 "...DJ 音标: /abc/" → /abc/）
+            match = re.search(r"\[?[ˈˌa-zæɛɪɒʌəɜɑɔʊθðʃʒŋɲɹɾʁʔˈˌː.\-]+\]?", content)
+            if match:
+                content = match.group(0)
+            # 至少要有 // 包裹
+            if "/" not in content:
+                content = f"/{content.strip('/[]')}/"
+            return content or ipa_phonetic
+        except Exception as e:
+            logger.warning(f"IPA→DJ 转写失败: {e}")
+            return ipa_phonetic
+
     # ----- 公共方法：段落翻译 -----
 
     def translate(self, text: str, target_lang: str = "zh") -> TranslationResult:

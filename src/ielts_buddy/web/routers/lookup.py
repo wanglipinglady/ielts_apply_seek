@@ -62,6 +62,28 @@ async def _translate_to_cn(text: str) -> str:
     return ""
 
 
+async def _maybe_convert_to_dj(
+    llm, word: str, ipa_phonetic: str, phonetic_system: str
+) -> str:
+    """异步调用 LLM 把 IPA 转 DJ 音标；无 key/失败时返回空字符串。
+
+    返回空字符串让上层 fallback 到原 IPA（不阻塞）。
+    只在输入是 IPA 时才转写；已是 DJ 时直接跳过。
+    """
+    if not ipa_phonetic or phonetic_system != "ipa":
+        return ""
+    if not llm.is_available():
+        return ""
+    # LLM 调用是同步的；放进 asyncio.to_thread 不阻塞事件循环
+    try:
+        result = await asyncio.to_thread(
+            llm.convert_to_dj_phonetic, word, ipa_phonetic
+        )
+        return result or ""
+    except Exception:
+        return ""
+
+
 @api_router.get("/word")
 async def api_lookup_word(
     word: Annotated[str, Query(min_length=1, max_length=100)],
@@ -115,18 +137,33 @@ async def api_lookup_word(
         _logger.warning(f"Dictionary API lookup failed: {e}")
 
     if dict_result and not dict_result.is_empty():
-        # 并行翻译英文释义 + 例句 → 中文
-        # MyMemory 失败/低质量时仍返回英文，前端用户可手动修改
-        meaning_cn, example_cn = await asyncio.gather(
+        # 并行：MyMemory 翻译 + LLM IPA→DJ 音标转写
+        # - MyMemory：英译中（无 key 免费）
+        # - LLM 转音标：仅在 LLM 已配置 + 词典返回 IPA 时执行；
+        #   否则返回原 IPA（不阻塞主流程）
+        llm = get_llm_service()
+        phonetic_task = _maybe_convert_to_dj(
+            llm, word_clean, dict_result.phonetic, dict_result.phonetic_system,
+        )
+        meaning_cn, example_cn, dj_phonetic = await asyncio.gather(
             _translate_to_cn(dict_result.meaning_en or ""),
             _translate_to_cn(dict_result.example or ""),
+            phonetic_task,
+        )
+
+        # 优先用 LLM 转写的 DJ 音标（若有），否则用原 IPA
+        final_phonetic = dj_phonetic or dict_result.phonetic
+        # phonetic_system：DJ 转写成功 → "dj"，否则沿用上游（"ipa"）
+        final_phonetic_system = (
+            "dj" if dj_phonetic and dj_phonetic != dict_result.phonetic
+            else dict_result.phonetic_system
         )
         # 翻译质量决定 confidence：有中文释义 → high，否则 medium
         confidence = "high" if meaning_cn else "medium"
         return {
             "word": word_clean,
-            "phonetic": dict_result.phonetic,
-            "phonetic_system": dict_result.phonetic_system,  # "ipa" / "dj"
+            "phonetic": final_phonetic,
+            "phonetic_system": final_phonetic_system,  # "ipa" / "dj"
             "phonetic_region": dict_result.phonetic_region,  # "us" / "au"
             "pos": dict_result.pos,
             "meaning_cn": meaning_cn,           # MyMemory 翻译（可能空）
