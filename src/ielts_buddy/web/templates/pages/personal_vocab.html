@@ -31,6 +31,7 @@
       <div class="quick-row">
         <label>音标</label>
         <input type="text" id="quick-phonetic" class="quick-editable" placeholder="自动补全">
+        <span id="quick-phonetic-tag" class="quick-phonetic-tag"></span>
       </div>
       <div class="quick-row">
         <label>释义</label>
@@ -308,6 +309,8 @@ function applyLookupResult(inputWord, data) {
         word: data.word || inputWord,
         source: data.source,
         confidence: data.confidence,
+        phoneticSystem: data.phonetic_system,
+        phoneticRegion: data.phonetic_region,
     };
 
     // 自动填表单（用户可编辑）
@@ -319,6 +322,28 @@ function applyLookupResult(inputWord, data) {
 
     // 显示/隐藏结果区
     document.getElementById('quick-result').hidden = false;
+
+    // 音标体系标签：让用户知道是 IPA 还是 DJ
+    const ps = data.phonetic_system || 'unknown';
+    const pr = (data.phonetic_region || '').toUpperCase();
+    const phoneticTag = document.getElementById('quick-phonetic-tag');
+    if (ps === 'ipa') {
+        phoneticTag.textContent = pr ? `IPA · ${pr}` : 'IPA';
+        phoneticTag.title =
+            '国际音标（IPA），严格记音。来自美/澳发音。'
+            + 'IELTS 教材常用 DJ 音标（英式宽式），如需可手动修改。';
+        phoneticTag.className = 'quick-phonetic-tag quick-phonetic-ipa';
+        document.getElementById('quick-phonetic').placeholder = 'IPA 严格记音，可改 DJ';
+    } else if (ps === 'dj') {
+        phoneticTag.textContent = 'DJ';
+        phoneticTag.title = 'DJ 音标（Daniel Jones），IELTS 教材英式标准';
+        phoneticTag.className = 'quick-phonetic-tag quick-phonetic-dj';
+        document.getElementById('quick-phonetic').placeholder = 'DJ 教材音标';
+    } else {
+        phoneticTag.textContent = '';
+        phoneticTag.className = 'quick-phonetic-tag';
+        document.getElementById('quick-phonetic').placeholder = '自动补全';
+    }
 
     // 状态行 + 来源标识
     const sourceLabel = {
@@ -926,6 +951,27 @@ document.getElementById('quick-word').focus();
     gap: 10px;
     justify-content: flex-end;
     margin-top: 6px;
+}
+
+/* 音标体系标签（IPA / DJ）*/
+.quick-phonetic-tag {
+    font-size: 11px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: var(--bg-primary);
+    color: var(--text-muted);
+    cursor: help;
+    margin-left: 4px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+.quick-phonetic-ipa {
+    background: rgba(245, 158, 11, 0.15);
+    color: #b45309;
+}
+.quick-phonetic-dj {
+    background: rgba(16, 185, 129, 0.15);
+    color: #059669;
 }
 
 /* === Phase 1：自动补全预览卡片 === */

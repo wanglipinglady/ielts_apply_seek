@@ -33,6 +33,8 @@ class DictionaryAPIResult:
         meaning_en: str = "",
         example: str = "",
         example_cn: str = "",
+        phonetic_system: str = "ipa",  # "ipa" / "dj" / "unknown"
+        phonetic_region: str = "",     # "us" / "au" / "uk"
     ):
         self.word = word
         self.phonetic = phonetic
@@ -41,6 +43,8 @@ class DictionaryAPIResult:
         self.meaning_en = meaning_en
         self.example = example
         self.example_cn = example_cn
+        self.phonetic_system = phonetic_system
+        self.phonetic_region = phonetic_region
 
     def is_empty(self) -> bool:
         return not (self.phonetic or self.meaning_en or self.meaning_cn)
@@ -114,23 +118,47 @@ class DictionaryClient:
 
     @staticmethod
     def _parse(word: str, data: list) -> Optional[DictionaryAPIResult]:
-        """解析 dictionaryapi.dev 的响应。"""
+        """解析 dictionaryapi.dev 的响应。
+
+        注意：dictionaryapi.dev 返回的是 IPA（国际音标），主要来自美/澳发音，
+        与 IELTS 教材常用的 DJ 音标（英式）有差异。例如 serendipity：
+          IPA: /ˌsɛ.ɹən.ˈdɪ.pɪ.ti/
+          DJ:  [ˌserənˈdɪpəti]
+        """
         if not isinstance(data, list) or not data:
             return None
         entry = data[0]
 
-        # 音标（可能在 phonetic 字段或在 phonetics 数组）
+        # 音标 + 区域（us/au/uk）
         phonetic = entry.get("phonetic", "") or ""
+        region = ""
         if not phonetic:
             for p in entry.get("phonetics", []):
                 if p.get("text"):
                     phonetic = p["text"]
+                    audio = p.get("audio", "")
+                    # audio URL 末尾 "-us.mp3" / "-au.mp3" / "-uk.mp3"
+                    if audio:
+                        region = audio.rsplit("-", 1)[-1].replace(".mp3", "")
                     break
+        else:
+            # 顶层 phonetic 字段时也尝试从 phonetics 数组提取 region
+            for p in entry.get("phonetics", []):
+                audio = p.get("audio", "")
+                if audio:
+                    region = audio.rsplit("-", 1)[-1].replace(".mp3", "")
+                    break
+
+        # dictionaryapi.dev 用的始终是 IPA（基于 Wiktionary 的源）
+        phonetic_system = "ipa" if phonetic else "unknown"
 
         # 第一个 meaning
         meanings = entry.get("meanings", [])
         if not meanings:
-            return DictionaryAPIResult(word=word, phonetic=phonetic)
+            return DictionaryAPIResult(
+                word=word, phonetic=phonetic,
+                phonetic_system=phonetic_system, phonetic_region=region,
+            )
 
         m = meanings[0]
         pos = m.get("partOfSpeech", "")
@@ -149,6 +177,8 @@ class DictionaryClient:
             pos=pos,
             meaning_en=meaning_en,
             example=example,
+            phonetic_system=phonetic_system,
+            phonetic_region=region,
         )
 
 

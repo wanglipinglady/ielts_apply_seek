@@ -92,6 +92,8 @@ async def api_lookup_word(
         return {
             "word": db_word.word,
             "phonetic": db_word.phonetic or "",
+            "phonetic_system": "dj",           # 内置词库用的是 DJ/教材音标
+            "phonetic_region": "",             # 混合英美，不特指
             "pos": db_word.pos or "",
             "meaning_cn": db_word.meaning,
             "meaning_en": "",
@@ -124,6 +126,8 @@ async def api_lookup_word(
         return {
             "word": word_clean,
             "phonetic": dict_result.phonetic,
+            "phonetic_system": dict_result.phonetic_system,  # "ipa" / "dj"
+            "phonetic_region": dict_result.phonetic_region,  # "us" / "au"
             "pos": dict_result.pos,
             "meaning_cn": meaning_cn,           # MyMemory 翻译（可能空）
             "meaning_en": dict_result.meaning_en,
