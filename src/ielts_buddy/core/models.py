@@ -231,3 +231,49 @@ class GradeResult(BaseModel):
     paragraphs: list[ParagraphAnalysis] = Field(default_factory=list)
     error_summary: dict[str, int] = Field(default_factory=dict)  # {"grammar": 5, ...}
     graded_at: Optional[str] = None
+
+
+class ArticleWord(BaseModel):
+    """文章生词标注（Article 分析产出）。
+
+    - word: 单词原形
+    - phonetic: 音标（来自内置词库或空）
+    - pos: 词性
+    - meaning_cn: 中文释义（来自内置词库或 LLM）
+    - band: band 等级（内置词库命中才有，1-9）
+    - context_sentence: 出现在文章中的原句
+    - synonyms: 同义词
+    - antonyms: 反义词
+    - near_synonyms: 近义词
+    - context_meaning: 上下文含义
+    - auto_marked: True=LLM/词库自动标注，False=用户手动勾选
+    - analysis_source: llm / builtin / fallback
+    """
+
+    word: str
+    phonetic: str = ""
+    pos: str = ""
+    meaning_cn: str = ""
+    band: Optional[int] = None
+    context_sentence: str = ""
+    synonyms: list[str] = Field(default_factory=list)
+    antonyms: list[str] = Field(default_factory=list)
+    near_synonyms: list[str] = Field(default_factory=list)
+    context_meaning: str = ""
+    auto_marked: bool = True
+    analysis_source: str = "fallback"  # builtin / llm / fallback
+
+
+class Article(BaseModel):
+    """文章翻译记录（一篇文章的所有元数据）。"""
+
+    id: Optional[int] = None
+    user_id: int = 1
+    title: str = ""
+    source_text: str = ""           # 英文原文
+    translation: str = ""           # 中文翻译
+    word_count: int = 0             # 原文单词数
+    diff_words_json: str = "[]"     # 生词分析结果 JSON（ArticleWord 列表）
+    translation_source: str = "llm"  # llm / mock / error
+    analysis_source: str = "fallback"  # llm / fallback
+    created_at: Optional[str] = None

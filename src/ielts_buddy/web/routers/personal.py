@@ -69,6 +69,16 @@ class CategoryCreate(BaseModel):
     description: Optional[str] = ""
 
 
+class BatchWordAdd(BaseModel):
+    """批量加入个人词库请求（用于文章页"勾选加入词库"功能）
+
+    - words: ArticleWord dict 列表（来自 /api/articles/translate 返回）
+    - skip_existing: True=跳过已存在的（默认 True，避免报错打断批量加入）
+    """
+    words: list[dict]
+    skip_existing: bool = True
+
+
 def _get_templates(request: Request) -> Jinja2Templates:
     return request.app.state.templates
 
@@ -477,6 +487,95 @@ def api_export_words(
             )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@api_router.post("/words/batch")
+def api_add_words_batch(
+    request: Request,
+    user: Annotated[WebUser, Depends(get_current_user)],
+    body: BatchWordAdd,
+    vocab: Annotated[VocabService, Depends(get_vocab_service)],
+) -> dict:
+    """批量加入个人词库（文章页"勾选加入"使用）。
+
+    流程：
+    1. 遍历 body.words（每个是 ArticleWord dict）
+    2. 优先用 dict 自带的 phonetic/meaning/pos/band 等；
+       缺失字段回落到 VocabService 查内置词库
+    3. 个人词库已存在 → skip_existing=True 时跳过；否则报错
+    4. 返回 {added: [...], skipped: [...], failed: [...]}
+    """
+    container = _get_container(request)
+    if container is None:
+        raise HTTPException(status_code=500, detail="数据库未初始化")
+
+    added: list[str] = []
+    skipped: list[str] = []
+    failed: list[dict[str, str]] = []
+
+    for w in body.words:
+        word_text = (w.get("word") or "").strip()
+        if not word_text:
+            failed.append({"word": "", "reason": "empty word"})
+            continue
+
+        # 优先级：dict 字段 > 内置词库补全
+        db_word = vocab.get_word(word_text)
+        try:
+            meaning = w.get("meaning_cn") or (db_word.meaning if db_word else "")
+            phonetic = w.get("phonetic") or (db_word.phonetic if db_word else "")
+            pos = w.get("pos") or (db_word.pos if db_word else "")
+            band = w.get("band")
+            if band is None and db_word is not None:
+                band = db_word.band
+            if band is None:
+                band = 5
+            # 把同义/反义信息塞进 note，方便后续查看
+            note_parts = []
+            if w.get("synonyms"):
+                note_parts.append(f"同义: {', '.join(w['synonyms'])}")
+            if w.get("antonyms"):
+                note_parts.append(f"反义: {', '.join(w['antonyms'])}")
+            if w.get("near_synonyms"):
+                note_parts.append(f"近义: {', '.join(w['near_synonyms'])}")
+            if w.get("context_meaning"):
+                note_parts.append(f"语境: {w['context_meaning']}")
+            if w.get("context_sentence"):
+                note_parts.append(f"原句: {w['context_sentence'][:150]}")
+            note = "\n".join(note_parts)
+
+            pw = PersonalWord(
+                word=word_text,
+                phonetic=phonetic,
+                meaning=meaning,
+                pos=pos,
+                band=band,
+                topic=db_word.topic if db_word else "",
+                example=db_word.example if db_word else "",
+                example_cn=db_word.example_cn if db_word else "",
+                note=note,
+                source="article",
+            )
+            container.personal_vocab.add_word(user.id, pw)
+            added.append(word_text)
+        except ValueError as e:
+            # 已存在
+            if body.skip_existing and "已存在" in str(e):
+                skipped.append(word_text)
+            else:
+                failed.append({"word": word_text, "reason": str(e)})
+        except Exception as e:
+            failed.append({"word": word_text, "reason": str(e)})
+
+    return {
+        "success": True,
+        "added_count": len(added),
+        "skipped_count": len(skipped),
+        "failed_count": len(failed),
+        "added": added,
+        "skipped": skipped,
+        "failed": failed,
+    }
 
 
 @api_router.post("/mistakes/{word}")

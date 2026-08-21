@@ -33,6 +33,9 @@
         <a href="/vocab/browse" class="nav-item {% if '/vocab/browse' in request.url.path %}active{% endif %}">
           <span class="icon">☰</span> 词库浏览
         </a>
+        <a href="/articles" class="nav-item {% if request.url.path.startswith('/articles') %}active{% endif %}">
+          <span class="icon">¶</span> 文章翻译
+        </a>
       </div>
 
       {# 管理导航组 #}

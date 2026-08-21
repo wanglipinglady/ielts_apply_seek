@@ -1,0 +1,826 @@
+{% extends "base.html" %}
+
+{% block page_title %}文章翻译 · 生词分析{% endblock %}
+
+{% block content %}
+<section class="articles-page">
+  <style>
+    /* 文章翻译页专有样式 */
+    .articles-page {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .articles-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 4px;
+    }
+    .articles-header h2 {
+      margin: 0;
+      font-size: 1.4rem;
+    }
+    .articles-header .count {
+      color: #6b7280;
+      font-size: 0.9rem;
+      margin-left: 8px;
+    }
+    .articles-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    /* 左右双栏 */
+    .articles-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      align-items: start;
+    }
+    @media (max-width: 960px) {
+      .articles-grid { grid-template-columns: 1fr; }
+    }
+
+    .panel {
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 16px;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    }
+    .panel-title {
+      font-weight: 600;
+      margin: 0 0 12px 0;
+      font-size: 1rem;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* 输入区 */
+    .article-input {
+      width: 100%;
+      min-height: 320px;
+      padding: 12px;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      font-family: 'Georgia', 'Times New Roman', serif;
+      font-size: 0.95rem;
+      line-height: 1.7;
+      resize: vertical;
+      box-sizing: border-box;
+    }
+    .article-input:focus {
+      outline: none;
+      border-color: #4f46e5;
+      box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+    }
+    .article-meta {
+      display: flex;
+      gap: 12px;
+      margin-top: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .article-meta label {
+      font-size: 0.85rem;
+      color: #6b7280;
+    }
+    .article-meta input[type="number"] {
+      width: 60px;
+      padding: 4px 8px;
+      border: 1px solid #d1d5db;
+      border-radius: 4px;
+    }
+    .article-extra {
+      flex: 1;
+      min-width: 200px;
+      padding: 4px 8px;
+      border: 1px solid #d1d5db;
+      border-radius: 4px;
+      font-size: 0.85rem;
+    }
+    .btn-translate {
+      padding: 10px 24px;
+      background: #4f46e5;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 500;
+      font-size: 0.95rem;
+    }
+    .btn-translate:hover { background: #4338ca; }
+    .btn-translate:disabled {
+      background: #9ca3af;
+      cursor: not-allowed;
+    }
+    .btn-secondary {
+      padding: 6px 12px;
+      background: #fff;
+      color: #374151;
+      border: 1px solid #d1d5db;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.85rem;
+    }
+    .btn-secondary:hover { background: #f3f4f6; }
+    .btn-primary {
+      padding: 6px 12px;
+      background: #4f46e5;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.85rem;
+    }
+    .btn-primary:hover { background: #4338ca; }
+    .btn-primary:disabled {
+      background: #9ca3af;
+      cursor: not-allowed;
+    }
+
+    /* 翻译结果区 */
+    .translation-result {
+      padding: 12px;
+      background: #f9fafb;
+      border-radius: 6px;
+      line-height: 1.8;
+      font-size: 0.95rem;
+      min-height: 80px;
+      white-space: pre-wrap;
+      max-height: 400px;
+      overflow-y: auto;
+    }
+    .translation-result.empty {
+      color: #9ca3af;
+      font-style: italic;
+      text-align: center;
+    }
+    .translation-source {
+      display: inline-block;
+      padding: 2px 8px;
+      background: #dbeafe;
+      color: #1e40af;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      margin-left: 8px;
+    }
+    .translation-source.mock { background: #fef3c7; color: #92400e; }
+    .translation-source.error { background: #fee2e2; color: #b91c1c; }
+
+    /* 生词卡片 */
+    .diff-words-area {
+      grid-column: 1 / -1;  /* 跨两栏 */
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 16px;
+    }
+    .diff-words-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .diff-words-actions {
+      display: flex;
+      gap: 8px;
+    }
+    .diff-word-card {
+      background: #fafafa;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      padding: 12px;
+      margin-bottom: 10px;
+      transition: all 0.15s;
+    }
+    .diff-word-card:hover {
+      border-color: #c7d2fe;
+      background: #f5f3ff;
+    }
+    .diff-word-card.selected {
+      border-color: #4f46e5;
+      background: #eef2ff;
+    }
+    .diff-word-row {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      margin-bottom: 6px;
+    }
+    .diff-word-checkbox {
+      margin-top: 4px;
+    }
+    .diff-word-name {
+      font-weight: 600;
+      font-size: 1.05rem;
+      color: #111827;
+    }
+    .diff-word-phonetic {
+      font-family: 'Times New Roman', serif;
+      color: #6b7280;
+      font-size: 0.9rem;
+    }
+    .diff-word-pos {
+      color: #6b7280;
+      font-size: 0.85rem;
+      font-style: italic;
+    }
+    .diff-word-band {
+      padding: 1px 6px;
+      background: #ede9fe;
+      color: #5b21b6;
+      border-radius: 3px;
+      font-size: 0.75rem;
+      font-weight: 500;
+    }
+    .diff-word-auto-tag {
+      padding: 1px 6px;
+      background: #d1fae5;
+      color: #065f46;
+      border-radius: 3px;
+      font-size: 0.7rem;
+      margin-left: 4px;
+    }
+    .diff-word-user-tag {
+      padding: 1px 6px;
+      background: #fed7aa;
+      color: #9a3412;
+      border-radius: 3px;
+      font-size: 0.7rem;
+      margin-left: 4px;
+    }
+    .diff-word-meaning {
+      color: #374151;
+      font-size: 0.9rem;
+      margin-bottom: 8px;
+    }
+    .diff-word-context {
+      color: #6b7280;
+      font-size: 0.85rem;
+      font-style: italic;
+      margin-bottom: 6px;
+      padding-left: 8px;
+      border-left: 3px solid #d1d5db;
+    }
+    .diff-word-context-label {
+      color: #9ca3af;
+      font-size: 0.75rem;
+    }
+    .diff-word-analysis {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 8px;
+      margin-top: 8px;
+      font-size: 0.85rem;
+    }
+    .diff-word-analysis-item {
+      padding: 6px 10px;
+      background: #fff;
+      border-radius: 4px;
+      border: 1px solid #f3f4f6;
+    }
+    .diff-word-analysis-label {
+      font-weight: 600;
+      color: #4b5563;
+      font-size: 0.8rem;
+      margin-bottom: 2px;
+    }
+    .diff-word-analysis-value {
+      color: #1f2937;
+    }
+    .diff-word-analysis-value.empty {
+      color: #9ca3af;
+      font-style: italic;
+    }
+
+    /* 历史区 */
+    .recent-articles {
+      margin-top: 8px;
+    }
+    .recent-article-card {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 12px;
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      margin-bottom: 6px;
+      font-size: 0.9rem;
+    }
+    .recent-article-card:hover {
+      background: #f3f4f6;
+    }
+    .recent-article-title {
+      font-weight: 500;
+      color: #111827;
+    }
+    .recent-article-meta {
+      color: #6b7280;
+      font-size: 0.8rem;
+    }
+    .recent-article-actions {
+      display: flex;
+      gap: 6px;
+    }
+
+    /* 加载/状态 */
+    .status-bar {
+      padding: 8px 12px;
+      background: #fef3c7;
+      border-radius: 4px;
+      color: #92400e;
+      font-size: 0.85rem;
+      margin-bottom: 8px;
+    }
+    .status-bar.success {
+      background: #d1fae5;
+      color: #065f46;
+    }
+    .status-bar.error {
+      background: #fee2e2;
+      color: #b91c1c;
+    }
+    .empty-state {
+      text-align: center;
+      padding: 24px;
+      color: #9ca3af;
+      font-size: 0.9rem;
+    }
+    .loading-spinner {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      border: 2px solid #fff;
+      border-top-color: transparent;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin-right: 6px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+
+  <div class="articles-header">
+    <div>
+      <h2>文章翻译 + 生词分析
+        <span class="count">已保存 <strong id="article-count">{{ article_count }}</strong> 篇</span>
+      </h2>
+    </div>
+    <div class="articles-actions">
+      <button class="btn-secondary" onclick="loadHistory()">刷新历史</button>
+    </div>
+  </div>
+
+  <div id="status-bar" class="status-bar" hidden></div>
+
+  <div class="articles-grid">
+    {# === 左栏：原文输入 === #}
+    <div class="panel">
+      <h3 class="panel-title">📝 原文输入</h3>
+      <input type="text" id="article-title" placeholder="标题（可选，最长 100 字）"
+             maxlength="100"
+             style="width:100%;padding:8px;margin-bottom:8px;border:1px solid #d1d5db;border-radius:4px;box-sizing:border-box;">
+      <textarea id="article-source" class="article-input"
+                placeholder="粘贴或输入英文文章段落（≤800 词）...&#10;&#10;示例：&#10;Despite the proliferation of digital communication tools, many scholars argue that face-to-face dialogue remains irreplaceable for fostering genuine understanding..."></textarea>
+
+      <div class="article-meta">
+        <label>Band 阈值（≥ 此值自动标生词）：
+          <input type="number" id="article-min-band" value="7" min="5" max="9">
+        </label>
+        <input type="text" id="article-extra-words" class="article-extra"
+               placeholder="手动追加生词（逗号分隔，如：serendipity, ephemeral）">
+        <button class="btn-translate" id="btn-translate" onclick="translateArticle()">
+          翻译 + 生词分析
+        </button>
+      </div>
+    </div>
+
+    {# === 右栏：翻译结果 === #}
+    <div class="panel">
+      <h3 class="panel-title">
+        🌐 中文翻译
+        <span id="translation-source-tag" class="translation-source" hidden></span>
+      </h3>
+      <div id="translation-result" class="translation-result empty">
+        等待翻译…
+      </div>
+
+      <div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn-secondary" id="btn-save-article" onclick="saveArticle()" disabled>
+          保存到历史
+        </button>
+      </div>
+    </div>
+
+    {# === 底部：生词列表 === #}
+    <div class="diff-words-area">
+      <div class="diff-words-header">
+        <h3 class="panel-title">
+          📚 生词分析 <span id="diff-count-label" class="count"></span>
+        </h3>
+        <div class="diff-words-actions">
+          <button class="btn-secondary" onclick="selectAllDiff()">全选</button>
+          <button class="btn-secondary" onclick="deselectAllDiff()">全不选</button>
+          <button class="btn-primary" id="btn-add-to-vocab" onclick="addToVocab()" disabled>
+            加入个人词库
+          </button>
+        </div>
+      </div>
+      <div id="diff-words-list">
+        <div class="empty-state">点击「翻译 + 生词分析」开始…</div>
+      </div>
+    </div>
+
+    {# === 历史列表 === #}
+    <div class="panel" style="grid-column: 1 / -1;">
+      <h3 class="panel-title">🕐 最近翻译的文章</h3>
+      <div id="recent-articles" class="recent-articles">
+        {% if recent_cards %}
+          {% for a in recent_cards %}
+          <div class="recent-article-card" data-id="{{ a.id }}">
+            <div>
+              <div class="recent-article-title">{{ a.title }}</div>
+              <div class="recent-article-meta">
+                {{ a.word_count }} 词 · {{ a.diff_word_count }} 生词 · {{ a.created_at }}
+              </div>
+            </div>
+            <div class="recent-article-actions">
+              <button class="btn-secondary" onclick="viewArticle({{ a.id }})">查看</button>
+              <button class="btn-secondary" onclick="deleteArticle({{ a.id }})">删除</button>
+            </div>
+          </div>
+          {% endfor %}
+        {% else %}
+          <div class="empty-state">暂无历史记录</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+// 全局状态
+let currentResult = null;  // 当前翻译结果（POST /translate 返回）
+
+function showStatus(msg, type = '') {
+  const bar = document.getElementById('status-bar');
+  bar.textContent = msg;
+  bar.className = 'status-bar' + (type ? ' ' + type : '');
+  bar.hidden = false;
+  if (type === 'success') {
+    setTimeout(() => { bar.hidden = true; }, 3000);
+  }
+}
+
+async function translateArticle() {
+  const sourceText = document.getElementById('article-source').value.trim();
+  if (!sourceText) {
+    showStatus('请输入文章内容', 'error');
+    return;
+  }
+  const wordCount = (sourceText.match(/\b[a-zA-Z']+\b/g) || []).length;
+  if (wordCount > 800) {
+    showStatus(`文章过长（${wordCount} 词），最大 800 词`, 'error');
+    return;
+  }
+
+  const title = document.getElementById('article-title').value.trim();
+  const minBand = parseInt(document.getElementById('article-min-band').value) || 7;
+  const extraWordsRaw = document.getElementById('article-extra-words').value;
+  const extraWords = extraWordsRaw
+    ? extraWordsRaw.split(/[,，\s]+/).map(w => w.trim()).filter(Boolean)
+    : [];
+
+  const btn = document.getElementById('btn-translate');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="loading-spinner"></span>翻译中…';
+  showStatus('翻译 + 生词分析中（最长 ~15s）…');
+
+  try {
+    const resp = await fetch('/api/articles/translate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        source_text: sourceText,
+        title: title,
+        min_band: minBand,
+        extra_words: extraWords,
+      }),
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({ detail: resp.statusText }));
+      throw new Error(err.detail || '翻译失败');
+    }
+    currentResult = await resp.json();
+    renderTranslation(currentResult);
+    renderDiffWords(currentResult);
+    document.getElementById('btn-save-article').disabled = false;
+    showStatus(
+      `翻译完成（${currentResult.stats.diff_count} 个生词，${currentResult.stats.llm_analyzed} 个 LLM 分析）`,
+      'success'
+    );
+  } catch (e) {
+    showStatus(`失败：${e.message}`, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '翻译 + 生词分析';
+  }
+}
+
+function renderTranslation(result) {
+  const div = document.getElementById('translation-result');
+  div.textContent = result.translation || '（无翻译结果）';
+  div.classList.remove('empty');
+
+  const tag = document.getElementById('translation-source-tag');
+  tag.hidden = false;
+  tag.textContent = result.translation_source === 'llm' ? 'LLM'
+    : result.translation_source === 'mock' ? 'DRY-RUN'
+    : 'ERROR';
+  tag.className = 'translation-source ' + (result.translation_source !== 'llm' ? result.translation_source : '');
+}
+
+function renderDiffWords(result) {
+  const list = document.getElementById('diff-words-list');
+  const label = document.getElementById('diff-count-label');
+  const words = result.diff_words || [];
+  label.textContent = `(${words.length} 个)`;
+
+  if (words.length === 0) {
+    list.innerHTML = '<div class="empty-state">未识别到生词（试试降低 band 阈值）</div>';
+    return;
+  }
+
+  list.innerHTML = words.map((w, idx) => `
+    <div class="diff-word-card" data-idx="${idx}">
+      <div class="diff-word-row">
+        <input type="checkbox" class="diff-word-checkbox" data-idx="${idx}" checked>
+        <span class="diff-word-name">${escapeHtml(w.word)}</span>
+        ${w.phonetic ? `<span class="diff-word-phonetic">${escapeHtml(w.phonetic)}</span>` : ''}
+        ${w.pos ? `<span class="diff-word-pos">${escapeHtml(w.pos)}</span>` : ''}
+        ${w.band ? `<span class="diff-word-band">B${w.band}</span>` : ''}
+        ${w.auto_marked
+          ? '<span class="diff-word-auto-tag">自动</span>'
+          : '<span class="diff-word-user-tag">手动</span>'}
+      </div>
+      ${w.meaning_cn ? `<div class="diff-word-meaning">${escapeHtml(w.meaning_cn)}</div>` : ''}
+      ${w.context_sentence ? `<div class="diff-word-context">
+        <span class="diff-word-context-label">原句：</span>${escapeHtml(w.context_sentence)}
+      </div>` : ''}
+      ${renderAnalysis(w)}
+    </div>
+  `).join('');
+
+  // 绑定 checkbox 联动
+  list.querySelectorAll('.diff-word-checkbox').forEach(cb => {
+    cb.addEventListener('change', e => {
+      const card = e.target.closest('.diff-word-card');
+      card.classList.toggle('selected', e.target.checked);
+      updateAddButton();
+    });
+    // 初始化 selected class
+    const card = cb.closest('.diff-word-card');
+    card.classList.add('selected');
+  });
+  updateAddButton();
+}
+
+function renderAnalysis(w) {
+  const parts = [];
+  if (w.synonyms && w.synonyms.length) {
+    parts.push(`
+      <div class="diff-word-analysis-item">
+        <div class="diff-word-analysis-label">同义词</div>
+        <div class="diff-word-analysis-value">${w.synonyms.map(escapeHtml).join('、')}</div>
+      </div>
+    `);
+  }
+  if (w.near_synonyms && w.near_synonyms.length) {
+    parts.push(`
+      <div class="diff-word-analysis-item">
+        <div class="diff-word-analysis-label">近义词</div>
+        <div class="diff-word-analysis-value">${w.near_synonyms.map(escapeHtml).join('、')}</div>
+      </div>
+    `);
+  }
+  if (w.antonyms && w.antonyms.length) {
+    parts.push(`
+      <div class="diff-word-analysis-item">
+        <div class="diff-word-analysis-label">反义词</div>
+        <div class="diff-word-analysis-value">${w.antonyms.map(escapeHtml).join('、')}</div>
+      </div>
+    `);
+  }
+  if (w.context_meaning) {
+    parts.push(`
+      <div class="diff-word-analysis-item">
+        <div class="diff-word-analysis-label">语境含义</div>
+        <div class="diff-word-analysis-value">${escapeHtml(w.context_meaning)}</div>
+      </div>
+    `);
+  }
+  if (parts.length === 0) {
+    return '<div class="diff-word-analysis"><div class="diff-word-analysis-item"><div class="diff-word-analysis-value empty">未分析（LLM 不可用或未启用）</div></div></div>';
+  }
+  return `<div class="diff-word-analysis">${parts.join('')}</div>`;
+}
+
+function updateAddButton() {
+  const checked = document.querySelectorAll('.diff-word-checkbox:checked').length;
+  const btn = document.getElementById('btn-add-to-vocab');
+  btn.disabled = checked === 0;
+  btn.textContent = checked === 0 ? '加入个人词库' : `加入个人词库 (${checked})`;
+}
+
+function selectAllDiff() {
+  document.querySelectorAll('.diff-word-checkbox').forEach(cb => {
+    cb.checked = true;
+    cb.closest('.diff-word-card').classList.add('selected');
+  });
+  updateAddButton();
+}
+function deselectAllDiff() {
+  document.querySelectorAll('.diff-word-checkbox').forEach(cb => {
+    cb.checked = false;
+    cb.closest('.diff-word-card').classList.remove('selected');
+  });
+  updateAddButton();
+}
+
+async function addToVocab() {
+  if (!currentResult) return;
+  const selectedWords = [];
+  document.querySelectorAll('.diff-word-checkbox').forEach(cb => {
+    if (cb.checked) {
+      const idx = parseInt(cb.dataset.idx);
+      selectedWords.push(currentResult.diff_words[idx]);
+    }
+  });
+  if (selectedWords.length === 0) return;
+
+  const btn = document.getElementById('btn-add-to-vocab');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="loading-spinner"></span>加入中…';
+
+  try {
+    const resp = await fetch('/api/personal/words/batch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ words: selectedWords, skip_existing: true }),
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({ detail: resp.statusText }));
+      throw new Error(err.detail || '加入失败');
+    }
+    const result = await resp.json();
+    showStatus(
+      `已加入 ${result.added_count} 个，跳过 ${result.skipped_count} 个（已存在），失败 ${result.failed_count}`,
+      'success'
+    );
+    // 自动取消已加入的勾选
+    result.added.forEach(word => {
+      document.querySelectorAll('.diff-word-checkbox').forEach(cb => {
+        const idx = parseInt(cb.dataset.idx);
+        if (currentResult.diff_words[idx].word === word) {
+          cb.checked = false;
+          cb.closest('.diff-word-card').classList.remove('selected');
+        }
+      });
+    });
+    updateAddButton();
+  } catch (e) {
+    showStatus(`加入失败：${e.message}`, 'error');
+  } finally {
+    btn.disabled = false;
+    updateAddButton();
+  }
+}
+
+async function saveArticle() {
+  if (!currentResult) return;
+  const btn = document.getElementById('btn-save-article');
+  btn.disabled = true;
+  try {
+    const resp = await fetch('/api/articles/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: currentResult.title || '',
+        source_text: currentResult.source_text,
+        translation: currentResult.translation,
+        diff_words: currentResult.diff_words,
+        translation_source: currentResult.translation_source,
+        analysis_source: currentResult.analysis_source,
+      }),
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({ detail: resp.statusText }));
+      throw new Error(err.detail || '保存失败');
+    }
+    showStatus('已保存到历史', 'success');
+    loadHistory();
+  } catch (e) {
+    showStatus(`保存失败：${e.message}`, 'error');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function loadHistory() {
+  try {
+    const resp = await fetch('/api/articles/history?limit=10');
+    if (!resp.ok) return;
+    const data = await resp.json();
+    const container = document.getElementById('recent-articles');
+    const articles = data.articles || [];
+    if (articles.length === 0) {
+      container.innerHTML = '<div class="empty-state">暂无历史记录</div>';
+      document.getElementById('article-count').textContent = '0';
+      return;
+    }
+    container.innerHTML = articles.map(a => `
+      <div class="recent-article-card" data-id="${a.id}">
+        <div>
+          <div class="recent-article-title">${escapeHtml(a.title)}</div>
+          <div class="recent-article-meta">
+            ${a.word_count} 词 · ${a.diff_word_count} 生词 · ${a.created_at}
+          </div>
+        </div>
+        <div class="recent-article-actions">
+          <button class="btn-secondary" onclick="viewArticle(${a.id})">查看</button>
+          <button class="btn-secondary" onclick="deleteArticle(${a.id})">删除</button>
+        </div>
+      </div>
+    `).join('');
+    document.getElementById('article-count').textContent = articles.length;
+  } catch (e) {
+    console.error('loadHistory failed:', e);
+  }
+}
+
+async function viewArticle(id) {
+  try {
+    const resp = await fetch(`/api/articles/${id}`);
+    if (!resp.ok) {
+      showStatus('查询失败', 'error');
+      return;
+    }
+    const article = await resp.json();
+    // 把原文填回去，触发 UI 更新
+    document.getElementById('article-title').value = article.title || '';
+    document.getElementById('article-source').value = article.source_text;
+    currentResult = {
+      title: article.title,
+      source_text: article.source_text,
+      translation: article.translation,
+      translation_source: article.translation_source,
+      analysis_source: article.analysis_source,
+      diff_words: article.diff_words,
+      stats: {
+        diff_count: article.diff_words.length,
+        llm_analyzed: article.diff_words.filter(w => w.analysis_source === 'llm').length,
+        user_marked: article.diff_words.filter(w => !w.auto_marked).length,
+      },
+    };
+    renderTranslation(currentResult);
+    renderDiffWords(currentResult);
+    document.getElementById('btn-save-article').disabled = false;
+    showStatus(`已加载历史记录 #${id}`, 'success');
+    // 滚动到顶部
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  } catch (e) {
+    showStatus(`加载失败：${e.message}`, 'error');
+  }
+}
+
+async function deleteArticle(id) {
+  if (!confirm(`确认删除文章 #${id}？此操作不可恢复。`)) return;
+  try {
+    const resp = await fetch(`/api/articles/${id}`, { method: 'DELETE' });
+    if (!resp.ok) {
+      showStatus('删除失败', 'error');
+      return;
+    }
+    showStatus('已删除', 'success');
+    loadHistory();
+  } catch (e) {
+    showStatus(`删除失败：${e.message}`, 'error');
+  }
+}
+
+function escapeHtml(s) {
+  if (s == null) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+</script>
+{% endblock %}

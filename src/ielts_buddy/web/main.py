@@ -41,6 +41,7 @@ from ielts_buddy.web.routers import exam as exam_routes
 from ielts_buddy.web.routers import grade as grade_routes
 from ielts_buddy.web.routers import plan as plan_routes
 from ielts_buddy.web.routers import report as report_routes
+from ielts_buddy.web.routers import articles as articles_routes
 
 # 模板目录 = 本文件所在目录/templates
 WEB_DIR = Path(__file__).resolve().parent
@@ -258,6 +259,10 @@ def create_app() -> FastAPI:
     # 阶段 4：报告生成
     app.include_router(report_routes.router)
     app.include_router(report_routes.api_router)
+
+    # 阶段 5：文章翻译 + 生词分析
+    app.include_router(articles_routes.router)
+    app.include_router(articles_routes.api_router)
 
     return app
 

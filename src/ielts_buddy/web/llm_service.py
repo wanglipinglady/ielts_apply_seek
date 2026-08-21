@@ -49,6 +49,33 @@ class TranslationResult:
     source: str = "llm"
 
 
+@dataclass
+class WordAnalysis:
+    """单词分析结果（同义/反义/近义）。
+
+    - word: 单词
+    - synonyms: 同义词列表
+    - antonyms: 反义词列表
+    - near_synonyms: 近义词列表（与 synonyms 区分不开时为空）
+    - context_meaning: 在文章上下文中的具体含义（可选）
+    """
+
+    word: str
+    synonyms: list[str] = None  # type: ignore[assignment]
+    antonyms: list[str] = None  # type: ignore[assignment]
+    near_synonyms: list[str] = None  # type: ignore[assignment]
+    context_meaning: str = ""
+    source: str = "llm"  # llm / mock / fallback
+
+    def __post_init__(self) -> None:
+        if self.synonyms is None:
+            self.synonyms = []
+        if self.antonyms is None:
+            self.antonyms = []
+        if self.near_synonyms is None:
+            self.near_synonyms = []
+
+
 # =============================================================
 # LLM 服务（单例）
 # =============================================================
@@ -300,6 +327,42 @@ class LLMService:
             source_text=text, translation=translation, source="llm"
         )
 
+    # ----- 公共方法：单词分析（同义/反义/近义） -----
+
+    def analyze_words(
+        self,
+        words: list[str],
+        context: str = "",
+    ) -> list[WordAnalysis]:
+        """对一组单词做一次性分析：同义词、反义词、近义词、上线含义。
+
+        适用于"文章生词分析"功能：用户输入文章后，先自动识别生词列表，
+        再调用本方法一次性拿到所有生词的词义聚类（避免 N 次串行 LLM 调用）。
+
+        Args:
+            words: 待分析的单词列表（小写）
+            context: 文章原文上下文（让 LLM 给出语境相关义项）
+
+        Returns:
+            与 ``words`` 同序的 ``WordAnalysis`` 列表；无 key / 失败时返回 mock。
+        """
+        words = [w.strip() for w in words if w and w.strip()]
+        if not words:
+            return []
+
+        if self.dry_run or not self.api_key:
+            return [self._mock_word_analysis(w) for w in words]
+
+        try:
+            return self._llm_analyze_words(words, context)
+        except Exception as e:
+            logger.error(f"LLM 生词分析失败: {e}")
+            # Fallback：每个词返回空结构（前端仍能展示，但 source=error）
+            return [
+                WordAnalysis(word=w, source="error", context_meaning=f"[分析失败: {e}]")
+                for w in words
+            ]
+
     # ----- 私有：Mock -----
 
     def _mock_word_lookup(self, word: str, error: str = "") -> WordLookupResult:
@@ -316,10 +379,108 @@ class LLMService:
             confidence="low",
         )
 
+    def _mock_word_analysis(self, word: str) -> WordAnalysis:
+        """Dry-run 时的单词分析 mock（无 key 时返回）。"""
+        return WordAnalysis(
+            word=word,
+            synonyms=[f"[同义] {word}_synonym"],
+            antonyms=[f"[反义] {word}_antonym"],
+            near_synonyms=[],
+            context_meaning=f"[DRY-RUN] 设置 API key 后由 LLM 分析 '{word}' 的同义/反义词",
+            source="mock",
+        )
+
+    def _llm_analyze_words(
+        self, words: list[str], context: str
+    ) -> list[WordAnalysis]:
+        """调用 LLM 一次性分析多个生词的同义/反义/近义。
+
+        约束：
+        1. 严格 JSON 数组输出，无 markdown 包裹
+        2. 单词顺序与输入 words 一一对应
+        3. 同义/反义词为空数组也合法（有些词无常见反义词）
+        """
+        client = self._ensure_client()
+        if client is None:
+            return [self._mock_word_analysis(w) for w in words]
+
+        context_section = (
+            f"\n文章上下文（仅供参考，用于给出语境义项）：\n{context[:600]}\n"
+            if context else ""
+        )
+        words_json = json.dumps(words, ensure_ascii=False)
+
+        prompt = f"""请对以下英文单词列表进行词义分析。每个单词需要给出：
+- synonyms：同义词（1-3 个，词义基本等价）
+- antonyms：反义词（0-3 个，若无常见反义词则空数组）
+- near_synonyms：近义词（1-3 个，词义相似但有细微差别，如 intensity vs strength）
+- context_meaning：在所给文章上下文中的具体含义（中文 1 句话；若上下文中无此词则空串）
+
+要求：
+1. 严格按 JSON 数组输出，数组元素顺序与输入单词顺序一一对应
+2. 不要包裹在 markdown 代码块里（不要 ```json 标记）
+3. 只输出 JSON，不要任何解释文字
+4. 若某词确实没有反义词，antonyms 必须是 []
+
+输入单词：{words_json}{context_section}
+
+输出格式：
+[
+  {{
+    "word": "example",
+    "synonyms": ["instance", "sample"],
+    "antonyms": [],
+    "near_synonyms": ["specimen"],
+    "context_meaning": "例子"
+  }}
+]"""
+
+        resp = client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": "你是英语词汇学专家，专门做同义/反义/近义分析。输出严格 JSON 数组，不含任何 markdown。",
+                },
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.2,
+        )
+        content = (resp.choices[0].message.content or "").strip()
+
+        # 容错：去掉 markdown 包裹
+        content = re.sub(r"^```(?:json)?\s*\n?", "", content)
+        content = re.sub(r"\n?```\s*$", "", content)
+
+        # 提取第一个 JSON 数组
+        m = re.search(r"\[[\s\S]*\]", content)
+        if not m:
+            raise ValueError(f"LLM 未返回 JSON 数组: {content[:200]}")
+        data: list[dict[str, Any]] = json.loads(m.group(0))
+
+        # 按输入 words 顺序返回（LLM 可能漏掉/重排）
+        result: list[WordAnalysis] = []
+        data_by_word = {item.get("word", "").strip().lower(): item for item in data}
+        for w in words:
+            item = data_by_word.get(w.lower())
+            if item is None:
+                result.append(WordAnalysis(word=w, source="llm"))
+                continue
+            result.append(WordAnalysis(
+                word=w,
+                synonyms=item.get("synonyms") or [],
+                antonyms=item.get("antonyms") or [],
+                near_synonyms=item.get("near_synonyms") or [],
+                context_meaning=item.get("context_meaning") or "",
+                source="llm",
+            ))
+        return result
+
 
 __all__ = [
     "get_llm_service",
     "LLMService",
     "WordLookupResult",
     "TranslationResult",
+    "WordAnalysis",
 ]

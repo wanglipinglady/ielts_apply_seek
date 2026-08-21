@@ -5,6 +5,7 @@ W2 阶段提供 SQLite 实现，W3 阶段提供 MySQL 实现。
 """
 from ielts_buddy.repositories.sqlite_repo import (
     REVIEW_INTERVALS,
+    SQLiteArticleRepository,
     SQLiteExamRepository,
     SQLiteGradeRepository,
     SQLiteLearningRepository,

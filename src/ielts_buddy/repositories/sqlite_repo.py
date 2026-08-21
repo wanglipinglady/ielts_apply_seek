@@ -16,6 +16,8 @@ from typing import Any, Optional
 
 from ielts_buddy.core.config import get_app_dir, get_db_path
 from ielts_buddy.core.models import (
+    Article,
+    ArticleWord,
     ExamReport,
     ExamSession,
     GradeResult,
@@ -167,6 +169,23 @@ CREATE TABLE IF NOT EXISTS web_users (
     UNIQUE (email COLLATE NOCASE)
 );
 CREATE INDEX IF NOT EXISTS idx_wu_email ON web_users(email COLLATE NOCASE);
+
+-- 文章翻译记录表（保存用户翻译过的文章 + 生词分析结果）
+-- diff_words_json：ArticleWord 列表的 JSON 字符串
+CREATE TABLE IF NOT EXISTS articles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL DEFAULT 1,
+    title TEXT DEFAULT '',
+    source_text TEXT NOT NULL,
+    translation TEXT DEFAULT '',
+    word_count INTEGER DEFAULT 0,
+    diff_words_json TEXT DEFAULT '[]',
+    translation_source TEXT DEFAULT 'llm',
+    analysis_source TEXT DEFAULT 'fallback',
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_articles_user_created
+    ON articles(user_id, created_at DESC);
 """
 
 # 系统内置分类（每个用户独立一份，不使用 user_id=0 模板）
@@ -1287,6 +1306,105 @@ class SQLiteGradeRepository:
 
 
 # =============================================================
+# 4.5 SQLiteArticleRepository
+# =============================================================
+
+
+def _row_to_article(row: sqlite3.Row) -> Article:
+    return Article(
+        id=row["id"],
+        user_id=row["user_id"],
+        title=row["title"] or "",
+        source_text=row["source_text"],
+        translation=row["translation"] or "",
+        word_count=row["word_count"] or 0,
+        diff_words_json=row["diff_words_json"] or "[]",
+        translation_source=row["translation_source"] or "llm",
+        analysis_source=row["analysis_source"] or "fallback",
+        created_at=row["created_at"],
+    )
+
+
+class SQLiteArticleRepository:
+    """SQLite 实现的 Article 仓库。
+
+    用于文章翻译+生词分析功能的持久化：
+    - 原文 + 中文翻译 + 生词分析结果一起存
+    - 支持按用户列出历史、按 ID 查询完整记录
+    """
+
+    def __init__(self, conn: sqlite3.Connection) -> None:
+        self._conn = conn
+
+    def create(
+        self,
+        user_id: int,
+        title: str,
+        source_text: str,
+        translation: str,
+        word_count: int,
+        diff_words: list[ArticleWord],
+        translation_source: str = "llm",
+        analysis_source: str = "fallback",
+    ) -> int:
+        """插入一篇文章，返回新 id。"""
+        now = datetime.now().isoformat(timespec="seconds")
+        diff_words_json = json.dumps(
+            [w.model_dump() for w in diff_words], ensure_ascii=False
+        )
+        cur = self._conn.execute(
+            """INSERT INTO articles
+               (user_id, title, source_text, translation, word_count,
+                diff_words_json, translation_source, analysis_source, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                user_id, title, source_text, translation, word_count,
+                diff_words_json, translation_source, analysis_source, now,
+            ),
+        )
+        self._conn.commit()
+        return cur.lastrowid or 0
+
+    def get_by_id(self, user_id: int, article_id: int) -> Optional[Article]:
+        """按 id 查询完整记录（带 user_id 过滤，避免越权）。"""
+        row = self._conn.execute(
+            "SELECT * FROM articles WHERE id = ? AND user_id = ?",
+            (article_id, user_id),
+        ).fetchone()
+        return _row_to_article(row) if row else None
+
+    def list_recent(
+        self,
+        user_id: int,
+        limit: int = 30,
+    ) -> list[Article]:
+        """最近的文章列表（按时间倒序）。"""
+        rows = self._conn.execute(
+            """SELECT * FROM articles WHERE user_id = ?
+               ORDER BY created_at DESC LIMIT ?""",
+            (user_id, limit),
+        ).fetchall()
+        return [_row_to_article(r) for r in rows]
+
+    def count(self, user_id: int) -> int:
+        """用户的文章总数。"""
+        row = self._conn.execute(
+            "SELECT COUNT(*) as cnt FROM articles WHERE user_id = ?",
+            (user_id,),
+        ).fetchone()
+        return row["cnt"]
+
+    def delete(self, user_id: int, article_id: int) -> bool:
+        """删除一篇文章。"""
+        cur = self._conn.execute(
+            "DELETE FROM articles WHERE id = ? AND user_id = ?",
+            (article_id, user_id),
+        )
+        self._conn.commit()
+        return cur.rowcount > 0
+
+
+# =============================================================
 # 5. SQLiteVocabCacheRepository
 # =============================================================
 
@@ -1452,6 +1570,7 @@ class SQLiteRepositoryContainer:
         self.personal_vocab = SQLitePersonalVocabRepository(self._conn)
         self.exam = SQLiteExamRepository(self._conn)
         self.grade = SQLiteGradeRepository(self._conn)
+        self.article = SQLiteArticleRepository(self._conn)
         self.user = SQLiteUserRepository(self._conn)
 
         if cache_path is None:
@@ -1483,6 +1602,7 @@ __all__ = [
     "SQLitePersonalVocabRepository",
     "SQLiteExamRepository",
     "SQLiteGradeRepository",
+    "SQLiteArticleRepository",
     "SQLiteVocabCacheRepository",
     "SQLiteUserRepository",
     "SQLiteRepositoryContainer",
