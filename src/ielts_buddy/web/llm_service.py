@@ -207,6 +207,9 @@ class LLMService:
             # 清理：去掉 markdown 代码块标记、行首说明
             content = re.sub(r"^```[a-z]*\n?", "", content)
             content = re.sub(r"\n?```$", "", content)
+            # 容错：MiniMax M2.7 等模型先输出 <think>...</think> 再给音标，
+            # 必须把整段 <think> 块（可能跨多行）剥掉
+            content = re.sub(r"<think>[\s\S]*?</think>\s*", "", content)
             # 去掉前后引号
             content = content.strip().strip("'\"").strip()
             # 提取第一个音标（如 "...DJ 音标: /abc/" → /abc/）
@@ -278,11 +281,37 @@ class LLMService:
         )
         content = (resp.choices[0].message.content or "").strip()
 
+        # 容错：剥掉 markdown + 思维链前缀
+        content = re.sub(r"^```(?:json)?\s*\n?", "", content)
+        content = re.sub(r"\n?```\s*$", "", content)
+        content = re.sub(r"<think>[\s\S]*?</think>\s*", "", content)
+
         # 提取 JSON（容错：可能被 markdown 包裹）
-        m = re.search(r"\{[\s\S]*\}", content)
+        m = re.search(r"\{[\s\S]*?\}", content)
         if not m:
             raise ValueError(f"LLM 未返回 JSON: {content[:200]}")
-        data: dict[str, Any] = json.loads(m.group(0))
+        candidate = m.group(0)
+        try:
+            data: dict[str, Any] = json.loads(candidate)
+        except json.JSONDecodeError:
+            # 退路：手动找配对的大括号
+            start = content.find("{")
+            if start < 0:
+                raise ValueError(f"LLM 未返回 JSON: {content[:200]}")
+            depth = 0
+            end = -1
+            for i in range(start, len(content)):
+                ch = content[i]
+                if ch == "{":
+                    depth += 1
+                elif ch == "}":
+                    depth -= 1
+                    if depth == 0:
+                        end = i + 1
+                        break
+            if end < 0:
+                raise ValueError(f"LLM JSON 对象未闭合: {content[:200]}")
+            data = json.loads(content[start:end])
 
         return WordLookupResult(
             word=word,
@@ -323,6 +352,9 @@ class LLMService:
             temperature=0.3,
         )
         translation = (resp.choices[0].message.content or "").strip()
+        # 容错：MiniMax M2.7 等模型会先输出 <think>...</think> 思维链再给出正文，
+        # 必须把整段 <think> 块（含跨行内容）剥掉，避免在前端展示给用户。
+        translation = re.sub(r"<think>[\s\S]*?</think>\s*", "", translation).strip()
         return TranslationResult(
             source_text=text, translation=translation, source="llm"
         )
@@ -452,11 +484,40 @@ class LLMService:
         content = re.sub(r"^```(?:json)?\s*\n?", "", content)
         content = re.sub(r"\n?```\s*$", "", content)
 
-        # 提取第一个 JSON 数组
-        m = re.search(r"\[[\s\S]*\]", content)
+        # 容错：MiniMax M2.7 会先输出 <think>...</think> 思维链，
+        # 必须先把整段 <think> 块（可能跨多行）剥掉，再去找 JSON 数组
+        content = re.sub(r"<think>[\s\S]*?</think>\s*", "", content)
+
+        # 容错：LLM 偶尔会在 JSON 前后加 "好的，我来分析：" 之类说明文字，
+        # 贪婪匹配的 `\[[\s\S]*\]` 会把中间所有 `[ ]` 都吞进来导致解析错；
+        # 改成非贪婪 + 加括号嵌套计数器，定位最外层 JSON 数组边界。
+        m = re.search(r"\[[\s\S]*?\]", content)
         if not m:
             raise ValueError(f"LLM 未返回 JSON 数组: {content[:200]}")
-        data: list[dict[str, Any]] = json.loads(m.group(0))
+        candidate = m.group(0)
+        # 如果最外层 JSON 数组后面还跟着其他内容（如 LLM 解释），
+        # 用括号计数器找到真正的闭合位置
+        try:
+            data = json.loads(candidate)
+        except json.JSONDecodeError:
+            # 退路：手动扫描括号层级
+            start = content.find("[")
+            if start < 0:
+                raise ValueError(f"LLM 未返回 JSON 数组: {content[:200]}")
+            depth = 0
+            end = -1
+            for i in range(start, len(content)):
+                ch = content[i]
+                if ch == "[":
+                    depth += 1
+                elif ch == "]":
+                    depth -= 1
+                    if depth == 0:
+                        end = i + 1
+                        break
+            if end < 0:
+                raise ValueError(f"LLM JSON 数组未闭合: {content[:200]}")
+            data = json.loads(content[start:end])
 
         # 按输入 words 顺序返回（LLM 可能漏掉/重排）
         result: list[WordAnalysis] = []

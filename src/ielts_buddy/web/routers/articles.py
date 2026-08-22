@@ -384,19 +384,25 @@ async def api_translate_article(
     translation_text, translation_source = translation_result
 
     # 3) 合并 LLM 分析到 ArticleWord（按 word 匹配）
-    # raw_analyses 是 list of dict（来自 _do_analyze），需转换为带属性访问的对象
+    # _do_analyze 返回的可能是 WordAnalysis 对象（真实 LLM 路径）
+    # 或 dict（mock / error fallback 路径），需统一处理。
     from ielts_buddy.web.llm_service import WordAnalysis
-    analyses_typed = [
-        WordAnalysis(
-            word=a["word"],
-            synonyms=a.get("synonyms") or [],
-            antonyms=a.get("antonyms") or [],
-            near_synonyms=a.get("near_synonyms") or [],
-            context_meaning=a.get("context_meaning") or "",
-            source=a.get("source") or "llm",
-        )
-        for a in raw_analyses
-    ]
+    analyses_typed: list[WordAnalysis] = []
+    for a in raw_analyses:
+        if isinstance(a, WordAnalysis):
+            analyses_typed.append(a)
+        elif isinstance(a, dict):
+            analyses_typed.append(WordAnalysis(
+                word=a.get("word", ""),
+                synonyms=a.get("synonyms") or [],
+                antonyms=a.get("antonyms") or [],
+                near_synonyms=a.get("near_synonyms") or [],
+                context_meaning=a.get("context_meaning") or "",
+                source=a.get("source") or "llm",
+            ))
+        else:
+            # 兜底：未知类型，按空分析处理
+            analyses_typed.append(WordAnalysis(word=str(a), source="error"))
     diff_words = _merge_llm_analysis(diff_words, analyses_typed)
 
     # 关键：FastAPI 默认序列化可能把字符串里的 raw \n / \t 当字面量传给客户端，
