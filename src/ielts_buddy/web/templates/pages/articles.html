@@ -49,6 +49,11 @@
       padding: 16px;
       box-shadow: 0 1px 2px rgba(0,0,0,0.04);
     }
+    /* 右栏（翻译 + 生词）：整体高度受限，超出滚动；保证一屏内能看到生词 */
+    .articles-grid > .panel:nth-of-type(2) {
+      max-height: calc(100vh - 200px);
+      overflow-y: auto;
+    }
     .panel-title {
       font-weight: 600;
       margin: 0 0 12px 0;
@@ -61,7 +66,7 @@
     /* 输入区 */
     .article-input {
       width: 100%;
-      min-height: 320px;
+      min-height: 220px;
       padding: 12px;
       border: 1px solid #d1d5db;
       border-radius: 6px;
@@ -148,10 +153,10 @@
       border-radius: 6px;
       line-height: 1.8;
       font-size: 0.95rem;
-      min-height: 80px;
-      white-space: pre-wrap;
-      max-height: 400px;
+      min-height: 60px;
+      max-height: 180px;
       overflow-y: auto;
+      white-space: pre-wrap;
     }
     .translation-result.empty {
       color: #9ca3af;
@@ -172,11 +177,16 @@
 
     /* 生词卡片 */
     .diff-words-area {
-      grid-column: 1 / -1;  /* 跨两栏 */
       background: #fff;
       border: 1px solid #e5e7eb;
       border-radius: 8px;
-      padding: 16px;
+      padding: 12px;
+    }
+    /* 生词列表可滚动，避免超高撑爆页面 */
+    .diff-words-scroll {
+      max-height: 380px;
+      overflow-y: auto;
+      padding-right: 4px;
     }
     .diff-words-header {
       display: flex;
@@ -400,7 +410,7 @@
       </div>
     </div>
 
-    {# === 右栏：翻译结果 === #}
+    {# === 右栏：翻译结果 + 生词分析（合并在一个面板，滚动区共享） === #}
     <div class="panel">
       <h3 class="panel-title">
         🌐 中文翻译
@@ -410,6 +420,25 @@
         等待翻译…
       </div>
 
+      {# 生词分析（紧跟翻译结果，用户无需滚动即可看到） #}
+      <div class="diff-words-area" style="margin-top: 14px;">
+        <div class="diff-words-header">
+          <h3 class="panel-title">
+            📚 生词分析 <span id="diff-count-label" class="count"></span>
+          </h3>
+          <div class="diff-words-actions">
+            <button class="btn-secondary" onclick="selectAllDiff()">全选</button>
+            <button class="btn-secondary" onclick="deselectAllDiff()">全不选</button>
+            <button class="btn-primary" id="btn-add-to-vocab" onclick="addToVocab()" disabled>
+              加入个人词库
+            </button>
+          </div>
+        </div>
+        <div id="diff-words-list" class="diff-words-scroll">
+          <div class="empty-state">点击「翻译 + 生词分析」开始…</div>
+        </div>
+      </div>
+
       <div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end">
         <button class="btn-secondary" id="btn-save-article" onclick="saveArticle()" disabled>
           保存到历史
@@ -417,26 +446,7 @@
       </div>
     </div>
 
-    {# === 底部：生词列表 === #}
-    <div class="diff-words-area">
-      <div class="diff-words-header">
-        <h3 class="panel-title">
-          📚 生词分析 <span id="diff-count-label" class="count"></span>
-        </h3>
-        <div class="diff-words-actions">
-          <button class="btn-secondary" onclick="selectAllDiff()">全选</button>
-          <button class="btn-secondary" onclick="deselectAllDiff()">全不选</button>
-          <button class="btn-primary" id="btn-add-to-vocab" onclick="addToVocab()" disabled>
-            加入个人词库
-          </button>
-        </div>
-      </div>
-      <div id="diff-words-list">
-        <div class="empty-state">点击「翻译 + 生词分析」开始…</div>
-      </div>
-    </div>
-
-    {# === 历史列表 === #}
+    {# === 历史列表（跨两栏） === #}
     <div class="panel" style="grid-column: 1 / -1;">
       <h3 class="panel-title">🕐 最近翻译的文章</h3>
       <div id="recent-articles" class="recent-articles">
