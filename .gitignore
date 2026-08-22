@@ -33,6 +33,7 @@ data/
 logs/
 *.tmp
 .cache/
+*.bak
 
 # ===== IDE / OS =====
 .idea/
