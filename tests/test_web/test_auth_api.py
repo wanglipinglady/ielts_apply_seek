@@ -409,3 +409,81 @@ def test_change_password_page_renders(client: TestClient) -> None:
                    "confirm_password", "pwd-toggle",
                    "/api/auth/change-password"):
         assert needle in r.text, f"missing {needle!r}"
+
+
+# =============================================================
+# 忘记密码（重置为默认密码 12345678）
+# =============================================================
+
+
+def test_forgot_password_page_renders(client: TestClient) -> None:
+    """/forgot-password HTML 页面能渲染，包含默认密码提示。"""
+    r = client.get("/forgot-password")
+    assert r.status_code == 200
+    for needle in ("忘记密码", "12345678", "name=\"email\"",
+                   "/api/auth/forgot-password"):
+        assert needle in r.text, f"missing {needle!r}"
+
+
+def test_forgot_password_unknown_email_returns_401(client: TestClient) -> None:
+    """邮箱不存在 → 401 INVALID_CREDENTIALS（避免邮箱枚举）。"""
+    r = client.post(
+        "/api/auth/forgot-password",
+        data={"email": "nobody@example.com"},
+    )
+    assert r.status_code == 401, r.text
+    assert "INVALID_CREDENTIALS" in r.text
+
+
+def test_forgot_password_invalid_email_format_returns_400(client: TestClient) -> None:
+    """邮箱格式无效 → 400 INVALID_EMAIL。"""
+    r = client.post(
+        "/api/auth/forgot-password",
+        data={"email": "not-an-email"},
+    )
+    assert r.status_code == 400, r.text
+    assert "INVALID_EMAIL" in r.text
+
+
+def test_forgot_password_missing_email_returns_422(client: TestClient) -> None:
+    """email 字段缺失 → 422（Pydantic / Form 必填校验）。"""
+    r = client.post("/api/auth/forgot-password", data={})
+    assert r.status_code == 422
+
+
+def test_forgot_password_resets_to_default_and_returns_plaintext(
+    client: TestClient,
+) -> None:
+    """重置成功：返回明文 12345678，旧密码失效，新密码可登录。"""
+    # 1. 注册用户
+    reg = client.post(
+        "/api/auth/register",
+        data={"email": "forgot@example.com", "password": "originalpw1"},
+    )
+    assert reg.status_code == 201
+    user_id = reg.json()["user"]["id"]
+
+    # 2. 重置为默认密码
+    r = client.post(
+        "/api/auth/forgot-password",
+        data={"email": "forgot@example.com"},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["email"] == "forgot@example.com"
+    assert body["user_id"] == user_id
+    assert body["new_password"] == "12345678"
+
+    # 3. 旧密码登录失败
+    old_login = client.post(
+        "/api/auth/login",
+        data={"email": "forgot@example.com", "password": "originalpw1"},
+    )
+    assert old_login.status_code == 401
+
+    # 4. 默认密码登录成功
+    new_login = client.post(
+        "/api/auth/login",
+        data={"email": "forgot@example.com", "password": "12345678"},
+    )
+    assert new_login.status_code == 200

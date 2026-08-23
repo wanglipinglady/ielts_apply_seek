@@ -72,6 +72,26 @@ class ResetPasswordRequest(BaseModel):
     email: EmailStr
 
 
+class ForgotPasswordRequest(BaseModel):
+    """用户自助「忘记密码」请求体（无需登录态）。
+
+    注意：当前实现是简化版——用户提交邮箱，系统直接把该账号密码
+    重置为默认密码 ``12345678``，并把明文一次性返回给调用方。
+    这是**不安全**的设计（任何知道邮箱的人都能重置），仅用于
+    本地 dev / 单用户场景。生产应走「邮件验证码」流程。
+    """
+
+    email: EmailStr
+
+
+class ForgotPasswordResponse(BaseModel):
+    """用户自助重置响应（一次性返回默认明文密码）。"""
+
+    email: str
+    new_password: str  # 固定默认值 "12345678"
+    user_id: int
+
+
 class ResetPasswordResponse(BaseModel):
     """管理员重置密码响应：**一次性返回新明文密码**，调用方需立即保存。
 
@@ -96,4 +116,6 @@ __all__ = [
     "ChangePasswordResponse",
     "ResetPasswordRequest",
     "ResetPasswordResponse",
+    "ForgotPasswordRequest",
+    "ForgotPasswordResponse",
 ]

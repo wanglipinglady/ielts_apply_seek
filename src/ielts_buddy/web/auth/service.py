@@ -203,6 +203,46 @@ class WebAuthService:
         # 把 user 也回一份给调用方（用于响应里打印 email 等）
         return user, new_plain
 
+    # 用户自助「忘记密码」默认密码（业务约定）
+    DEFAULT_PASSWORD = "12345678"
+
+    def reset_to_default_password(self, email: str) -> tuple[WebUser, str]:
+        """用户自助「忘记密码」：把账号密码重置为固定默认密码 ``12345678``。
+
+        设计目标：
+        - 无需登录态；任何知道 email 的人都能触发
+        - 默认密码固定为 ``12345678``（业务约定）
+        - 一次性返回明文给前端展示，**前端必须明确提示用户改密**
+        - 邮箱不存在时仍返回 INVALID_CREDENTIALS，避免邮箱枚举
+
+        安全注意（已知缺陷，按用户要求接受）：
+        - 任何能猜到 email 的攻击者都能重置该账号 → 不适合公网
+        - 仅用于本地 dev / 单用户 / 受信环境
+        - 生产应改为：邮件发验证码 → 用户输入 → 通过后再重置
+
+        返回 (user, new_plain_password)：
+        - user：被重置的用户
+        - new_plain_password：固定为 ``12345678``
+
+        Raises:
+            AuthError("INVALID_CREDENTIALS", ...) 邮箱不存在（避免枚举）
+            AuthError("INVALID_EMAIL", ...)  邮箱格式错
+        """
+        email_norm = email.strip().lower()
+        if not email_norm or "@" not in email_norm:
+            raise AuthError("INVALID_EMAIL", "邮箱格式无效")
+
+        user = self._repo.get_by_email(email_norm)
+        if user is None:
+            raise AuthError("INVALID_CREDENTIALS", "邮箱或密码错误")
+
+        new_plain = self.DEFAULT_PASSWORD
+        new_hash = hash_password(new_plain)
+        ok = self._repo.set_password(user.id, new_hash)
+        if not ok:
+            raise AuthError("USER_NOT_FOUND", "用户不存在")
+        return user, new_plain
+
     # ---- 内部 ----
 
     def _build_login_result(self, user: WebUser) -> LoginResult:

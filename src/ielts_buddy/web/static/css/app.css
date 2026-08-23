@@ -354,6 +354,67 @@ a:hover { text-decoration: underline; }
   outline-offset: 1px;
 }
 
+/* === 忘记密码：默认密码展示框 === */
+.default-pwd {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 1.05em;
+  background: rgba(15, 118, 110, 0.08);
+  padding: 1px 6px;
+  border-radius: 4px;
+  color: var(--primary-color, #0f766e);
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+.forgot-pwd-result {
+  margin-top: 16px;
+  padding: 16px 18px;
+  background: linear-gradient(135deg,
+    rgba(15, 118, 110, 0.04) 0%,
+    rgba(13, 148, 136, 0.08) 100%);
+  border: 1px solid rgba(15, 118, 110, 0.25);
+  border-radius: 10px;
+  font-size: 14px;
+  line-height: 1.7;
+}
+.forgot-pwd-result .result-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--primary-color, #0f766e);
+  margin-bottom: 12px;
+}
+.forgot-pwd-result .result-row {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin: 6px 0;
+}
+.forgot-pwd-result .result-label {
+  flex: 0 0 80px;
+  color: var(--text-muted, #6b7280);
+  font-size: 13px;
+}
+.forgot-pwd-result .result-value {
+  color: var(--text-main, #1f2937);
+  word-break: break-all;
+}
+.forgot-pwd-result .result-value.default-pwd {
+  font-size: 1.15em;
+  padding: 4px 10px;
+  background: #fff;
+  border: 1px dashed rgba(15, 118, 110, 0.4);
+}
+.forgot-pwd-result .result-tip {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(15, 118, 110, 0.15);
+  color: var(--text-muted, #6b7280);
+  font-size: 13px;
+}
+.forgot-pwd-result .result-tip a {
+  color: var(--primary-color, #0f766e);
+  font-weight: 600;
+}
+
 /* === 统计卡片（PRD风格） === */
 .stats-grid {
   display: grid;

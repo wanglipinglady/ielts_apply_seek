@@ -26,6 +26,7 @@ from ielts_buddy.web.auth.schemas import (
     AuthErrorResponse,
     ChangePasswordRequest,
     ChangePasswordResponse,
+    ForgotPasswordResponse,
     LoginRequest,
     RegisterRequest,
     ResetPasswordRequest,
@@ -369,6 +370,61 @@ def api_admin_reset_password(
     )
 
 
+@api_router.post(
+    "/forgot-password",
+    response_model=ForgotPasswordResponse,
+    responses={
+        401: {"model": AuthErrorResponse},
+        400: {"model": AuthErrorResponse},
+    },
+)
+def api_forgot_password(
+    svc: Annotated[WebAuthService, Depends(get_web_auth_service)],
+    # 无需登录态；前端 HTMX form 提交
+    email: Annotated[str, Form(description="注册邮箱")],
+) -> ForgotPasswordResponse | JSONResponse:
+    """用户自助「忘记密码」：把账号密码重置为默认密码 ``12345678``。
+
+    请求（form-encoded）：
+    - email: 注册时的邮箱
+
+    返回（一次性，明文展示给用户）：
+    ```json
+    {
+      "email": "user@x.com",
+      "new_password": "12345678",
+      "user_id": 4
+    }
+    ```
+
+    错误：
+    - 401：邮箱不存在（与登录一致，避免邮箱枚举）
+    - 400：邮箱格式无效
+    - 422：邮箱字段缺失
+
+    安全提示：
+    - 该接口**任何人都能调用**，不需要登录态
+    - 已知邮箱的攻击者可直接重置该账号
+    - 仅适合本地 dev / 单用户场景
+    """
+    if "@" not in email or "." not in email:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=AuthErrorResponse(
+                detail="邮箱格式无效", code="INVALID_EMAIL",
+            ).model_dump(),
+        )
+    try:
+        user, new_plain = svc.reset_to_default_password(email)
+    except AuthError as e:
+        return _auth_error_response(e)
+    return ForgotPasswordResponse(
+        email=user.email,
+        new_password=new_plain,
+        user_id=user.id,
+    )
+
+
 # =============================================================
 # HTML 模板路由
 # =============================================================
@@ -404,6 +460,16 @@ def page_change_password(request: Request) -> HTMLResponse:
         request,
         "pages/change_password.html",
         {"title": "修改密码", "phase": 1, "current_user": None},
+    )
+
+
+@router.get("/forgot-password", response_class=HTMLResponse)
+def page_forgot_password(request: Request) -> HTMLResponse:
+    """忘记密码页面：用户输入邮箱 → 重置为默认密码 ``12345678``。"""
+    return _get_templates(request).TemplateResponse(
+        request,
+        "pages/forgot_password.html",
+        {"title": "忘记密码", "phase": 1, "current_user": None},
     )
 
 
