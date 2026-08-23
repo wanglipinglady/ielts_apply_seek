@@ -597,6 +597,93 @@ class SQLiteLearningRepository:
         ).fetchall()
         return [row["word"] for row in rows]
 
+    # ---- 错词本 (v3.6 新增) ----
+    def get_wrong_words(
+        self,
+        user_id: int,
+        min_wrong: int = 1,
+        days: int | None = None,
+        limit: int = 200,
+    ) -> list[dict]:
+        """按 wrong_count DESC 返回错词列表(原始 dict,含 word/word_data)。
+
+        返回 dict 而非 LearningRecord 是因为前端需要 word 字符串本身,
+        而 LearningRecord 仅暴露 word_id。web router 层直接序列化。
+        """
+        params: list[Any] = [user_id, min_wrong]
+        sql = """SELECT * FROM learning_records
+                 WHERE user_id = ? AND wrong_count >= ?"""
+        if days is not None:
+            since = (date.today() - timedelta(days=days - 1)).isoformat()
+            sql += " AND DATE(last_reviewed) >= ?"
+            params.append(since)
+        sql += """ ORDER BY wrong_count DESC, last_reviewed DESC
+                   LIMIT ?"""
+        params.append(limit)
+        rows = self._conn.execute(sql, tuple(params)).fetchall()
+        return [dict(r) for r in rows]
+
+    def reset_mistake(self, user_id: int, word: str) -> bool:
+        """重置错词状态:wrong_count=0, memory_level=6(标记已掌握)。"""
+        cur = self._conn.execute(
+            """UPDATE learning_records
+               SET wrong_count = 0, memory_level = 6,
+                   last_reviewed = ?
+             WHERE user_id = ? AND word = ?""",
+            (datetime.now().isoformat(timespec="seconds"), user_id, word),
+        )
+        self._conn.commit()
+        return cur.rowcount > 0
+
+    def get_mistake_stats(self, user_id: int) -> dict:
+        """错词本聚合统计。"""
+        try:
+            row = self._conn.execute(
+                """SELECT
+                       COUNT(CASE WHEN wrong_count > 0 THEN 1 END) AS distinct_words,
+                       COALESCE(SUM(wrong_count), 0) AS total_wrong_count
+                   FROM learning_records WHERE user_id = ?""",
+                (user_id,),
+            ).fetchone()
+            since_7d = (date.today() - timedelta(days=6)).isoformat()
+            row7 = self._conn.execute(
+                """SELECT COUNT(*) AS cnt
+                   FROM learning_records
+                   WHERE user_id = ?
+                     AND wrong_count > 0
+                     AND DATE(last_reviewed) >= ?""",
+                (user_id, since_7d),
+            ).fetchone()
+            top_rows = self._conn.execute(
+                """SELECT word, wrong_count, last_reviewed
+                   FROM learning_records
+                   WHERE user_id = ? AND wrong_count > 0
+                   ORDER BY wrong_count DESC, last_reviewed DESC
+                   LIMIT 5""",
+                (user_id,),
+            ).fetchall()
+            return {
+                "distinct_words": int(row["distinct_words"] or 0),
+                "total_wrong_count": int(row["total_wrong_count"] or 0),
+                "last_7d_wrong": int(row7["cnt"] or 0),
+                "top_offenders": [
+                    {
+                        "word": r["word"],
+                        "wrong_count": int(r["wrong_count"]),
+                        "last_reviewed": r["last_reviewed"],
+                    }
+                    for r in top_rows
+                ],
+            }
+        except Exception:
+            print("[sqlite] get_mistake_stats failed")
+            return {
+                "distinct_words": 0,
+                "total_wrong_count": 0,
+                "last_7d_wrong": 0,
+                "top_offenders": [],
+            }
+
     def get_learned_words(self, user_id: int) -> list[str]:
         """返回用户学过的所有词（任意时间），用于\"挑没学过的词\"。
         注意：与 get_learned_words_today 不同 —— 后者只看今天的。

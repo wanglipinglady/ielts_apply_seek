@@ -251,6 +251,8 @@ async def api_record(
     correct_words: list[str] = []
     wrong_words: list[str] = []
     total = 0
+    # v3.6 错词本:答错时自动入 personal_vocab.mistakes 分类
+    container = getattr(request.app.state, "container", None)
 
     for item in payload.answers:
         word_text = (item.word or "").strip()
@@ -284,6 +286,17 @@ async def api_record(
             correct_words.append(word_text)
         else:
             wrong_words.append(word_text)
+
+        # v3.6 错词本：答错自动入 personal_vocab.mistakes 分类
+        if not is_correct:
+            try:
+                from ielts_buddy.services.mistake_service import MistakeService
+                mistake_svc = MistakeService(container, int(user.id))
+                await mistake_svc.arecord_mistake(word_obj, source="listening_dictation")
+            except Exception:
+                logger.exception(
+                    f"[listening] record_mistake failed for '{word_text}'"
+                )
 
     return RecordResponse(
         total=total,

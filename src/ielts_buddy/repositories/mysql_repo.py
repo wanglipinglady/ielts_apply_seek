@@ -484,6 +484,94 @@ class MySQLLearningRepository:
             """), {"uid": user_id, "today": today_dt}).fetchall()
         return [r[0] for r in rows]
 
+    # ---- 错词本 (v3.6 新增) ----
+    def get_wrong_words(
+        self,
+        user_id: int,
+        min_wrong: int = 1,
+        days: int | None = None,
+        limit: int = 200,
+    ) -> list[dict]:
+        """按 wrong_count DESC 返回错词列表(dict,含 word/word_data)。"""
+        stmt = select(t_learning_records).where(
+            t_learning_records.c.user_id == user_id,
+            t_learning_records.c.wrong_count >= min_wrong,
+        )
+        if days is not None:
+            since = (date.today() - timedelta(days=days - 1))
+            stmt = stmt.where(t_learning_records.c.last_reviewed >= since)
+        stmt = stmt.order_by(
+            t_learning_records.c.wrong_count.desc(),
+            t_learning_records.c.last_reviewed.desc(),
+        ).limit(limit)
+        with self._engine.connect() as conn:
+            rows = conn.execute(stmt).fetchall()
+        # _mapping 拿 dict(row) 等价物,含所有列
+        return [dict(r._mapping) for r in rows]
+
+    def reset_mistake(self, user_id: int, word: str) -> bool:
+        """重置错词状态:wrong_count=0, memory_level=6(标记已掌握)。"""
+        now_dt = datetime.now()
+        stmt = (
+            update(t_learning_records)
+            .where(
+                t_learning_records.c.user_id == user_id,
+                t_learning_records.c.word == word,
+            )
+            .values(wrong_count=0, memory_level=6, last_reviewed=now_dt)
+        )
+        with self._engine.connect() as conn:
+            result = conn.execute(stmt)
+            conn.commit()
+        return result.rowcount > 0
+
+    def get_mistake_stats(self, user_id: int) -> dict:
+        """错词本聚合统计（MySQL 版）。"""
+        try:
+            with self._engine.connect() as conn:
+                row = conn.execute(text("""
+                    SELECT
+                        SUM(CASE WHEN wrong_count > 0 THEN 1 ELSE 0 END) AS distinct_words,
+                        COALESCE(SUM(wrong_count), 0) AS total_wrong_count
+                    FROM learning_records WHERE user_id = :uid
+                """), {"uid": user_id}).first()
+                since_7d = date.today() - timedelta(days=6)
+                row7 = conn.execute(text("""
+                    SELECT COUNT(*) AS cnt
+                    FROM learning_records
+                    WHERE user_id = :uid
+                      AND wrong_count > 0
+                      AND DATE(last_reviewed) >= :since
+                """), {"uid": user_id, "since": since_7d}).first()
+                top_rows = conn.execute(text("""
+                    SELECT word, wrong_count, last_reviewed
+                    FROM learning_records
+                    WHERE user_id = :uid AND wrong_count > 0
+                    ORDER BY wrong_count DESC, last_reviewed DESC
+                    LIMIT 5
+                """), {"uid": user_id}).fetchall()
+            return {
+                "distinct_words": int((row[0] if row else 0) or 0),
+                "total_wrong_count": int((row[1] if row else 0) or 0),
+                "last_7d_wrong": int((row7[0] if row7 else 0) or 0),
+                "top_offenders": [
+                    {
+                        "word": r[0],
+                        "wrong_count": int(r[1] or 0),
+                        "last_reviewed": r[2].isoformat() if r[2] else "",
+                    }
+                    for r in top_rows
+                ],
+            }
+        except Exception:
+            print("[mysql] get_mistake_stats failed")
+            return {
+                "distinct_words": 0,
+                "total_wrong_count": 0,
+                "last_7d_wrong": 0,
+                "top_offenders": [],
+            }
+
     def get_learned_words(self, user_id: int) -> list[str]:
         """返回用户学过的所有词（任意时间）。"""
         with self._engine.connect() as conn:

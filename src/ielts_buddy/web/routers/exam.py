@@ -382,6 +382,10 @@ def _record_learning(
     try:
         word = Word(**word_data)
         container.learning.upsert_record(user_id, word, correct, source="exam")
+        # v3.6 错词本：答错自动入 personal_vocab.mistakes 分类
+        if not correct and hasattr(container, "personal_vocab"):
+            from ielts_buddy.services.mistake_service import MistakeService
+            MistakeService(container, user_id).record_mistake(word, source="exam_mistake")
     except Exception as e:
         # 不静默吞：记录日志，至少让运维能看到
         import logging

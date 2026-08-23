@@ -20,7 +20,7 @@ from ielts_buddy.core import repository as r
 
 
 class TestLearningRepositoryProtocol:
-    """LearningRepository 必须有 10 个方法，且全部带 user_id。"""
+    """LearningRepository 必须有 13 个方法（v3.6 起 +3 错词本），且全部带 user_id。"""
 
     REQUIRED_METHODS = {
         "get_record",
@@ -33,6 +33,10 @@ class TestLearningRepositoryProtocol:
         "get_all_records",
         "get_learned_count",
         "get_learned_words_today",
+        # v3.6 错词本新增 3 个
+        "get_wrong_words",
+        "reset_mistake",
+        "get_mistake_stats",
     }
 
     def test_required_methods_exist(self):
@@ -46,6 +50,8 @@ class TestLearningRepositoryProtocol:
             "get_record", "upsert_record", "toggle_star", "toggle_difficult",
             "get_due_words", "get_due_count", "get_history",
             "get_all_records", "get_learned_count", "get_learned_words_today",
+            # v3.6 错词本
+            "get_wrong_words", "reset_mistake", "get_mistake_stats",
         ]),
     )
     def test_all_methods_take_user_id_as_first_param(self, method_name: str):
@@ -284,6 +290,10 @@ class TestAssertProtocol:
             def get_all_records(self, user_id): pass
             def get_learned_count(self, user_id): pass
             def get_learned_words_today(self, user_id): pass
+            # v3.6 错词本新增 3 个
+            def get_wrong_words(self, user_id, min_wrong=1, days=None, limit=200): pass
+            def reset_mistake(self, user_id, word): pass
+            def get_mistake_stats(self, user_id): pass
 
         # 不应抛错
         r.assert_repository_implements_protocol(FakeLearning(), r.LearningRepository)
@@ -336,7 +346,7 @@ class TestProtocolConsistency:
     def test_all_protocols_have_distinct_method_counts(self):
         """6 个 Repository 的方法数应当不同（防止命名重复）。"""
         sizes = {
-            "LearningRepository": 10,
+            "LearningRepository": 13,
             "PersonalVocabRepository": 18,
             "ExamRepository": 5,
             "GradeRepository": 4,

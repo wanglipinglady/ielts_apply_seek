@@ -84,6 +84,49 @@ class LearningRepository(Protocol):
         """今日新学的单词列表。"""
         ...
 
+    # ---- 错词本 (v3.6 新增) ----
+    def get_wrong_words(
+        self,
+        user_id: int,
+        min_wrong: int = 1,
+        days: int | None = None,
+        limit: int = 200,
+    ) -> list[dict]:
+        """按 wrong_count 降序返回错词列表。
+
+        Args:
+            user_id: 用户隔离
+            min_wrong: 至少错 N 次（默认 1 = 任何错过的都返回）
+            days: 仅看最近 N 天 last_reviewed；None = 不限时间
+            limit: 最多返回条数
+
+        Returns:
+            list[dict] 按 ``wrong_count DESC, last_reviewed DESC`` 排序,
+            每个 dict 含 learning_records 表所有字段(word / word_data / wrong_count / ...)
+        """
+        ...
+
+    def reset_mistake(self, user_id: int, word: str) -> bool:
+        """重置错词状态:wrong_count 清 0,correct_count +1(标记已掌握)。
+
+        用于"标记为已掌握"按钮。与 upsert_record 不同,不会增加 learn_count
+        (因为本次不是答题),仅校 wrong_count / memory_level。
+        """
+        ...
+
+    def get_mistake_stats(self, user_id: int) -> dict:
+        """错词本聚合统计：total_mistakes / total_wrong_count / recent_7d 等。
+
+        Returns:
+            {
+                "distinct_words": int,        # 错过的不同词数（wrong_count>0）
+                "total_wrong_count": int,     # 所有 wrong_count 累加
+                "last_7d_wrong": int,         # 最近 7 天新发生错误的次数
+                "top_offenders": list[dict],  # wrong_count 前 5 名
+            }
+        """
+        ...
+
 
 # =============================================================
 # 2. PersonalVocabRepository — 个人词库 + 分类

@@ -48,6 +48,7 @@ from ielts_buddy.web.routers import calendar as calendar_routes
 from ielts_buddy.web.routers import write as write_routes
 from ielts_buddy.web.routers import listening as listening_routes
 from ielts_buddy.web.routers import speak as speak_routes
+from ielts_buddy.web.routers import mistakes as mistakes_routes
 
 # 模板目录 = 本文件所在目录/templates
 WEB_DIR = Path(__file__).resolve().parent
@@ -321,6 +322,10 @@ def create_app() -> FastAPI:
     app.include_router(listening_routes.api_router)
     app.include_router(speak_routes.router)
     app.include_router(speak_routes.api_router)
+
+    # v3.6 错词本：按 wrong_count DESC 列出所有错词 + 5 个 web 答错入口自动入分类
+    app.include_router(mistakes_routes.router)
+    app.include_router(mistakes_routes.api_router)
 
     return app
 

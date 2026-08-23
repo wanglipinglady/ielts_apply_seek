@@ -163,6 +163,19 @@ def api_study_answer(
     # 写学习记录（业务容器的 learning repo，SQLite/MySQL 都通用）
     container.learning.upsert_record(user.id, w, correct=correct, source="web")
 
+    # v3.6 错词本：答错自动入 personal_vocab.mistakes 分类
+    if not correct and hasattr(container, "personal_vocab"):
+        try:
+            from ielts_buddy.services.mistake_service import MistakeService
+            MistakeService(container, int(user.id)).record_mistake(
+                w, source=f"{mode}_mistake"
+            )
+        except Exception:
+            import logging
+            logging.getLogger("ielts_buddy.web.study").warning(
+                "[study] record_mistake failed for %r", w.word, exc_info=True
+            )
+
     # 选下一题
     if mode == "random":
         next_word = _pick_new_word(vocab, container, user.id)
