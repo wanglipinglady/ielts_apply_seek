@@ -281,24 +281,28 @@ from fastapi import Header
     responses={401: {"model": AuthErrorResponse}, 400: {"model": AuthErrorResponse}},
 )
 def api_change_password(
-    body: ChangePasswordRequest,
     user: Annotated[WebUser, Depends(get_current_user)],
     svc: Annotated[WebAuthService, Depends(get_web_auth_service)],
+    # 支持 form-encoded（HTMX form 默认）+ JSON 两种提交方式。
+    # 之前用 Pydantic ChangePasswordRequest body，浏览器 form 提交会被
+    # FastAPI 当成 URL-encoded，校验失败 422。改成 Form 与 api_login /
+    # api_register 风格一致。
+    old_password: Annotated[str, Form(min_length=1, max_length=128)],
+    new_password: Annotated[str, Form(min_length=8, max_length=128)],
 ) -> ChangePasswordResponse | JSONResponse:
     """用户自助改密：登录态调用，需提供旧密码。
 
-    请求体：
-    ```json
-    {"old_password": "OldPass123!", "new_password": "NewPass456!"}
-    ```
+    请求（form-encoded 或 JSON）：
+    - old_password: 当前密码（≥1 字符）
+    - new_password: 新密码（≥8 字符）
 
     返回：
     - 200：{"ok": true}
     - 401：旧密码错 / 未登录
-    - 400：新密码太弱 / email 不存在
+    - 400：新密码太弱
     """
     try:
-        svc.change_password(user.id, body.old_password, body.new_password)
+        svc.change_password(user.id, old_password, new_password)
     except AuthError as e:
         return _auth_error_response(e)
     return ChangePasswordResponse(ok=True)

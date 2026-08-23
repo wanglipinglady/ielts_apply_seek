@@ -315,3 +315,97 @@ def test_end_to_end_flow(client: TestClient) -> None:
     # 5) 登出（清 cookie）
     out = client.post("/api/auth/logout")
     assert out.status_code == 204
+
+
+# =============================================================
+# 修改密码（form-encoded 路径，HTMX 默认提交格式）
+# =============================================================
+
+
+def test_change_password_form_path_requires_login(client: TestClient) -> None:
+    """未登录 → 401（不能因为缺少 form 字段就走通到路由）。"""
+    r = client.post(
+        "/api/auth/change-password",
+        data={"old_password": "x", "new_password": "longenough"},
+        # 显式清 Authorization 头，避免 TestClient cookie 自动复用
+        headers={"Authorization": ""},
+    )
+    assert r.status_code == 401, r.text
+    assert "缺少 Authorization" in r.text
+
+
+def test_change_password_form_path_wrong_old_password(client: TestClient) -> None:
+    """登录态 + 旧密码错 → 401 INVALID_CREDENTIALS。"""
+    reg = client.post(
+        "/api/auth/register",
+        data={"email": "cpwrong@example.com", "password": "oldpass123"},
+    )
+    assert reg.status_code == 201
+    access = reg.json()["access_token"]
+
+    r = client.post(
+        "/api/auth/change-password",
+        data={"old_password": "WRONG", "new_password": "newpass456"},
+        headers={"Authorization": f"Bearer {access}"},
+    )
+    assert r.status_code == 401, r.text
+    assert "INVALID_CREDENTIALS" in r.text
+
+
+def test_change_password_form_path_success(client: TestClient) -> None:
+    """登录态 + 旧密码对 → 200 {ok: true}，新密码可登录。"""
+    reg = client.post(
+        "/api/auth/register",
+        data={"email": "cpsuccess@example.com", "password": "oldpass123"},
+    )
+    assert reg.status_code == 201
+    access = reg.json()["access_token"]
+
+    r = client.post(
+        "/api/auth/change-password",
+        data={"old_password": "oldpass123", "new_password": "newpass456"},
+        headers={"Authorization": f"Bearer {access}"},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json() == {"ok": True}
+
+    # 新密码能登录；旧密码不能
+    new_login = client.post(
+        "/api/auth/login",
+        data={"email": "cpsuccess@example.com", "password": "newpass456"},
+    )
+    assert new_login.status_code == 200
+
+    # 旧密码登录应该 401
+    old_login = client.post(
+        "/api/auth/login",
+        data={"email": "cpsuccess@example.com", "password": "oldpass123"},
+    )
+    assert old_login.status_code == 401
+
+
+def test_change_password_form_path_weak_new_password_returns_422(client: TestClient) -> None:
+    """form-encoded：new_password < 8 → 422（Pydantic Field min_length 校验）。"""
+    reg = client.post(
+        "/api/auth/register",
+        data={"email": "cpweak@example.com", "password": "oldpass123"},
+    )
+    assert reg.status_code == 201
+    access = reg.json()["access_token"]
+
+    r = client.post(
+        "/api/auth/change-password",
+        data={"old_password": "oldpass123", "new_password": "short"},
+        headers={"Authorization": f"Bearer {access}"},
+    )
+    assert r.status_code == 422, r.text
+
+
+def test_change_password_page_renders(client: TestClient) -> None:
+    """/change-password HTML 页面能渲染，包含必填元素。"""
+    r = client.get("/change-password")
+    assert r.status_code == 200
+    for needle in ("修改密码", "old_password", "new_password",
+                   "confirm_password", "pwd-toggle",
+                   "/api/auth/change-password"):
+        assert needle in r.text, f"missing {needle!r}"
