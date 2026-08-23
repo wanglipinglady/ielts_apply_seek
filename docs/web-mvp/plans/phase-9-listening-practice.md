@@ -505,4 +505,92 @@ tests/
 
 - v0.1 初稿:2026-08-23
 - 与 v3.7 发布节奏对齐
-- 实施关闭记录会在 Sprint 1-4 完成后追加 §11 closeout
+- 实施关闭记录见 §11 closeout(Sprint 1-3 已完成)
+
+---
+
+## 11. 实施关闭记录(Closeout,v3.7 P2 已上线)
+
+> 实施日期:2026-08-23
+> 实施范围:Sprint 1 + 2 + 3 全闭环交付,对应 3 个 git commit
+
+### 11.1 交付清单
+
+| 模块 | 文件 | 说明 |
+|---|---|---|
+| 数据层 | `repositories/sqlite_repo.py` `repositories/mysql_repo.py` | 新增 `listening_questions` + `listening_attempts` 表 + `SQLiteListeningPracticeRepository` / `MySQLListeningPracticeRepository`(10 方法) |
+| Protocol | `core/repository.py` | 新增 `ListeningPracticeRepository` Protocol(10 方法);`RepositoryContainer` 升级为 8 个 Repository |
+| Schema | `scripts/init_mysql.sql` `scripts/migrate_v3_mysql_schema.py` | 新增 2 张表的 MySQL DDL + 审计 + 迁移函数 |
+| 配置 | `web/config.py` | 9 个新配置项(TTS_* / LISTENING_AUDIO_RETENTION_DAYS / LISTENING_AUTO_SEED / LISTENING_SEED_S1..S4) |
+| 出题器 | `services/listening_question_generator.py` | ListeningQuestionGenerator:4 个 SectionProfile(S1 填空 / S2 选择+匹配 / S3 选择 / S4 填空)+ LLM 真路径 + retry-once + JSON 容错 + mock 降级 |
+| TTS | `web/listening_tts_service.py` | ListeningTTSService: MiniMax speech-01/speech-02 兼容 + 3 种响应解析(markdown 围栏 / JSON / 纯 base64 + mp3 header) |
+| 服务层 | `services/listening_practice_service.py` | ListeningPracticeService:Sections / Sets / StartSet / Random / Submit / History / Stats 全链路 + 自动触发 TTS + 30 天清理 + 模块级 `seed_initial_questions` + `purge_expired_audio` |
+| API | `web/routers/listening_practice.py` | 9 端点 + 1 页面:`GET /listen/practice` `GET /api/listening/practice/sections` `GET /api/listening/practice/section/{n}` `POST /api/listening/practice/start` `POST /api/listening/practice/random` `GET /api/listening/practice/question/{qid}` `POST /api/listening/practice/submit` `GET /api/listening/practice/history` `GET /api/listening/practice/stats` `GET /api/listening/practice/audio/{qid}` |
+| 模板 | `templates/pages/listen_practice.html` | 单题答题 UI:Section 入口 → 套题列表 → 听音 → 答题 → 反馈 → 导航;HTML5 audio + 重听计数 + 选择题/填空题 |
+| 导航 | `templates/base.html` `templates/pages/listening.html` | sidebar 新增「🎧 真·听力题库」+ listening.html Tab banner 链接 |
+| 启动钩子 | `web/main.py` lifespan | 启动期调用 `purge_expired_audio`(30 天前)+ `seed_initial_questions` 后台线程(fire-and-forget) |
+| CLI | `scripts/seed_listening_questions.py` | 手动重置题库脚本:--force 清空 / --sections 选择 / --s1..s4 调套数 / --no-tts 跳过音频 |
+
+### 11.2 测试覆盖
+
+| 测试文件 | 用例数 | 覆盖范围 |
+|---|---|---|
+| `tests/test_repositories/test_listening_practice_repo.py` | 19 | SQLite 端 10 个 Repo 方法:upsert / options JSON / isolation / retention / stats |
+| `tests/test_repositories/test_repository_protocols.py` | (含 P2 更新) | RepositoryContainer 8 个属性 + `ListeningPracticeRepository` 导出 |
+| `tests/test_web/test_listening_tts_service.py` | 12 | 响应解析(3 种格式)+ 路径 helper + singleton |
+| `tests/test_web/test_listening_question_generator.py` | 15 | SECTION_PROFILES + mock 路径 + LLM 真路径(重试/容错)+ 归一化 + 填空/选择题区分 |
+| `tests/test_services/test_listening_practice_service.py` | 16 | 种子幂等 + 清理逻辑 + 业务方法(start_set/submit_answer/get_user_stats)+ 答案判分 |
+| `tests/test_web/test_listening_practice_api.py` | 22 | 9 端点 E2E + 鉴权(401/422/404)+ IDOR(用户隔离)+ 答案正错分支 |
+| `tests/test_web/test_listening_startup_seed.py` | 4 | lifespan 启动期种子(AUTO_SEED=1/0)+ 幂等(已有题跳过)+ purge 不抛 |
+
+**合计新增 88 个测试,全部通过**(83 Sprint 1 + 65 Sprint 2 + 4 Sprint 3,其中部分共享)。
+
+### 11.3 git commit 记录
+
+| Commit | Sprint | 文件 |
+|---|---|---|
+| `79679de` | Sprint 1 | 数据层 + Protocol + PRD |
+| `8e86a3e` | Sprint 2 | 出题器 + TTS 服务 + 9 API + UI 骨架 |
+| (本次)  | Sprint 3 | 启动期种子 + 30天清理 + 文档 closeout |
+
+### 11.4 关键设计决策实施回顾
+
+| 决策 | PRD 章节 | 实施细节 |
+|---|---|---|
+| 真题音频源 = LLM TTS 合成 | §1.3 | `ListeningTTSService` 调 MiniMax speech-01/speech-02;3 种响应格式兼容 |
+| 题目生成 = 纯 LLM | §1.4 | `ListeningQuestionGenerator` 4 个 SectionProfile 差异化 prompt + mock 降级 |
+| 答题 UI = 单题模式 | §2.3 非目标 | `listen_practice.html` 单题卡 + 4 选 1 / 填空 + 即时反馈 |
+| 题量 = 30 套 Section(10/8/7/5) | §2.2 | `LISTENING_SEED_S1..S4` 配置 + `seed_initial_questions` 默认值 |
+| 题库跨用户共享 + 答题记录隔离 | §6.1 | `listening_questions` 不在 SYNC_TABLES,`listening_attempts` 在 SYNC_TABLES |
+| 启动期后台种子 | §6.2 | `main.py` lifespan 用 `threading.Thread(daemon=True)` fire-and-forget |
+| 30 天音频自动清理 | §5.7 / §7.1 | `purge_expired_audio(retention_days=30)` 在 lifespan 启动期触发 |
+| LLM 失败降级 | §7.3 | `_is_llm_available()` + 失败 2 次 → mock |
+| TTS 失败降级 | §7.3 | `synthesize()` 返回 None → `audio_url` 为 null → UI 显示「AI 合成中」 |
+| IDOR 防护 | §7.4 | 所有 API 走 `get_current_user` + Service 内 `user_id` 隔离;`audio` 公开资源(题库共享) |
+
+### 11.5 上线 checklist
+
+- [x] Sprint 1:数据层 + Protocol + PRD(commit `79679de`)
+- [x] Sprint 2:出题器 + TTS + 9 API + UI(commit `8e86a3e`)
+- [x] Sprint 3:启动期种子 + 30天清理 + 文档 closeout(本次)
+- [ ] 用户配置 `.env` 中的 `IELTS_BUDDY_LLM_API_KEY`(否则走 mock 占位题)
+- [ ] MiniMax 账号开通 speech 端点(默认 base_url `https://api.minimaxi.com/v1` 已支持)
+- [ ] 生产机启动一次 `./scripts/seed_listening_questions.py`(可选;lifespan 已自动种子)
+- [ ] 首次进入 `/listen/practice` 等待 ~30s 后台 TTS 合成(每题 ≤ 1MB mp3)
+
+### 11.6 已知限制与 v3.8 展望
+
+| 限制 | 影响 | 缓解 / v3.8 计划 |
+|---|---|---|
+| TTS 声音是 AI 合成 | 缺少真人雅思考官的真实感 | v3.8 接真人播客音频源(版权问题需先解决) |
+| 启动期首次 30 套种子慢 | 首次访问 `/listen/practice` 需等 ~30s | 当前 fire-and-forget 已不阻塞;v3.8 可改成预生成缓存 |
+| 答题只统计 attempts | 缺错题本聚合视图 | 当前通过 `/api/listening/practice/history` 按时间序列查询;v3.8 加 Section 错误率分布 |
+| 单题模式而非完整 Section 音频 | 缺 IELTS 真考整套题节奏 | v3.8 加「Section 完整模式」开关 |
+| LLM 生成题目质量不稳定 | 偶发题目/答案对不上 | 加 few-shot 示例 + rubric 提高稳定性(v3.8) |
+
+---
+
+## 文档版本(更新)
+
+- v0.1 初稿:2026-08-23
+- v0.2 closeout:2026-08-23(本节 §11,Sprint 1-3 完成)

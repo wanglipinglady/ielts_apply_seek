@@ -131,6 +131,74 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
             "[speaking] startup cleanup failed: %s", _exc
         )
 
+    # v3.7 P2：启动期清理过期听力音频(30 天前)。
+    try:
+        from ielts_buddy.services.listening_practice_service import (
+            purge_expired_audio,
+        )
+        result = purge_expired_audio(
+            container=app.state.container,
+            retention_days=web_config.LISTENING_AUDIO_RETENTION_DAYS,
+        )
+        if result["files_deleted"] or result["rows_nulled"]:
+            import logging as _logging
+            _logging.getLogger(__name__).info(
+                "[listening] startup audio cleanup: %s",
+                result,
+            )
+    except Exception as _exc:
+        import logging as _logging
+        _logging.getLogger(__name__).warning(
+            "[listening] startup audio cleanup failed: %s", _exc
+        )
+
+    # v3.7 P2：启动期种子题库(LLM 出题 + TTS 合成 30 套)。
+    # 设计:fire-and-forget 后台跑,不阻塞 web 启动;已有题则跳过。
+    try:
+        import logging as _logging
+        from ielts_buddy.services.listening_practice_service import (
+            seed_initial_questions,
+        )
+        import threading
+
+        def _seed_in_background():
+            try:
+                result = seed_initial_questions(
+                    container=app.state.container,
+                    auto_trigger_tts=web_config.LISTENING_AUTO_SEED,
+                )
+                if not result["skipped"]:
+                    _logging.getLogger(__name__).info(
+                        "[listening] startup seed: %s",
+                        result,
+                    )
+                else:
+                    _logging.getLogger(__name__).info(
+                        "[listening] startup seed skipped (题库已有 %d 题)",
+                        result["seeded_questions"],
+                    )
+            except Exception as _exc2:
+                _logging.getLogger(__name__).warning(
+                    "[listening] startup seed failed: %s", _exc2
+                )
+
+        if web_config.LISTENING_AUTO_SEED:
+            t = threading.Thread(
+                target=_seed_in_background,
+                name="listening-seed",
+                daemon=True,
+            )
+            t.start()
+        else:
+            _logging.getLogger(__name__).info(
+                "[listening] startup seed disabled by config"
+            )
+    except Exception as _exc:
+        import logging as _logging
+        _logging.getLogger(__name__).warning(
+            "[listening] startup seed setup failed: %s", _exc
+        )
+
     try:
         yield
     finally:
