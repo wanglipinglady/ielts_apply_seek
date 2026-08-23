@@ -73,6 +73,9 @@
             <span class="avatar">{{ current_user.email[0]|upper }}</span>
             <span class="user-email">{{ current_user.email }}</span>
           </div>
+          <a href="/change-password" class="nav-item">
+            <span class="icon">⚙</span> 修改密码
+          </a>
           <form method="post" action="/api/auth/logout"
                 hx-post="/api/auth/logout" hx-swap="none"
                 hx-on::after-request="window.location.href='/login'">

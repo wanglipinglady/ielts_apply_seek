@@ -183,28 +183,6 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username COLLATE NOCASE);
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email COLLATE NOCASE);
 
--- v3：web_users 兼容保留（标记 is_migrated）
-CREATE TABLE IF NOT EXISTS web_users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    email TEXT NOT NULL COLLATE NOCASE,
-    password_hash TEXT NOT NULL,
-    created_at TEXT,
-    last_login_at TEXT,
-    is_migrated INTEGER DEFAULT 0,
-    users_id INTEGER,
-    UNIQUE (email COLLATE NOCASE)
-);
-CREATE INDEX IF NOT EXISTS idx_wu_email ON web_users(email COLLATE NOCASE);
-CREATE INDEX IF NOT EXISTS idx_wu_migrated ON web_users(is_migrated, users_id);
-
--- v3：web_users.id ↔ users.id 映射
-CREATE TABLE IF NOT EXISTS user_id_mapping (
-    web_user_id INTEGER PRIMARY KEY,
-    users_id INTEGER NOT NULL,
-    created_at TEXT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_uim_users ON user_id_mapping(users_id);
-
 -- 文章翻译记录表（保存用户翻译过的文章 + 生词分析结果）
 -- diff_words_json：ArticleWord 列表的 JSON 字符串
 CREATE TABLE IF NOT EXISTS articles (
@@ -338,11 +316,6 @@ _MIGRATIONS = {
     "grade_history_legacy": [
         ("task_type", "TEXT DEFAULT 'task2'"),
         ("error_summary_json", "TEXT DEFAULT '{}'"),
-    ],
-    # v3：web_users 加 is_migrated / users_id
-    "web_users": [
-        ("is_migrated", "INTEGER DEFAULT 0"),
-        ("users_id", "INTEGER"),
     ],
     # v3：articles 加 updated_at / sync_status
     "articles": [

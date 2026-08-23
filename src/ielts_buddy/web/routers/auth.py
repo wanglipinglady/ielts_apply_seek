@@ -393,5 +393,15 @@ def page_register(request: Request) -> HTMLResponse:
     )
 
 
+@router.get("/change-password", response_class=HTMLResponse)
+def page_change_password(request: Request) -> HTMLResponse:
+    """修改密码页面（需登录态，由前端 JS 检查 localStorage token）。"""
+    return _get_templates(request).TemplateResponse(
+        request,
+        "pages/change_password.html",
+        {"title": "修改密码", "phase": 1, "current_user": None},
+    )
+
+
 # 注：``/dashboard`` 的真实实现在 ``pages.py``（阶段 2 加了摘要卡片），
 # 这里不再保留占位版本，避免同名路由被后者覆盖导致实际请求走老版本。

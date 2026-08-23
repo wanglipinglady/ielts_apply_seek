@@ -16,7 +16,13 @@
     </label>
     <label class="field">
       <span class="field-label">密码</span>
-      <input type="password" name="password" minlength="8" required autocomplete="new-password" />
+      <div class="input-with-toggle">
+        <input id="register_password" type="password" name="password"
+               minlength="8" required autocomplete="new-password" />
+        <button type="button" class="pwd-toggle"
+                data-target="register_password"
+                aria-label="显示密码">👁</button>
+      </div>
       <span class="field-hint">至少 8 位</span>
     </label>
     <div id="register-error" class="auth-error" hidden></div>
@@ -29,6 +35,24 @@
 </section>
 
 <script>
+  // 密码可见切换（事件委托）
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('.pwd-toggle');
+    if (!btn) return;
+    const targetId = btn.dataset.target;
+    const input = document.getElementById(targetId);
+    if (!input) return;
+    if (input.type === 'password') {
+      input.type = 'text';
+      btn.textContent = '🙈';
+      btn.setAttribute('aria-label', '隐藏密码');
+    } else {
+      input.type = 'password';
+      btn.textContent = '👁';
+      btn.setAttribute('aria-label', '显示密码');
+    }
+  });
+
   // 注册响应处理：服务器已设置 cookie，JS 同步到 localStorage 供 API 调用
   function handleRegisterResponse(event) {
     const xhr = event.detail.xhr;

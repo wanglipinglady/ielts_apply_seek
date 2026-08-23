@@ -1,11 +1,8 @@
-"""web_users 仓储层。
+"""Web 端用户仓储层（v3+：统一走 users 表，与 CLI 共享）。
 
-与 CLI 的 ``UserRepository``（``core/repository.py``）完全独立：
-- CLI 端 username + 联网模式，无 password；
-- Web 端 email + bcrypt 哈希 + last_login。
-
-我们同样定义 Protocol + 双实现（SQLite / MySQL），但**不复用**现有任何 Repository
-类，避免污染 CLI 路径。
+历史：早期 web_users 独立表，v3 合并到 users 表。本文件保留 WebUser /
+WebUserRepository Protocol / SQLite & MySQL 双实现，但所有读写都改走 users
+表，不再依赖 web_users。
 """
 from __future__ import annotations
 
@@ -46,7 +43,7 @@ class WebUserEmailConflictError(Exception):
 
 @runtime_checkable
 class WebUserRepository(Protocol):
-    """web_users 仓储接口。
+    """Web 端用户仓储接口（v3+：统一走 users 表）。
 
     两端（SQLite / MySQL）实现需保证：
     - 邮箱大小写不敏感（统一存小写）
@@ -88,54 +85,83 @@ class WebUserRepository(Protocol):
 # =============================================================
 
 
-_SCHEMA = """
-CREATE TABLE IF NOT EXISTS web_users (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    email           TEXT NOT NULL,
-    password_hash   TEXT NOT NULL,
-    created_at      TEXT NOT NULL,
-    last_login_at   TEXT,
-    UNIQUE (email COLLATE NOCASE)
-);
-CREATE INDEX IF NOT EXISTS idx_wu_email ON web_users(email COLLATE NOCASE);
-"""
+# v3+：users 表由业务库 sqlite_repo._SCHEMA 统一创建，本仓储不再建任何表。
+# 下面这个常量保留是为了不让旧测试导入报错，但实际不再使用。
+_LEGACY_SCHEMA_NOOP = ""
 
 
 def _row_to_user(row: sqlite3.Row) -> WebUser:
     return WebUser(
         id=row["id"],
         email=row["email"],
-        password_hash=row["password_hash"],
+        password_hash=row["password_hash"] or "",
         created_at=row["created_at"],
         last_login_at=row["last_login_at"],
     )
 
 
 class SQLiteWebUserRepository:
-    """SQLite 实现的 web_users 仓储。
+    """SQLite 实现的 web 端用户仓储（v3+：读写都走 users 表）。
 
-    默认 email 唯一约束 + COLLATE NOCASE，实现大小写不敏感。
+    users 表 schema 由业务库 ``sqlite_repo._SCHEMA`` 创建（已有 id /
+    username / email / password_hash / display_name / created_at /
+    last_login_at 等列）。
 
-    注意：``web_users`` 表 schema 已由业务库 ``sqlite_repo._SCHEMA`` 创建
-    （W3 改造：web_users 与业务表共存于同一个 db 文件，避免分叉）。
-    这里不再重复 executescript，只做 ``UNIQUE`` 索引（如果还没建）。
+    email 唯一约束使用 COLLATE NOCASE，实现大小写不敏感。
     """
 
     def __init__(self, conn: sqlite3.Connection) -> None:
         self._conn = conn
-        # 兜底：如果业务库的 schema 还没升级到包含 web_users，
-        # 此处再尝试执行一遍 web_users 创建 SQL（幂等）。
-        self._conn.executescript(_SCHEMA)
+        # v3+：users 表已在业务库 _SCHEMA 里建好；本仓储不做任何 DDL。
+        # 若调用方传入 :memory: 全新库，需要先确保 users 表已建。
+        self._ensure_users_schema()
+
+    def _ensure_users_schema(self) -> None:
+        """对 :memory: 等全新库，确保 users 表存在。生产 db 文件不需要这一步。"""
+        cur = self._conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='users'"
+        )
+        if cur.fetchone() is not None:
+            return
+        # 没建就兜底建一个（仅 :memory: / 测试 fixture 场景）
+        self._conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS users (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                username        TEXT NOT NULL COLLATE NOCASE,
+                email           TEXT COLLATE NOCASE,
+                password_hash   TEXT,
+                display_name    TEXT,
+                created_at      TEXT NOT NULL,
+                last_login_at   TEXT,
+                UNIQUE (username COLLATE NOCASE),
+                UNIQUE (email COLLATE NOCASE)
+            );
+            """
+        )
         self._conn.commit()
 
     def create(self, email: str, password_hash: str) -> WebUser:
         email_norm = email.strip().lower()
         now = datetime.now().isoformat(timespec="seconds")
+        # 从 email 派生 username：取 @ 前缀；冲突时加数字后缀
+        base_username = email_norm.split("@", 1)[0] or "user"
+        username = base_username
+        suffix = 1
         try:
+            while True:
+                row = self._conn.execute(
+                    "SELECT id FROM users WHERE username = ? COLLATE NOCASE",
+                    (username,),
+                ).fetchone()
+                if row is None:
+                    break
+                suffix += 1
+                username = f"{base_username}{suffix}"
             cur = self._conn.execute(
-                """INSERT INTO web_users (email, password_hash, created_at)
-                   VALUES (?, ?, ?)""",
-                (email_norm, password_hash, now),
+                """INSERT INTO users (username, email, password_hash, display_name, created_at)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (username, email_norm, password_hash, email_norm, now),
             )
             self._conn.commit()
         except sqlite3.IntegrityError as e:
@@ -154,21 +180,21 @@ class SQLiteWebUserRepository:
     def get_by_email(self, email: str) -> Optional[WebUser]:
         email_norm = email.strip().lower()
         row = self._conn.execute(
-            "SELECT * FROM web_users WHERE email = ? COLLATE NOCASE",
+            "SELECT * FROM users WHERE email = ? COLLATE NOCASE",
             (email_norm,),
         ).fetchone()
         return _row_to_user(row) if row else None
 
     def get_by_id(self, user_id: int) -> Optional[WebUser]:
         row = self._conn.execute(
-            "SELECT * FROM web_users WHERE id = ?", (user_id,),
+            "SELECT * FROM users WHERE id = ?", (user_id,),
         ).fetchone()
         return _row_to_user(row) if row else None
 
     def update_last_login(self, user_id: int, when: datetime | None = None) -> None:
         ts = (when or datetime.now()).isoformat(timespec="seconds")
         self._conn.execute(
-            "UPDATE web_users SET last_login_at = ? WHERE id = ?",
+            "UPDATE users SET last_login_at = ? WHERE id = ?",
             (ts, user_id),
         )
         self._conn.commit()
@@ -176,7 +202,7 @@ class SQLiteWebUserRepository:
     def set_password(self, user_id: int, new_password_hash: str) -> bool:
         """SQLite 实现：覆盖密码 hash。"""
         cur = self._conn.execute(
-            "UPDATE web_users SET password_hash = ? WHERE id = ?",
+            "UPDATE users SET password_hash = ? WHERE id = ?",
             (new_password_hash, user_id),
         )
         self._conn.commit()
@@ -216,45 +242,29 @@ def create_sqlite_web_user_repository(
 # MySQL 实现（生产环境）
 # =============================================================
 
-_WEB_USERS_MYSQL_SCHEMA = """
--- v3：实际写入统一 users 表（与 CLI 共享）。
--- 这里仍保留 web_users 是历史兼容表，新用户走 users.email。
--- 仅在 users 表为空、且 web_users 还有 is_migrated=0 的孤儿时使用。
-CREATE TABLE IF NOT EXISTS web_users (
-    id              BIGINT PRIMARY KEY AUTO_INCREMENT,
-    email           VARCHAR(255) NOT NULL,
-    password_hash   TEXT NOT NULL,
-    created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    last_login_at   DATETIME,
-    UNIQUE KEY uk_wu_email (email)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-"""
-
 
 class MySQLWebUserRepository:
-    """MySQL 实现 web_users 仓储（v3：读 users 表，写时按需插入 users）。"""
+    """MySQL 实现 web 端用户仓储（v3+：读写都走 users 表）。"""
 
     def __init__(self, engine) -> None:
         self._engine = engine
-        # v3：实际读写都走 users 表；不再单独建 web_users
+        # users 表由 init_mysql.sql + migrate_v3_mysql_schema.py 维护；本仓储不做任何 DDL
 
     def _init_schema(self) -> None:
-        """v3：users 表由 init_mysql.sql + migrate_v3_mysql_schema.py 维护。"""
+        """v3+：users 表由 init_mysql.sql + migrate_v3_mysql_schema.py 维护。"""
         pass
 
     def create(self, email: str, password_hash: str) -> WebUser:
-        """v3：写入统一 users 表。"""
+        """v3+：写入统一 users 表。"""
         email_norm = email.strip().lower()
         now = datetime.now()
-        # 从 email 派生 username：取 @ 前缀；冲突时加数字后缀
-        base_username = email_norm.split("@", 1)[0]
+        base_username = email_norm.split("@", 1)[0] or "user"
         username = base_username
         suffix = 1
         from sqlalchemy import insert, select
         from sqlalchemy.exc import IntegrityError
         try:
             with self._engine.begin() as conn:
-                # 检查 username 唯一
                 while True:
                     exists = conn.execute(
                         select(t_users_mysql.c.id)
@@ -285,7 +295,7 @@ class MySQLWebUserRepository:
         )
 
     def get_by_email(self, email: str) -> Optional[WebUser]:
-        """v3：从统一 users 表按 email 查。"""
+        """v3+：从统一 users 表按 email 查。"""
         email_norm = email.strip().lower()
         from sqlalchemy import select
         with self._engine.connect() as conn:
@@ -300,13 +310,13 @@ class MySQLWebUserRepository:
             return WebUser(
                 id=m["id"],
                 email=m["email"],
-                password_hash=m["password_hash"],
+                password_hash=m["password_hash"] or "",
                 created_at=m["created_at"].isoformat() if m["created_at"] else None,
                 last_login_at=m["last_login_at"].isoformat() if m["last_login_at"] else None,
             )
 
     def get_by_id(self, user_id: int) -> Optional[WebUser]:
-        """v3：从统一 users 表按 id 查。"""
+        """v3+：从统一 users 表按 id 查。"""
         from sqlalchemy import select
         with self._engine.connect() as conn:
             row = conn.execute(
@@ -318,13 +328,13 @@ class MySQLWebUserRepository:
             return WebUser(
                 id=m["id"],
                 email=m["email"],
-                password_hash=m["password_hash"],
+                password_hash=m["password_hash"] or "",
                 created_at=m["created_at"].isoformat() if m["created_at"] else None,
                 last_login_at=m["last_login_at"].isoformat() if m["last_login_at"] else None,
             )
 
     def update_last_login(self, user_id: int, when: datetime | None = None) -> None:
-        """v3：更新 users.last_login_at。"""
+        """v3+：更新 users.last_login_at。"""
         from sqlalchemy import update
         ts = when or datetime.now()
         with self._engine.begin() as conn:
@@ -335,7 +345,7 @@ class MySQLWebUserRepository:
             )
 
     def set_password(self, user_id: int, new_password_hash: str) -> bool:
-        """v3：更新 users.password_hash。"""
+        """v3+：更新 users.password_hash。"""
         from sqlalchemy import update
         with self._engine.begin() as conn:
             result = conn.execute(
@@ -350,7 +360,7 @@ class MySQLWebUserRepository:
         pass
 
 
-# MySQL 表元数据：v3 统一 users 表
+# MySQL 表元数据：v3+ 统一 users 表
 from sqlalchemy import BigInteger, Column, DateTime, String, Table, text as sa_text
 
 _mysql_metadata = __import__("sqlalchemy", fromlist=["MetaData"]).MetaData()
@@ -387,5 +397,5 @@ __all__ = [
     "WebUserEmailConflictError",
     "create_sqlite_web_user_repository",
     "create_mysql_web_user_repository",
-    "_SCHEMA",  # 测试用
+    "_LEGACY_SCHEMA_NOOP",  # 兼容旧测试可能导入
 ]

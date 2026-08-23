@@ -16,18 +16,43 @@
     </label>
     <label class="field">
       <span class="field-label">密码</span>
-      <input type="password" name="password" required autocomplete="current-password" />
+      <div class="input-with-toggle">
+        <input id="login_password" type="password" name="password"
+               required autocomplete="current-password" />
+        <button type="button" class="pwd-toggle"
+                data-target="login_password"
+                aria-label="显示密码">👁</button>
+      </div>
     </label>
     <div id="login-error" class="auth-error" hidden></div>
     <button type="submit" class="btn-primary">登录</button>
   </form>
 
   <p class="auth-foot">
-    还没有账号？<a href="/register">立即注册</a>
+    还没有账号？<a href="/register">立即注册</a><br>
+    想改密码？<a href="/change-password">修改密码</a>
   </p>
 </section>
 
 <script>
+  // 密码可见切换（事件委托，与 change_password.html 共享同一逻辑）
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('.pwd-toggle');
+    if (!btn) return;
+    const targetId = btn.dataset.target;
+    const input = document.getElementById(targetId);
+    if (!input) return;
+    if (input.type === 'password') {
+      input.type = 'text';
+      btn.textContent = '🙈';
+      btn.setAttribute('aria-label', '隐藏密码');
+    } else {
+      input.type = 'password';
+      btn.textContent = '👁';
+      btn.setAttribute('aria-label', '显示密码');
+    }
+  });
+
   // 认证响应处理：服务器已设置 cookie，JS 同步到 localStorage 供 API 调用
   function handleAuthResponse(event) {
     const xhr = event.detail.xhr;

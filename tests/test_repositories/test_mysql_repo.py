@@ -54,11 +54,21 @@ def container() -> MySQLRepositoryContainer:
 
 @pytest.fixture
 def test_user_id(container) -> int:
-    """每个用例创建一个唯一的测试用户，结束时清理。"""
-    username = f"w3_4_test_{int(time.time() * 1000)}_{os.getpid()}"
-    uid = container.user.get_or_create(username)
+    """固定使用 pytest_user（id=1156），不创建新用户。
+
+    v3+ 测试隔离策略：所有连真实 MySQL 的测试 fixture 共享 pytest_user，
+    保证 users 表不会被无限自增。pytest_user 的 id=1156 由
+    cleanup_users.py 一次性脚本创建并锁定 AUTO_INCREMENT=1157。
+
+    teardown 只清理该用户的业务数据，**不删 users 行**（pytest_user 永生）。
+    """
+    uid = container.user.get_or_create("pytest_user")
+    assert uid == 1156, (
+        f"期望 pytest_user id=1156，实际={uid}。"
+        "请先运行 cleanup_users.py 初始化测试用户。"
+    )
     yield uid
-    # 清理：按依赖反向删除该用户的所有数据
+    # 清理：按依赖反向删除该用户的业务数据（不删 users 行）
     try:
         with container._engine.begin() as conn:
             conn.execute(text("DELETE FROM vocab_category_words WHERE user_id = :u"), {"u": uid})
@@ -67,7 +77,7 @@ def test_user_id(container) -> int:
             conn.execute(text("DELETE FROM vocab_categories WHERE user_id = :u"), {"u": uid})
             conn.execute(text("DELETE FROM exam_sessions WHERE user_id = :u"), {"u": uid})
             conn.execute(text("DELETE FROM grade_history WHERE user_id = :u"), {"u": uid})
-            conn.execute(text("DELETE FROM users WHERE id = :u"), {"u": uid})
+            conn.execute(text("DELETE FROM articles WHERE user_id = :u"), {"u": uid})
     except Exception:
         pass  # 测试失败时清理出错不影响整体
 

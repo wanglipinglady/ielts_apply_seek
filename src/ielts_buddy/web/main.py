@@ -239,9 +239,10 @@ def create_app() -> FastAPI:
                 from ielts_buddy.web.auth.security import decode_token
                 payload = decode_token(token)
                 if payload:
-                    from ielts_buddy.web.auth.repository import WebUserRepository
-                    repo = WebUserRepository(db_path=web_config.WEB_DB_PATH)
-                    user = repo.get_by_id(payload.get("sub"))
+                    # 复用 app.state.web_user_repo（不再 instantiate Protocol —— 那会抛 TypeError）
+                    repo = getattr(request.app.state, "web_user_repo", None)
+                    if repo is not None:
+                        user = repo.get_by_id(payload.get("sub"))
             except Exception:
                 pass
         return templates.TemplateResponse(

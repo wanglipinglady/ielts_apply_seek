@@ -61,7 +61,7 @@ class V3SyncIntegrationTest(unittest.TestCase):
         )
         from ielts_buddy.services.sync import SyncWorker
         cls.worker = SyncWorker(cls.container)
-        cls.user_id = 1155  # 测试用：已知存在 wanglipingresume@163.com
+        cls.user_id = 1156  # 固定测试用户 pytest_user（由 cleanup_users.py 创建）
 
         # 测试开始前：清理 _v3test_ 前缀的测试数据
         with cls.container.online._engine.begin() as conn:

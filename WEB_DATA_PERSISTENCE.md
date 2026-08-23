@@ -10,7 +10,7 @@ Web 端账号、个人词库、学习记录、模拟考试、批改结果等**�
 
 | 数据 | 存储位置 |
 |------|----------|
-| Web 用户（email + password_hash） | `~/.ielts-buddy/web_data.db` 的 `web_users` 表 |
+| Web 用户（email + password_hash） | `~/.ielts-buddy/web_data.db` 的 `users` 表（v3+ 与 CLI 共享） |
 | 业务数据（个人词库 / 学习记录 / 模拟考试等） | `~/.ielts-buddy/web_data.db` 的对应表 |
 | 词库缓存 | `~/.ielts-buddy/vocab_cache.db` |
 
@@ -26,7 +26,7 @@ export IELTS_BUDDY_WEB_DB_URL=mysql+pymysql://user:pass@host:3306/ielts_buddy
 python -m ielts_buddy.web.main
 ```
 
-此时 `web_users` 与业务表都在同一 MySQL 实例下的同一 engine 中。
+此时 Web 账号与业务表都走统一的 `users` 表（v3+ 已与 CLI 合并）。
 
 ## 重启账号丢失排查
 
@@ -43,9 +43,9 @@ python -m ielts_buddy.web.main
 
 1. **共享连接**：web_user_repo 与业务仓库**共用一个 SQLite/MySQL 连接**，
    避免账号和数据存储到不同物理实例。
-2. **统一 schema**：`web_users` 表已加入 `sqlite_repo._SCHEMA`，
-   与业务表在同一文件中创建。
-3. **唯一约束**：`web_users.email` 带 `UNIQUE ... COLLATE NOCASE`，
+2. **统一 schema**（v3+）：Web 账号与 CLI 共用 `users` 表，不再有独立的 `web_users` 表。
+   列包含 `id / username / email / password_hash / display_name / created_at / last_login_at`。
+3. **唯一约束**：`users.email` 带 `UNIQUE ... COLLATE NOCASE`，
    大小写不敏感且不允许重复。
 
 ## 验证

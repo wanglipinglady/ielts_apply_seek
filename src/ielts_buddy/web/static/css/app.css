@@ -299,11 +299,59 @@ a:hover { text-decoration: underline; }
   border-radius: 8px;
   font-size: 14px;
 }
+.auth-success {
+  background: rgba(15, 118, 110, 0.08);
+  color: var(--primary-color, #0f766e);
+  border: 1px solid rgba(15, 118, 110, 0.2);
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 14px;
+}
 .auth-foot {
   text-align: center;
   margin-top: 20px;
   font-size: 14px;
   color: var(--text-muted);
+}
+
+/* === 密码可见切换 === */
+.input-with-toggle {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.input-with-toggle input {
+  flex: 1;
+  /* 右侧预留 40px 给眼睛按钮 */
+  padding-right: 40px !important;
+  width: 100%;
+}
+.input-with-toggle .pwd-toggle {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--text-muted, #6b7280);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.input-with-toggle .pwd-toggle:hover {
+  background: var(--bg-secondary, #f9fafb);
+  color: var(--text-main, #1f2937);
+}
+.input-with-toggle .pwd-toggle:focus-visible {
+  outline: 2px solid var(--primary-color, #0f766e);
+  outline-offset: 1px;
 }
 
 /* === 统计卡片（PRD风格） === */

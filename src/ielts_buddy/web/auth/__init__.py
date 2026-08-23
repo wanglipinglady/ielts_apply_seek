@@ -1,10 +1,10 @@
-"""Web 端认证子包（与 CLI 的 AuthService 物理隔离）。
+"""Web 端认证子包（v3+：统一走 users 表，与 CLI 的 AuthService 共享 users 命名空间）。
 
 模块划分：
 - security    ：密码哈希 + JWT 签发/校验（无 IO 副作用，纯函数）
 - schemas     ：Pydantic 请求/响应模型
-- repository  ：web_users 表的存储抽象（Protocol + SQLite/MySQL 双实现）
-- service     ：WebAuthService（注册/登录/刷新/me/登出）
+- repository  ：Web 端用户仓储（Protocol + SQLite/MySQL 双实现，v3+ 读写 users 表）
+- service     ：WebAuthService（注册/登录/刷新/me/登出/改密）
 - deps        ：FastAPI 依赖注入（get_current_user 等）
 - routes      ：/api/auth/* 与 /login、/register 模板路由
 """

@@ -155,10 +155,7 @@ nohup ib sync daemon --interval 60 > ~/.ielts-buddy/sync.log 2>&1 &
 # 1. 升级 MySQL schema（articles 表 + 各表 updated_at/sync_status）
 MYSQL_PASSWORD='xxx' python scripts/migrate_v3_mysql_schema.py
 
-# 2. 合并 web_users → users
-MYSQL_PASSWORD='xxx' python scripts/migrate_v3_users_merge.py
-
-# 3. 重启 web/CLI，自动跑 SQLite _MIGRATIONS（幂等）
+# 2. 重启 web/CLI，自动跑 SQLite _MIGRATIONS（幂等）
 ```
 
 详细设计见 [`docs/v3_mysql_fallback_design.md`](docs/v3_mysql_fallback_design.md)，
