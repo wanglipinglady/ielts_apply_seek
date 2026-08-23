@@ -718,8 +718,14 @@ class PrepResourceRepository(Protocol):
         """列出某 UP 主的所有资源。"""
         ...
 
-    def count_resources(self, skill: Optional[str] = None) -> int:
-        """资源总数(按 skill 过滤)。"""
+    def count_resources(
+        self,
+        skill: Optional[str] = None,
+        level: Optional[str] = None,
+        source_status: Optional[str] = None,
+        is_featured: Optional[bool] = None,
+    ) -> int:
+        """资源总数(支持 skill / level / source_status / is_featured 过滤)。"""
         ...
 
     def update_resource(self, resource_id: int, **kwargs: Any) -> bool:

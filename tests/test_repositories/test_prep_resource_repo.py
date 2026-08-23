@@ -262,3 +262,37 @@ class TestPrepResourceCount:
         assert repo.count_resources(skill="listening") == 2
         assert repo.count_resources(skill="reading") == 1
         assert repo.count_resources(skill="writing") == 0
+
+    def test_count_by_level_and_source(self, tmp_path: Path) -> None:
+        """新增:v3.8 P3.1 web 端 count 需支持 level/source_status/is_featured,
+        否则 /api/resources/list 会在 web 上 500。"""
+        container = _make_container(tmp_path)
+        repo = container.prep_resource
+        repo.seed_resource(**_sample_resource(bv_id="BV1", skill="listening", level="5-6"))
+        repo.seed_resource(**_sample_resource(bv_id="BV2", skill="listening", level="6.5-7"))
+        repo.seed_resource(**_sample_resource(bv_id="BV3", skill="reading",  level="5-6", source_status="official"))
+        repo.seed_resource(**_sample_resource(bv_id="BV4", skill="reading",  level="5-6", is_featured=True))
+
+        # 单维度
+        assert repo.count_resources(level="5-6") == 3
+        assert repo.count_resources(level="6.5-7") == 1
+        assert repo.count_resources(source_status="official") == 1
+        assert repo.count_resources(is_featured=True) == 1
+        assert repo.count_resources(is_featured=False) == 3
+
+        # 多维度组合:service 层把全部过滤同时传给 count/list
+        assert repo.count_resources(skill="listening", level="5-6") == 1
+        assert repo.count_resources(skill="reading", level="5-6") == 2
+        # BV4 source_status 默认 verified_repost,不是 official
+        assert repo.count_resources(
+            skill="reading", level="5-6", source_status="official", is_featured=True,
+        ) == 0
+        assert repo.count_resources(
+            skill="reading", level="5-6", is_featured=True,
+        ) == 1  # 只 BV4
+
+        # 与 list_resources 行数对齐(防止 count/list 过滤条件漂移)
+        rows = repo.list_resources(skill="reading", level="5-6", is_featured=True, limit=50)
+        assert repo.count_resources(
+            skill="reading", level="5-6", is_featured=True,
+        ) == len(rows)

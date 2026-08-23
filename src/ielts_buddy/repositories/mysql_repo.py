@@ -2608,17 +2608,34 @@ class MySQLPrepResourceRepository:
             ).fetchall()
         return [dict(r._mapping) for r in rows]
 
-    def count_resources(self, skill: Optional[str] = None) -> int:
+    def count_resources(
+        self,
+        skill: Optional[str] = None,
+        level: Optional[str] = None,
+        source_status: Optional[str] = None,
+        is_featured: Optional[bool] = None,
+    ) -> int:
+        """按条件统计(与 list_resources 过滤维度对齐,v3.8 P3.1)。"""
+        where = ["1=1"]
+        params: dict[str, Any] = {}
+        if skill:
+            where.append("skill = :skill")
+            params["skill"] = skill
+        if level:
+            where.append("level = :level")
+            params["level"] = level
+        if source_status:
+            where.append("source_status = :ss")
+            params["ss"] = source_status
+        if is_featured is not None:
+            where.append("is_featured = :feat")
+            params["feat"] = 1 if is_featured else 0
+        sql = (
+            "SELECT COUNT(*) AS c FROM prep_resources WHERE "
+            + " AND ".join(where)
+        )
         with self._engine.connect() as conn:
-            if skill:
-                row = conn.execute(
-                    text("SELECT COUNT(*) AS c FROM prep_resources WHERE skill = :s"),
-                    {"s": skill},
-                ).fetchone()
-            else:
-                row = conn.execute(
-                    text("SELECT COUNT(*) AS c FROM prep_resources")
-                ).fetchone()
+            row = conn.execute(text(sql), params).fetchone()
         return int(row[0])
 
     def update_resource(self, resource_id: int, **kwargs: Any) -> bool:
