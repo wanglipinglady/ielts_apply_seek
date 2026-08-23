@@ -1,0 +1,1251 @@
+{% extends "base.html" %}
+
+{% block page_title %}Reading 真题题库{% endblock %}
+
+{% block content %}
+<section class="rp-page">
+  <h2>📖 Reading 真题题库</h2>
+  <p class="lede">
+    LLM 按 IELTS 真题风格生成的 Reading 题库,5 大题型(T/F/NG · 选择 · 匹配 · 摘要 · 填空)。
+    Passage 文本折叠展示,做对错立即反馈 + 解析 + 出题句定位。
+    <span class="rp-tag">🤖 AI 出题</span>
+  </p>
+
+  {# === Tab 切换条 === #}
+  <div class="rp-tabs" role="tablist">
+    <button class="rp-tab is-open" data-tab="sections" type="button">
+      📚 选 Section
+    </button>
+    <button class="rp-tab" data-tab="sets" type="button">
+      📋 套题列表
+    </button>
+    <button class="rp-tab" data-tab="practice" type="button">
+      ✏️ 做题
+    </button>
+    <button class="rp-tab" data-tab="history" type="button">
+      📜 历史
+    </button>
+    <button class="rp-tab" data-tab="stats" type="button">
+      📊 统计
+    </button>
+  </div>
+
+  {# === Tab 1: Section 入口 === #}
+  <div class="rp-panel is-open" data-panel="sections">
+    <div id="rp-sections-list" class="rp-section-list">
+      <div class="rp-empty">加载中...</div>
+    </div>
+  </div>
+
+  {# === Tab 2: 套题列表 === #}
+  <div class="rp-panel" data-panel="sets">
+    <div class="rp-set-head">
+      <button class="btn-secondary" id="rp-back-to-sections" type="button">
+        ← 返回 Sections
+      </button>
+      <h3 id="rp-current-section-name"></h3>
+    </div>
+    <div id="rp-sets-list" class="rp-set-list">
+      <div class="rp-empty">加载中...</div>
+    </div>
+  </div>
+
+  {# === Tab 3: 做题 === #}
+  <div class="rp-panel" data-panel="practice">
+    <div class="rp-control-bar">
+      <span class="rp-meta" id="rp-set-meta">未抽题</span>
+      <button class="btn-secondary" id="rp-random-btn" type="button">
+        🎲 随机抽一套
+      </button>
+    </div>
+
+    {# Passage 折叠区 #}
+    <div class="rp-passage-box" id="rp-passage-box" hidden>
+      <div class="rp-passage-header">
+        <button class="btn-secondary small" id="rp-toggle-passage" type="button">
+          📄 折叠 Passage
+        </button>
+        <span class="rp-passage-info" id="rp-passage-info"></span>
+      </div>
+      <div class="rp-passage-text" id="rp-passage-text"></div>
+    </div>
+
+    {# 题目卡片 #}
+    <div class="rp-question-card" id="rp-question-card">
+      <div class="rp-empty">点击「随机抽一套」开始一次阅读练习。</div>
+    </div>
+
+    {# 答题交互 #}
+    <div class="rp-answer-panel" id="rp-answer-panel" hidden>
+      <div class="rp-options" id="rp-options"></div>
+      <div class="rp-fill-input" id="rp-fill-input" hidden>
+        <input type="text" id="rp-fill-text"
+               placeholder="输入填空答案..."
+               autocomplete="off" spellcheck="false" />
+      </div>
+      <div class="rp-tfng" id="rp-tfng" hidden>
+        <button class="rp-tfng-btn" data-letter="T" type="button">
+          <span class="rp-tfng-letter">T</span>
+          <span class="rp-tfng-label">True</span>
+        </button>
+        <button class="rp-tfng-btn" data-letter="F" type="button">
+          <span class="rp-tfng-letter">F</span>
+          <span class="rp-tfng-label">False</span>
+        </button>
+        <button class="rp-tfng-btn" data-letter="NG" type="button">
+          <span class="rp-tfng-letter">NG</span>
+          <span class="rp-tfng-label">Not Given</span>
+        </button>
+      </div>
+      <div class="rp-action-row">
+        <button class="btn-primary" id="rp-submit-btn" disabled>📤 提交答案</button>
+        <span class="rp-hint" id="rp-progress-hint"></span>
+      </div>
+    </div>
+
+    {# 反馈 #}
+    <div class="rp-feedback" id="rp-feedback" hidden></div>
+
+    {# 导航 #}
+    <div class="rp-nav-row" id="rp-nav-row" hidden>
+      <button class="btn-primary" id="rp-next-btn" type="button">➡️ 下一题</button>
+      <button class="btn-secondary" id="rp-restart-set-btn" type="button">🔁 重做本套</button>
+      <button class="btn-secondary" id="rp-back-to-sets-btn" type="button">📚 回到 Section</button>
+    </div>
+  </div>
+
+  {# === Tab 4: 历史 === #}
+  <div class="rp-panel" data-panel="history">
+    <div class="rp-history-filter">
+      <label>Section：</label>
+      <select id="rp-history-section">
+        <option value="">全部</option>
+        <option value="easy">easy(简单)</option>
+        <option value="medium">medium(中等)</option>
+        <option value="hard">hard(困难)</option>
+        <option value="academic">academic(挑战)</option>
+      </select>
+      <button class="btn-secondary" id="rp-history-reload" type="button">↻ 刷新</button>
+    </div>
+    <div id="rp-history-list" class="rp-history-list">
+      <div class="rp-empty">暂无记录</div>
+    </div>
+  </div>
+
+  {# === Tab 5: 统计 === #}
+  <div class="rp-panel" data-panel="stats">
+    <div id="rp-stats-content" class="rp-stats-content">
+      <div class="rp-empty">加载中...</div>
+    </div>
+  </div>
+</section>
+
+<script>
+(function() {
+    'use strict';
+
+    const $ = (id) => document.getElementById(id);
+
+    // 元素
+    const tabs = document.querySelectorAll('.rp-tab');
+    const panels = document.querySelectorAll('.rp-panel');
+
+    const sectionsList = $('rp-sections-list');
+    const backToSections = $('rp-back-to-sections');
+    const setsList = $('rp-sets-list');
+    const currentSectionName = $('rp-current-section-name');
+
+    const setMeta = $('rp-set-meta');
+    const randomBtn = $('rp-random-btn');
+    const passageBox = $('rp-passage-box');
+    const togglePassageBtn = $('rp-toggle-passage');
+    const passageInfo = $('rp-passage-info');
+    const passageTextEl = $('rp-passage-text');
+    const questionCard = $('rp-question-card');
+    const answerPanel = $('rp-answer-panel');
+    const optionsBox = $('rp-options');
+    const fillInputBox = $('rp-fill-input');
+    const fillText = $('rp-fill-text');
+    const tfngBox = $('rp-tfng');
+    const submitBtn = $('rp-submit-btn');
+    const progressHint = $('rp-progress-hint');
+    const feedback = $('rp-feedback');
+    const navRow = $('rp-nav-row');
+    const nextBtn = $('rp-next-btn');
+    const restartSetBtn = $('rp-restart-set-btn');
+    const backToSetsBtn = $('rp-back-to-sets-btn');
+
+    const historySection = $('rp-history-section');
+    const historyReload = $('rp-history-reload');
+    const historyList = $('rp-history-list');
+
+    const statsContent = $('rp-stats-content');
+
+    // 状态
+    let currentSet = null;
+    let currentQuestions = [];
+    let currentIdx = 0;
+    let currentQuestion = null;
+    let selectedAnswer = '';
+    let submitted = false;
+    let passageExpanded = true;
+
+    // 工具
+    function escapeHtml(s) {
+        return String(s ?? '')
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    function activateTab(name) {
+        tabs.forEach(b => {
+            if (b.dataset.tab === name) b.classList.add('is-open');
+            else b.classList.remove('is-open');
+        });
+        panels.forEach(p => {
+            if (p.dataset.panel === name) p.classList.add('is-open');
+            else p.classList.remove('is-open');
+        });
+    }
+
+    async function fetchJson(url, opts = {}) {
+        const resp = await fetch(url, { credentials: 'same-origin', ...opts });
+        if (!resp.ok) {
+            let err = {};
+            try { err = await resp.json(); } catch (_) {}
+            throw new Error(err.detail || `HTTP ${resp.status}`);
+        }
+        return resp.json();
+    }
+
+    async function postJson(url, payload) {
+        return fetchJson(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+    }
+
+    // Tab 1: Sections
+    async function loadSections() {
+        sectionsList.innerHTML = '<div class="rp-empty">加载中...</div>';
+        try {
+            const data = await fetchJson('/api/reading/practice/sections');
+            if (!data.sections || !data.sections.length) {
+                sectionsList.innerHTML = '<div class="rp-empty">题库为空,正在生成中...</div>';
+                return;
+            }
+            renderSections(data.sections);
+        } catch (e) {
+            sectionsList.innerHTML =
+                `<div class="rp-empty">加载失败:${escapeHtml(e.message)}</div>`;
+        }
+    }
+
+    function renderSections(sections) {
+        sectionsList.innerHTML = sections.map(s => {
+            const accuracyHtml = s.user_accuracy != null
+                ? `<span class="rp-acc-badge">${s.user_accuracy}%</span>`
+                : `<span class="rp-acc-badge none">未做题</span>`;
+            return `
+                <div class="rp-section-card" data-section="${escapeHtml(s.section)}">
+                    <div class="rp-section-head-row">
+                        <span class="rp-section-tag">${escapeHtml(s.section.toUpperCase())}</span>
+                        <span class="rp-section-name">${escapeHtml(s.name)}</span>
+                    </div>
+                    <div class="rp-section-stats">
+                        <span>📚 ${s.total_sets} 套</span>
+                        <span>📝 ${s.total_passages} 题</span>
+                        <span>🎯 做题 ${s.user_attempts}</span>
+                        ${accuracyHtml}
+                    </div>
+                </div>
+            `;
+        }).join('');
+        sectionsList.querySelectorAll('.rp-section-card').forEach(card => {
+            card.addEventListener('click', () => {
+                openSection(card.dataset.section);
+            });
+        });
+    }
+
+    async function openSection(section) {
+        currentSectionName.textContent = `${section} 套题列表`;
+        setsList.innerHTML = '<div class="rp-empty">加载中...</div>';
+        activateTab('sets');
+        try {
+            const rows = await fetchJson(
+                `/api/reading/practice/section/${encodeURIComponent(section)}`
+            );
+            if (!rows.length) {
+                setsList.innerHTML = '<div class="rp-empty">该 Section 下暂无套题</div>';
+                return;
+            }
+            renderSets(rows, section);
+        } catch (e) {
+            setsList.innerHTML =
+                `<div class="rp-empty">加载失败:${escapeHtml(e.message)}</div>`;
+        }
+    }
+
+    function renderSets(rows, section) {
+        setsList.innerHTML = rows.map(r => `
+            <div class="rp-set-card" data-set="${r.set_id}">
+                <div class="rp-set-head">
+                    <span class="rp-set-id">套题 #${r.set_id}</span>
+                    <span class="rp-set-count">${r.question_count} 题</span>
+                </div>
+                <div class="rp-set-topic">${escapeHtml(r.topic || '(未命名)')}</div>
+                <div class="rp-set-title">${escapeHtml(r.title || '')}</div>
+            </div>
+        `).join('');
+        setsList.querySelectorAll('.rp-set-card').forEach(card => {
+            card.addEventListener('click', () => {
+                const setId = parseInt(card.dataset.set, 10);
+                startSet(section, setId);
+            });
+        });
+    }
+
+    // Tab 3: 做题
+    async function startRandom() {
+        randomBtn.disabled = true;
+        randomBtn.textContent = '抽题中...';
+        try {
+            const data = await postJson('/api/reading/practice/random', {});
+            onSetLoaded(data);
+        } catch (e) {
+            alert('抽题失败:' + e.message);
+        } finally {
+            randomBtn.disabled = false;
+            randomBtn.textContent = '🎲 随机抽一套';
+        }
+    }
+
+    async function startSet(section, setId) {
+        try {
+            const data = await postJson(
+                '/api/reading/practice/start',
+                { section, set_id: setId }
+            );
+            onSetLoaded(data);
+        } catch (e) {
+            alert('抽题失败:' + e.message);
+        }
+    }
+
+    function onSetLoaded(data) {
+        currentSet = data;
+        currentQuestions = data.questions || [];
+        currentIdx = 0;
+        setMeta.textContent =
+            `${data.section_label} · 套题 #${data.set_id} · ${currentQuestions.length} 题`;
+        activateTab('practice');
+        if (!currentQuestions.length) {
+            questionCard.innerHTML = '<div class="rp-empty">该套题暂无题目</div>';
+            passageBox.hidden = true;
+            answerPanel.hidden = true;
+            return;
+        }
+        loadQuestion(0);
+    }
+
+    function loadQuestion(idx) {
+        if (idx < 0 || idx >= currentQuestions.length) return;
+        currentIdx = idx;
+        const q = currentQuestions[idx];
+        selectedAnswer = '';
+        submitted = false;
+        feedback.hidden = true;
+        feedback.className = 'rp-feedback';
+        feedback.innerHTML = '';
+        navRow.hidden = true;
+        answerPanel.hidden = false;
+        submitBtn.disabled = true;
+        submitBtn.textContent = '📤 提交答案';
+
+        renderPassage(q);
+        renderQuestionCard(q);
+        renderOptions(q);
+    }
+
+    function renderPassage(q) {
+        passageBox.hidden = false;
+        const wc = q.word_count || (q.passage_text || '').split(/\s+/).filter(Boolean).length;
+        passageInfo.textContent =
+            `📄 ${escapeHtml(q.title || 'Passage')} · 第 ${q.passage_number} 篇 · 约 ${wc} 词`;
+        passageTextEl.textContent = q.passage_text || '';
+        passageExpanded = true;
+        passageTextEl.style.display = 'block';
+        togglePassageBtn.textContent = '📄 折叠 Passage';
+    }
+
+    function renderQuestionCard(q) {
+        currentQuestion = q;
+        const typeLabel = q.question_type_label || q.question_type;
+        const scenarioHtml = q.topic
+            ? `<div class="rp-scenario">📍 ${escapeHtml(q.topic)}</div>` : '';
+        questionCard.innerHTML = `
+            <div class="rp-q-head">
+                <span class="rp-q-type">${escapeHtml(typeLabel)}</span>
+                <span class="rp-q-progress">Question ${currentIdx + 1} / ${currentQuestions.length}</span>
+            </div>
+            ${scenarioHtml}
+            <div class="rp-q-stem">${escapeHtml(q.stem)}</div>
+        `;
+    }
+
+    function renderOptions(q) {
+        optionsBox.innerHTML = '';
+        fillInputBox.hidden = true;
+        tfngBox.hidden = true;
+        fillText.value = '';
+        selectedAnswer = '';
+        submitBtn.disabled = true;
+
+        const qtype = q.question_type;
+        if (qtype === 'tfng') {
+            tfngBox.hidden = false;
+            return;
+        }
+        if (qtype === 'summary' || qtype === 'sentence_completion' || !q.options) {
+            fillInputBox.hidden = false;
+            fillText.focus();
+            return;
+        }
+        // multiple_choice / matching
+        optionsBox.innerHTML = q.options.map((opt, i) => {
+            const letter = String.fromCharCode(65 + i);
+            return `
+                <button class="rp-option-btn" data-letter="${letter}" type="button">
+                    <span class="rp-option-letter">${letter}</span>
+                    <span class="rp-option-text">${escapeHtml(opt)}</span>
+                </button>
+            `;
+        }).join('');
+        optionsBox.querySelectorAll('.rp-option-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                optionsBox.querySelectorAll('.rp-option-btn').forEach(
+                    b => b.classList.remove('is-selected')
+                );
+                btn.classList.add('is-selected');
+                selectedAnswer = btn.dataset.letter;
+                submitBtn.disabled = false;
+            });
+        });
+    }
+
+    function getSelectedAnswer() {
+        if (!currentQuestion) return '';
+        if (currentQuestion.question_type === 'tfng') {
+            return selectedAnswer;
+        }
+        if (currentQuestion.question_type === 'summary' ||
+            currentQuestion.question_type === 'sentence_completion') {
+            return fillText.value.trim();
+        }
+        return selectedAnswer;
+    }
+
+    async function submitAnswer() {
+        if (!currentQuestion || submitted) return;
+        const userAnswer = getSelectedAnswer();
+        if (!userAnswer) {
+            alert('请选择答案或填写');
+            return;
+        }
+        submitBtn.disabled = true;
+        submitBtn.textContent = '提交中...';
+        const payload = {
+            question_id: currentQuestion.id,
+            user_answer: userAnswer,
+            duration_sec: 0,
+        };
+        try {
+            const out = await postJson(
+                '/api/reading/practice/submit', payload
+            );
+            submitted = true;
+            renderFeedback(out);
+            // 禁用选项
+            optionsBox.querySelectorAll('.rp-option-btn').forEach(btn => {
+                btn.disabled = true;
+            });
+            fillText.disabled = true;
+            tfngBox.querySelectorAll('.rp-tfng-btn').forEach(btn => {
+                btn.disabled = true;
+            });
+            navRow.hidden = false;
+            if (!out.next_question_id) {
+                nextBtn.disabled = true;
+                nextBtn.textContent = '🎉 已是最后一题';
+            } else {
+                nextBtn.disabled = false;
+                nextBtn.textContent = '➡️ 下一题';
+            }
+        } catch (e) {
+            alert('提交失败:' + e.message);
+            submitBtn.disabled = false;
+            submitBtn.textContent = '📤 提交答案';
+        }
+    }
+
+    function renderFeedback(out) {
+        feedback.hidden = false;
+        feedback.className = 'rp-feedback ' +
+            (out.is_correct ? 'is-correct' : 'is-wrong');
+        const resultLabel = out.is_correct ? '✓ 正确' : '✗ 错误';
+        const transcriptHtml = out.transcript
+            ? `<details class="rp-transcript">
+                 <summary>📄 查看原文 Passage</summary>
+                 <pre class="rp-transcript-text">${escapeHtml(out.transcript)}</pre>
+               </details>`
+            : '';
+        feedback.innerHTML = `
+            <div class="rp-feedback-head">
+                <span class="rp-result-badge">${resultLabel}</span>
+                <span class="rp-correct-answer">
+                    正确答案:${escapeHtml(out.correct_answer)}
+                </span>
+            </div>
+            <div class="rp-explanation">
+                <h4>💡 解析</h4>
+                <p>${escapeHtml(out.explanation)}</p>
+            </div>
+            ${transcriptHtml}
+        `;
+    }
+
+    function goNext() {
+        if (currentIdx + 1 >= currentQuestions.length) return;
+        loadQuestion(currentIdx + 1);
+    }
+
+    function restartSet() {
+        if (!currentSet) return;
+        loadQuestion(0);
+    }
+
+    function backToSets() {
+        if (currentSet) openSection(currentSet.section);
+        else activateTab('sections');
+    }
+
+    function backToSectionsList() {
+        activateTab('sections');
+        loadSections();
+    }
+
+    // Tab 4: 历史
+    async function loadHistory() {
+        const sec = historySection.value;
+        const url = sec
+            ? `/api/reading/practice/history?section=${encodeURIComponent(sec)}&size=50`
+            : '/api/reading/practice/history?size=50';
+        historyList.innerHTML = '<div class="rp-empty">加载中...</div>';
+        try {
+            const data = await fetchJson(url);
+            renderHistory(data.items || []);
+        } catch (e) {
+            historyList.innerHTML =
+                `<div class="rp-empty">加载失败:${escapeHtml(e.message)}</div>`;
+        }
+    }
+
+    function renderHistory(items) {
+        if (!items.length) {
+            historyList.innerHTML = '<div class="rp-empty">暂无记录</div>';
+            return;
+        }
+        historyList.innerHTML = items.map(it => {
+            const badge = it.is_correct
+                ? '<span class="rp-result-badge is-correct">✓ 正确</span>'
+                : '<span class="rp-result-badge is-wrong">✗ 错误</span>';
+            return `
+                <div class="rp-hist-card">
+                    <div class="rp-hist-head">
+                        <span class="rp-section-tag">${escapeHtml(it.section.toUpperCase())}</span>
+                        ${badge}
+                        <span class="rp-hist-time">${escapeHtml(it.created_at)}</span>
+                    </div>
+                    <div class="rp-hist-title">${escapeHtml(it.title || '')}</div>
+                    <div class="rp-hist-answers">
+                        <span>你的答案:<code>${escapeHtml(it.user_answer)}</code></span>
+                        <span>正确答案:<code>${escapeHtml(it.correct_answer)}</code></span>
+                    </div>
+                    <div class="rp-hist-meta">
+                        <span>⏱ ${it.duration_sec.toFixed(1)}s</span>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    // Tab 5: 统计
+    async function loadStats() {
+        statsContent.innerHTML = '<div class="rp-empty">加载中...</div>';
+        try {
+            const data = await fetchJson('/api/reading/practice/stats');
+            renderStats(data);
+        } catch (e) {
+            statsContent.innerHTML =
+                `<div class="rp-empty">加载失败:${escapeHtml(e.message)}</div>`;
+        }
+    }
+
+    function renderStats(data) {
+        const overallAcc = data.accuracy != null ? `${data.accuracy}%` : '—';
+        const sectionStats = data.by_section || {};
+        const sectionCards = ['easy', 'medium', 'hard', 'academic'].map(sec => {
+            const s = sectionStats[sec] || {};
+            const acc = s.accuracy != null ? `${s.accuracy}%` : '—';
+            return `
+                <div class="rp-stat-card">
+                    <div class="rp-stat-label">${escapeHtml(sec.toUpperCase())}</div>
+                    <div class="rp-stat-row">
+                        <span>做题 ${s.attempts || 0}</span>
+                        <span>正确 ${s.correct || 0}</span>
+                    </div>
+                    <div class="rp-stat-big">${acc}</div>
+                </div>
+            `;
+        }).join('');
+        statsContent.innerHTML = `
+            <div class="rp-stats-summary">
+                <div class="rp-stat-card overall">
+                    <div class="rp-stat-label">总览</div>
+                    <div class="rp-stat-row">
+                        <span>总题数 ${data.total_attempts}</span>
+                        <span>正确 ${data.correct}</span>
+                    </div>
+                    <div class="rp-stat-big">${overallAcc}</div>
+                </div>
+            </div>
+            <div class="rp-stats-grid">${sectionCards}</div>
+        `;
+    }
+
+    // ========== 事件 ==========
+    tabs.forEach(t => t.addEventListener('click', () => {
+        const name = t.dataset.tab;
+        activateTab(name);
+        if (name === 'sections') loadSections();
+        else if (name === 'history') loadHistory();
+        else if (name === 'stats') loadStats();
+    }));
+
+    backToSections.addEventListener('click', backToSectionsList);
+    randomBtn.addEventListener('click', startRandom);
+    submitBtn.addEventListener('click', submitAnswer);
+    nextBtn.addEventListener('click', goNext);
+    restartSetBtn.addEventListener('click', restartSet);
+    backToSetsBtn.addEventListener('click', backToSets);
+    historyReload.addEventListener('click', loadHistory);
+    fillText.addEventListener('input', () => {
+        submitBtn.disabled = !fillText.value.trim();
+    });
+    tfngBox.querySelectorAll('.rp-tfng-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            tfngBox.querySelectorAll('.rp-tfng-btn').forEach(
+                b => b.classList.remove('is-selected')
+            );
+            btn.classList.add('is-selected');
+            selectedAnswer = btn.dataset.letter;
+            submitBtn.disabled = false;
+        });
+    });
+    togglePassageBtn.addEventListener('click', () => {
+        passageExpanded = !passageExpanded;
+        passageTextEl.style.display = passageExpanded ? 'block' : 'none';
+        togglePassageBtn.textContent =
+            passageExpanded ? '📄 折叠 Passage' : '📄 展开 Passage';
+    });
+
+    // 初次
+    loadSections();
+})();
+</script>
+
+<style>
+.rp-page {
+    max-width: 1000px;
+    margin: 0 auto;
+}
+.rp-page h2 { margin-bottom: 4px; }
+.rp-page .lede {
+    color: var(--text-muted);
+    margin-bottom: 16px;
+    font-size: 13px;
+}
+.rp-tag {
+    display: inline-block;
+    padding: 2px 8px;
+    margin-left: 6px;
+    background: rgba(99, 102, 241, 0.08);
+    color: var(--primary-color);
+    border-radius: 4px;
+    font-size: 11px;
+}
+
+.rp-tabs {
+    display: flex;
+    gap: 4px;
+    border-bottom: 1px solid var(--border-color);
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+}
+.rp-tab {
+    padding: 10px 16px;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 13px;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+}
+.rp-tab:hover { color: var(--text-main); }
+.rp-tab.is-open {
+    color: var(--text-main);
+    border-bottom-color: var(--primary-color);
+    font-weight: 600;
+}
+.rp-panel { display: none; padding: 16px 0; }
+.rp-panel.is-open { display: block; }
+
+/* Sections 列表 */
+.rp-section-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 14px;
+}
+.rp-section-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 18px;
+    cursor: pointer;
+    transition: transform 0.15s, box-shadow 0.15s;
+}
+.rp-section-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+    border-color: var(--primary-color);
+}
+.rp-section-head-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+.rp-section-tag {
+    padding: 2px 10px;
+    background: var(--primary-color);
+    color: white;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+}
+.rp-section-name {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-main);
+}
+.rp-section-stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    font-size: 12px;
+    color: var(--text-muted);
+    align-items: center;
+}
+.rp-acc-badge {
+    padding: 2px 10px;
+    background: #d1fae5;
+    color: #065f46;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    margin-left: auto;
+}
+.rp-acc-badge.none {
+    background: var(--bg-primary);
+    color: var(--text-muted);
+}
+
+/* 套题列表 */
+.rp-set-head {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 14px;
+}
+.rp-set-head h3 {
+    margin: 0;
+    font-size: 16px;
+}
+.rp-set-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 12px;
+}
+.rp-set-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 14px;
+    cursor: pointer;
+    transition: border-color 0.15s;
+}
+.rp-set-card:hover { border-color: var(--primary-color); }
+.rp-set-head {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 8px;
+}
+.rp-set-id {
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--text-main);
+}
+.rp-set-count {
+    font-size: 12px;
+    color: var(--text-muted);
+    background: var(--bg-primary);
+    padding: 1px 8px;
+    border-radius: 8px;
+}
+.rp-set-topic {
+    font-size: 13px;
+    color: var(--primary-color);
+    margin-bottom: 6px;
+}
+.rp-set-title {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+/* 控制条 */
+.rp-control-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    margin-bottom: 14px;
+}
+.rp-meta {
+    font-size: 13px;
+    color: var(--text-muted);
+}
+
+/* Passage 折叠 */
+.rp-passage-box {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    margin-bottom: 14px;
+}
+.rp-passage-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border-color);
+}
+.rp-passage-info {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+.rp-passage-text {
+    padding: 18px 22px;
+    font-size: 14px;
+    line-height: 1.8;
+    white-space: pre-wrap;
+    color: var(--text-main);
+    max-height: 500px;
+    overflow-y: auto;
+}
+
+/* 题目卡片 */
+.rp-question-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 20px 24px;
+    margin-bottom: 14px;
+}
+.rp-q-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+.rp-q-type {
+    padding: 2px 10px;
+    background: rgba(99, 102, 241, 0.1);
+    color: var(--primary-color);
+    border-radius: 10px;
+    font-size: 12px;
+    font-weight: 600;
+}
+.rp-q-progress {
+    font-size: 12px;
+    color: var(--text-muted);
+    font-family: var(--font-mono, monospace);
+}
+.rp-scenario {
+    padding: 6px 12px;
+    background: var(--bg-primary);
+    border-left: 3px solid var(--primary-color);
+    border-radius: 4px;
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-bottom: 14px;
+}
+.rp-q-stem {
+    font-size: 16px;
+    line-height: 1.6;
+    color: var(--text-main);
+}
+
+/* 选项 */
+.rp-options {
+    display: grid;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+.rp-option-btn {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 18px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    cursor: pointer;
+    text-align: left;
+    font-size: 14px;
+    color: var(--text-main);
+}
+.rp-option-btn:hover:not(:disabled) {
+    border-color: var(--primary-color);
+    background: var(--bg-primary);
+}
+.rp-option-btn.is-selected {
+    border-color: var(--primary-color);
+    background: rgba(99, 102, 241, 0.08);
+}
+.rp-option-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.rp-option-letter {
+    flex-shrink: 0;
+    width: 28px;
+    height: 28px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 13px;
+}
+.rp-option-btn.is-selected .rp-option-letter {
+    background: var(--primary-color);
+    color: white;
+    border-color: var(--primary-color);
+}
+
+/* T/F/NG */
+.rp-tfng {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+.rp-tfng-btn {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 14px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    cursor: pointer;
+}
+.rp-tfng-btn.is-selected {
+    border-color: var(--primary-color);
+    background: rgba(99, 102, 241, 0.08);
+}
+.rp-tfng-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.rp-tfng-letter {
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--primary-color);
+    font-family: var(--font-mono, monospace);
+}
+.rp-tfng-label {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+.rp-tfng-btn.is-selected .rp-tfng-label {
+    color: var(--text-main);
+    font-weight: 600;
+}
+
+/* 填空 */
+.rp-fill-input {
+    margin-bottom: 12px;
+}
+.rp-fill-input input {
+    width: 100%;
+    padding: 12px 14px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-secondary);
+    color: var(--text-main);
+    font-size: 15px;
+}
+.rp-fill-input input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+}
+
+/* 操作行 */
+.rp-action-row {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+.rp-hint {
+    margin-left: auto;
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+/* 反馈 */
+.rp-feedback {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 18px 22px;
+    margin-bottom: 14px;
+}
+.rp-feedback.is-correct {
+    border-color: #6ee7b7;
+    background: #ecfdf5;
+}
+.rp-feedback.is-wrong {
+    border-color: #fca5a5;
+    background: #fef2f2;
+}
+.rp-feedback-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border-color);
+}
+.rp-result-badge {
+    padding: 4px 12px;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 700;
+}
+.rp-result-badge.is-correct { background: #d1fae5; color: #065f46; }
+.rp-result-badge.is-wrong { background: #fee2e2; color: #991b1b; }
+.rp-correct-answer {
+    font-size: 13px;
+    color: var(--text-muted);
+}
+.rp-correct-answer code {
+    padding: 2px 8px;
+    background: var(--bg-primary);
+    border-radius: 4px;
+    font-family: var(--font-mono, monospace);
+    font-weight: 700;
+}
+.rp-explanation { margin-bottom: 10px; }
+.rp-explanation h4 {
+    margin: 0 0 6px;
+    font-size: 13px;
+    color: var(--text-muted);
+}
+.rp-explanation p { margin: 0; line-height: 1.6; font-size: 14px; }
+.rp-transcript summary {
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--primary-color);
+    font-weight: 500;
+}
+.rp-transcript-text {
+    margin: 8px 0 0;
+    padding: 12px;
+    background: var(--bg-primary);
+    border-radius: 6px;
+    font-size: 13px;
+    line-height: 1.7;
+    max-height: 300px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+}
+
+/* 导航 */
+.rp-nav-row {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+.rp-nav-row button {
+    flex: 1;
+    min-width: 120px;
+}
+
+/* 历史 */
+.rp-history-filter {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 14px;
+    padding: 12px 16px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+}
+.rp-history-filter select {
+    padding: 4px 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 13px;
+    background: var(--bg-primary);
+}
+.rp-history-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 12px;
+}
+.rp-hist-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 14px;
+}
+.rp-hist-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+}
+.rp-hist-time {
+    margin-left: auto;
+    font-size: 11px;
+    color: var(--text-muted);
+    font-family: var(--font-mono, monospace);
+}
+.rp-hist-title {
+    font-size: 13px;
+    margin-bottom: 8px;
+    color: var(--text-main);
+}
+.rp-hist-answers {
+    font-size: 12px;
+    color: var(--text-muted);
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 6px;
+}
+.rp-hist-answers code {
+    padding: 1px 6px;
+    background: var(--bg-primary);
+    border-radius: 3px;
+    font-family: var(--font-mono, monospace);
+    font-weight: 600;
+}
+.rp-hist-meta {
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+/* 统计 */
+.rp-stats-summary { margin-bottom: 14px; }
+.rp-stat-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 18px 22px;
+}
+.rp-stat-card.overall {
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    color: white;
+    border-color: transparent;
+}
+.rp-stat-card.overall .rp-stat-label,
+.rp-stat-card.overall .rp-stat-row { color: rgba(255,255,255,0.85); }
+.rp-stat-label {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+}
+.rp-stat-row {
+    display: flex;
+    gap: 16px;
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+}
+.rp-stat-big {
+    font-size: 32px;
+    font-weight: 700;
+    font-family: var(--font-mono, monospace);
+}
+.rp-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 12px;
+}
+.rp-stats-grid .rp-stat-card { padding: 14px 16px; }
+.rp-stats-grid .rp-stat-big { font-size: 24px; }
+
+/* Empty */
+.rp-empty {
+    text-align: center;
+    color: var(--text-muted);
+    padding: 28px;
+    background: var(--bg-secondary);
+    border: 1px dashed var(--border-color);
+    border-radius: 6px;
+    font-size: 13px;
+}
+
+/* 按钮 */
+.btn-primary, .btn-secondary {
+    padding: 8px 14px;
+    border-radius: 6px;
+    font-size: 13px;
+    cursor: pointer;
+    border: none;
+}
+.btn-primary { background: var(--primary-color); color: white; }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-secondary {
+    background: var(--bg-primary);
+    color: var(--text-main);
+    border: 1px solid var(--border-color);
+}
+.btn-secondary:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-secondary.small { padding: 6px 10px; font-size: 12px; }
+
+@media (max-width: 700px) {
+    .rp-options { grid-template-columns: 1fr; }
+    .rp-tfng { flex-direction: column; }
+    .rp-hist-answers { flex-direction: column; }
+}
+</style>
+{% endblock %}

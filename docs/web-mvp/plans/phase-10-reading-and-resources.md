@@ -574,7 +574,83 @@ reading_passages 表空?
 
 ## 11. 实施关闭记录(Closeout)
 
-> 实施日期:TBD
+> 实施日期:2026-08-23
 > 实施范围:Sprint 1 + 2 + 3 + 4 全闭环交付
 
-(待 Sprint 完成后追加)
+### 11.1 Sprint 1:数据层 + Protocol(Sprint 1 commit = e345c1f,11 files / +2552 lines)
+
+| 模块 | 文件 | 说明 |
+|---|---|---|
+| PRD | `docs/web-mvp/plans/phase-10-reading-and-resources.md` | 新增 P3.1 + P3.2 PRD |
+| Protocol | `core/repository.py` | 新增 `PrepResourceRepository` + `ReadingPracticeRepository` Protocol |
+| SQLite | `repositories/sqlite_repo.py` | 新增 3 张表 + 2 个 Repository 类 + Container 10 个 repo |
+| MySQL | `repositories/mysql_repo.py` | 新增 t_prep_resources / t_reading_passages / t_reading_attempts + 2 个 Repository |
+| Schema | `scripts/init_mysql.sql` + `scripts/migrate_v3_mysql_schema.py` | DDL + 迁移函数 |
+| 测试 | `tests/test_repositories/test_prep_resource_repo.py` (15 tests) + `tests/test_repositories/test_reading_practice_repo.py` (20 tests) | 35 tests 全过 |
+| 测试 | `tests/test_repositories/test_repository_protocols.py` | 加入 2 个新 repo 校验 |
+
+### 11.2 Sprint 2-4:业务服务 + API + UI + 启动期(Sprint 2-4 commit = TBD)
+
+#### 11.2.1 业务服务 (3 个文件)
+
+| 文件 | 关键能力 |
+|---|---|
+| `services/prep_resource_service.py` | 5 维加权推荐分 + list/featured/by-up/recommendation + JSON 种子导入 |
+| `services/reading_question_generator.py` | 4 个 Section 档位 + 5 题型 + retry-once + JSON 容错 + mock 降级 |
+| `services/reading_practice_service.py` | T/F/NG + 大小写不敏感 + 去标点判分 + 找下一题 + 启动期种子 30 套 |
+
+#### 11.2.2 API + UI (4 个文件)
+
+| 文件 | 关键能力 |
+|---|---|
+| `web/routers/prep_resources.py` | 6 端点(列表/详情/featured/recommendation/by-up/ups) |
+| `web/routers/reading_practice.py` | 8 端点(sections/section/start/random/question/submit/history/stats) |
+| `web/templates/pages/resources.html` | 3 Tab(浏览/精选/按 UP 主)+ 5 维度筛选 |
+| `web/templates/pages/reading_practice.html` | 5 Tab(Sections/套题/做题/历史/统计) |
+
+#### 11.2.3 启动期 + 集成 (3 个修改)
+
+| 文件 | 改动 |
+|---|---|
+| `web/main.py` | 接 prep_resources + reading_practice 路由 + lifespan 加入 reading/listening 后台种子线程 + finally join(避免 SQLite closed) |
+| `web/templates/base.html` | 侧边栏新增 2 个入口(Reading 真题 + 备考资源) |
+| `data/prep_resources_seed.json` | 32 条 B 站 UP 主资源种子(Simon/王陆/刘洪波/杨帅/Keith/顾家北/杜仕明/雅思哥/何琼/英语兔/9988 王勇/等等) |
+
+#### 11.2.4 Bug 修复
+
+| Bug | 修复 |
+|---|---|
+| `seed_initial_prep_resources` path bug:走 `parents[2]` 导致找不到 JSON | 改为 `parents[1]`(从 services/ 到 ielts_buddy/ 然后拼 data/) |
+| `_build_prompt` 用 `.format()` 但 schema_block 里有 `{...}` 触发 `KeyError` | `{{` `}}` 转义 + 用 f-string 替换 |
+| T/F/NG answer `T`/`F` 单字符被归类为非法值拒绝 | 在 `("TRUE", "T")` / `("FALSE", "F")` 接受 |
+| `get_user_stats` 空 accuracy 显示 `0.0` 误导 | Service 层归一化为 `None` |
+| `count_resources` 只看 skill 不看 level → total 错误 | Repository + Service 扩展支持 level/source_status/is_featured |
+| `/{id}` 路由声明顺序在 `/featured` 之前 → "featured" 被解析为 id 失败 | 路由声明顺序调整:字面量路径在前,`/{id}` 放最后 |
+| Reading 后台线程在 lifespan 关闭时仍在跑导致 segfault | `app.state.reading_seed_thread = t` + finally `join(timeout=5)` |
+| `main.py` 没 `include_router` 两个新路由 | 补上 |
+
+#### 11.2.5 测试 (5 个文件 / 71 tests,全过)
+
+| 文件 | tests | 覆盖 |
+|---|---|---|
+| `tests/test_web/test_reading_question_generator.py` | 20 | SECTION_PROFILES + mock fallback + 5 题型 + 真 LLM 路径 + 容错 + 全套生成 |
+| `tests/test_services/test_reading_practice_service.py` | 26 | 启动期种子 + 列表 + 抽题 + 判分(T/F/NG + mc + summary + 大小写/标点)+ 历史 + 统计 |
+| `tests/test_web/test_prep_resource_api.py` | 17 | 页面 + 列表过滤 + 排序 + 分页 + 详情 + featured + recommendation + by-up + ups |
+| `tests/test_web/test_reading_practice_api.py` | 23 | 页面 + sections + section/{s} + start + random + question + submit + history + stats |
+| `tests/test_web/test_reading_startup_seed.py` | 5 | reading 启动期种 + 跳过 + prep_resources 同步种 + 跳过 + JSON path |
+
+### 11.3 验证结果
+
+```
+tests/test_repositories + tests/test_web/test_*practice* + tests/test_web/test_prep_* + 
+tests/test_web/test_reading_* + tests/test_services/test_reading_*: 387 passed
+```
+
+总计 v3.8 P3 = 387 个核心测试全过(含 Sprint 1 的 35 + Sprint 2-4 新增 71 + 之前 P1/P2 共存的测试)。
+
+### 11.4 已知限制
+
+- **listening 启动期种子在 SQLite 上高频 commit 容易和 reading 启动期争锁**:测试 fixture 通过 `IELTS_BUDDY_LISTENING_AUTO_SEED=0` 关闭解决。生产环境 MySQL 无此问题。
+- **reading 启动期种子跑 30 套(mock 占位题)**:`IELTS_BUDDY_READING_AUTO_SEED=0` 可关闭,生产环境会调用 LLM 生成真题。
+- **prep_resources 推荐分是手工种子数据**:`recommend_score` 由人工标注,`compute_recommend_score()` 仅用于动态新增资源时的兜底评分。
+- **资源数据来自手工维护的 JSON**:`prep_resources_seed.json` 需要手动维护,后续可通过 admin 后台管理。

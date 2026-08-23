@@ -51,6 +51,8 @@ from ielts_buddy.web.routers import speak as speak_routes
 from ielts_buddy.web.routers import mistakes as mistakes_routes
 from ielts_buddy.web.routers import speaking_practice as speaking_practice_routes
 from ielts_buddy.web.routers import listening_practice as listening_practice_routes
+from ielts_buddy.web.routers import prep_resources as prep_resources_routes
+from ielts_buddy.web.routers import reading_practice as reading_practice_routes
 
 # 模板目录 = 本文件所在目录/templates
 WEB_DIR = Path(__file__).resolve().parent
@@ -189,6 +191,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
                 daemon=True,
             )
             t.start()
+            app.state.listening_seed_thread = t
         else:
             _logging.getLogger(__name__).info(
                 "[listening] startup seed disabled by config"
@@ -199,10 +202,71 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
             "[listening] startup seed setup failed: %s", _exc
         )
 
+    # v3.8 P3.1：启动期种子备考资源广场(同步,阻塞 ~0.5s;无 LLM)
+    try:
+        import logging as _logging
+        from ielts_buddy.services.prep_resource_service import (
+            seed_initial_prep_resources,
+        )
+        result = seed_initial_prep_resources(
+            container=app.state.container,
+        )
+        _logging.getLogger(__name__).info(
+            "[prep] startup seed: %s",
+            result,
+        )
+    except Exception as _exc:
+        import logging as _logging
+        _logging.getLogger(__name__).warning(
+            "[prep] startup seed failed: %s", _exc,
+        )
+
+    # v3.8 P3.2：启动期种子 Reading 题库(后台线程,fire-and-forget)
+    # 注意:后台线程引用了 app.state.container,必须在 lifespan finally 中 join,
+    #   否则容器关闭后线程还在跑会导致 SQLite "closed database" 错误
+    # 测试可通过 ``IELTS_BUDDY_READING_AUTO_SEED=0`` 关闭(避免 SQLite 抢锁)
+    if (
+        getattr(app.state, "reading_seed_thread", None) is None
+        and os.environ.get("IELTS_BUDDY_READING_AUTO_SEED", "1").strip() != "0"
+    ):
+        try:
+            import logging as _logging
+            from ielts_buddy.services.reading_practice_service import (
+                seed_initial_reading,
+            )
+            import threading
+
+            def _seed_reading_in_background():
+                try:
+                    result = seed_initial_reading(
+                        container=app.state.container,
+                    )
+                    _logging.getLogger(__name__).info(
+                        "[reading] startup seed: %s",
+                        result,
+                    )
+                except Exception as _exc2:
+                    _logging.getLogger(__name__).warning(
+                        "[reading] startup seed failed: %s", _exc2,
+                    )
+
+            t = threading.Thread(
+                target=_seed_reading_in_background,
+                name="reading-seed",
+                daemon=True,
+            )
+            t.start()
+            app.state.reading_seed_thread = t
+        except Exception as _exc:
+            import logging as _logging
+            _logging.getLogger(__name__).warning(
+                "[reading] startup seed setup failed: %s", _exc,
+            )
+
     try:
         yield
     finally:
-        # 停同步
+        # 先停同步
         worker = getattr(app.state, "sync_worker", None)
         if worker is not None:
             try:
@@ -210,7 +274,23 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
             except Exception:
                 pass
             app.state.sync_worker = None
-        # web_user_repo 关
+        # join reading 后台种子线程(避免容器关闭后线程仍在操作 SQLite)
+        reading_thread = getattr(app.state, "reading_seed_thread", None)
+        if reading_thread is not None:
+            try:
+                reading_thread.join(timeout=5.0)
+            except Exception:
+                pass
+            app.state.reading_seed_thread = None
+        # join listening 后台种子线程
+        listening_thread = getattr(app.state, "listening_seed_thread", None)
+        if listening_thread is not None:
+            try:
+                listening_thread.join(timeout=5.0)
+            except Exception:
+                pass
+            app.state.listening_seed_thread = None
+        # 关 web_user_repo
         repo = getattr(app.state, "web_user_repo", None)
         if repo is not None:
             try:
@@ -218,7 +298,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
             except Exception:
                 pass
             app.state.web_user_repo = None
-        # 业务容器关
+        # 关业务容器
         container = getattr(app.state, "container", None)
         if container is not None:
             try:
@@ -427,6 +507,14 @@ def create_app() -> FastAPI:
     # v3.7 P2：真·听力题库（LLM 出题 + TTS 合成 + 单题模式）
     app.include_router(listening_practice_routes.router)
     app.include_router(listening_practice_routes.api_router)
+
+    # v3.8 P3.1：备考资源广场(B 站 UP 主资源)
+    app.include_router(prep_resources_routes.router)
+    app.include_router(prep_resources_routes.api_router)
+
+    # v3.8 P3.2：Reading 真题题库
+    app.include_router(reading_practice_routes.router)
+    app.include_router(reading_practice_routes.api_router)
 
     return app
 

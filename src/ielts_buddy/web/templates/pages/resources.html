@@ -1,0 +1,534 @@
+{% extends "base.html" %}
+
+{% block page_title %}备考资源广场{% endblock %}
+
+{% block content %}
+<section class="prep-page">
+  <h2>📚 备考资源广场</h2>
+  <p class="lede">
+    B 站优质雅思方法论资源合集。按学科 / 水平段 / 来源筛选,
+    每条卡片带「▶ B 站观看」「📌 加入计划」「🎯 立即训练」三按钮。
+    <span class="prep-banner">💡 2026-09-01 起大陆全面机考,优先看带「机考版」徽章的视频。</span>
+  </p>
+
+  {# === Tab 切换 === #}
+  <div class="prep-tabs" role="tablist">
+    <button class="prep-tab is-open" data-tab="browse" type="button">
+      🎯 浏览全部
+    </button>
+    <button class="prep-tab" data-tab="featured" type="button">
+      ⭐ 顶置精选
+    </button>
+    <button class="prep-tab" data-tab="by-up" type="button">
+      👤 按 UP 主
+    </button>
+  </div>
+
+  {# ============================================================ #}
+  {# === Tab 1: 浏览全部 === #}
+  {# ============================================================ #}
+  <div class="prep-panel is-open" data-panel="browse">
+    {# === 筛选 === #}
+    <div class="prep-filter">
+      <label>学科：</label>
+      <select id="filter-skill">
+        <option value="">全部</option>
+        <option value="listening">🎧 听力</option>
+        <option value="reading">📖 阅读</option>
+        <option value="speaking">🎤 口语</option>
+        <option value="writing">✍️ 写作</option>
+        <option value="general">🌐 综合</option>
+      </select>
+
+      <label>水平段：</label>
+      <select id="filter-level">
+        <option value="">全部</option>
+        <option value="0-5">0-5 分</option>
+        <option value="5-6">5-6 分</option>
+        <option value="6.5-7">6.5-7 分</option>
+        <option value="7+">7+ 分</option>
+      </select>
+
+      <label>来源：</label>
+      <select id="filter-source">
+        <option value="">全部</option>
+        <option value="official">官方账号</option>
+        <option value="institution">机构账号</option>
+        <option value="verified_repost">第三方已核验</option>
+        <option value="unverified_repost">第三方未核验</option>
+      </select>
+
+      <label>排序：</label>
+      <select id="filter-sort">
+        <option value="recommend_score">推荐分</option>
+        <option value="sort_order">人工排序</option>
+        <option value="publish_date">发布时间</option>
+      </select>
+
+      <button class="btn-primary" id="filter-apply" type="button">应用筛选</button>
+      <span class="prep-meta" id="filter-meta"></span>
+    </div>
+
+    {# === 资源卡片网格 === #}
+    <div id="prep-card-list" class="prep-card-list">
+      <div class="prep-empty">加载中...</div>
+    </div>
+  </div>
+
+  {# ============================================================ #}
+  {# === Tab 2: 顶置精选 === #}
+  {# ============================================================ #}
+  <div class="prep-panel" data-panel="featured">
+    <div id="prep-featured-list" class="prep-card-list">
+      <div class="prep-empty">加载中...</div>
+    </div>
+  </div>
+
+  {# ============================================================ #}
+  {# === Tab 3: 按 UP 主 === #}
+  {# ============================================================ #}
+  <div class="prep-panel" data-panel="by-up">
+    <div class="prep-up-filter">
+      <label>UP 主：</label>
+      <select id="up-selector">
+        <option value="">加载中...</option>
+      </select>
+    </div>
+    <div id="prep-byup-list" class="prep-card-list">
+      <div class="prep-empty">请先选择 UP 主</div>
+    </div>
+  </div>
+</section>
+
+<script>
+(function() {
+    'use strict';
+
+    const $ = (id) => document.getElementById(id);
+    const SKILL_LABELS = {
+        listening: '🎧 听力', reading: '📖 阅读',
+        speaking: '🎤 口语', writing: '✍️ 写作', general: '🌐 综合',
+    };
+    const SOURCE_LABELS = {
+        official: '官方账号', institution: '机构账号',
+        verified_repost: '第三方已核验', unverified_repost: '第三方未核验',
+    };
+    const LEVEL_LABELS = {
+        '0-5': '0-5 分', '5-6': '5-6 分', '6.5-7': '6.5-7 分', '7+': '7+ 分',
+    };
+    const VIDEO_TYPE_LABELS = {
+        methodology: '方法论', planning: '规划',
+        tips: '技巧', pitfalls: '避坑', mock: '模考', vocab: '词汇',
+    };
+
+    function escapeHtml(s) {
+        return String(s ?? '')
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    // ========== Tab 切换 ==========
+    const tabs = document.querySelectorAll('.prep-tab');
+    const panels = document.querySelectorAll('.prep-panel');
+    function activateTab(name) {
+        tabs.forEach(b => {
+            if (b.dataset.tab === name) b.classList.add('is-open');
+            else b.classList.remove('is-open');
+        });
+        panels.forEach(p => {
+            if (p.dataset.panel === name) p.classList.add('is-open');
+            else p.classList.remove('is-open');
+        });
+    }
+
+    async function fetchJson(url, opts = {}) {
+        const resp = await fetch(url, { credentials: 'same-origin', ...opts });
+        if (!resp.ok) {
+            let err = {};
+            try { err = await resp.json(); } catch (_) {}
+            throw new Error(err.detail || `HTTP ${resp.status}`);
+        }
+        return resp.json();
+    }
+
+    // ========== 通用卡片渲染 ==========
+    function renderCard(r) {
+        const skillLabel = SKILL_LABELS[r.skill] || r.skill;
+        const typeLabel = VIDEO_TYPE_LABELS[r.video_type] || r.video_type;
+        const sourceLabel = SOURCE_LABELS[r.source_status] || r.source_status;
+        const levelLabel = LEVEL_LABELS[r.level] || r.level;
+        // 风险徽章
+        const riskBadge = r.outdated_risk === 'high'
+            ? '<span class="badge risk-high">⚠️ 内容可能过期</span>'
+            : (r.outdated_risk === 'medium'
+                ? '<span class="badge risk-mid">⚠️ 部分过期</span>' : '');
+        // 机考版徽章
+        const computerBadge = r.computer_delivery_only
+            ? '<span class="badge computer">💻 机考版</span>'
+            : (r.format_compatible === 'paper_based'
+                ? '<span class="badge paper">📝 纸笔版</span>'
+                : '<span class="badge both">📝💻 通吃</span>');
+        // 来源徽章
+        const sourceBadge = r.source_status === 'official'
+            ? '<span class="badge source-official">✓ 官方账号</span>'
+            : (r.source_status === 'unverified_repost'
+                ? '<span class="badge source-unverified">⚠️ 第三方</span>'
+                : `<span class="badge source-other">${escapeHtml(sourceLabel)}</span>`);
+        // 相关训练按钮
+        const actionBtn = r.related_action_url
+            ? `<a href="${escapeHtml(r.related_action_url)}" class="btn-secondary small">${escapeHtml(r.related_action_label || '🎯 立即训练')}</a>`
+            : '';
+        return `
+            <div class="prep-card">
+                <div class="prep-card-head">
+                    <div class="prep-card-meta">
+                        ${computerBadge}
+                        ${riskBadge}
+                        ${sourceBadge}
+                        <span class="badge skill">${escapeHtml(skillLabel)}</span>
+                        <span class="badge type">${escapeHtml(typeLabel)}</span>
+                        <span class="badge level">${escapeHtml(levelLabel)}</span>
+                    </div>
+                    ${r.is_featured ? '<span class="badge featured">⭐ 顶置</span>' : ''}
+                </div>
+                <h3 class="prep-card-title">${escapeHtml(r.title)}</h3>
+                <div class="prep-card-author">
+                    👤 <strong>${escapeHtml(r.author_name)}</strong>
+                    <span class="prep-card-date">${r.publish_date ? '📅 ' + escapeHtml(r.publish_date) : ''}</span>
+                    <span class="prep-card-score">⭐ ${r.recommend_score.toFixed(1)}</span>
+                </div>
+                <p class="prep-card-summary">${escapeHtml(r.method_summary)}</p>
+                <div class="prep-card-actions">
+                    <a href="${escapeHtml(r.url)}" target="_blank" rel="noopener"
+                       class="btn-primary small">▶ B 站观看</a>
+                    ${actionBtn}
+                </div>
+            </div>
+        `;
+    }
+
+    // ========== Tab 1: 浏览全部 ==========
+    async function loadAll() {
+        const skill = $('filter-skill').value;
+        const level = $('filter-level').value;
+        const source = $('filter-source').value;
+        const sortBy = $('filter-sort').value;
+        const params = new URLSearchParams();
+        if (skill) params.set('skill', skill);
+        if (level) params.set('level', level);
+        if (source) params.set('source_status', source);
+        params.set('sort_by', sortBy);
+        params.set('limit', '50');
+
+        const listEl = $('prep-card-list');
+        listEl.innerHTML = '<div class="prep-empty">加载中...</div>';
+        try {
+            const data = await fetchJson('/api/resources/list?' + params.toString());
+            if (!data.items || !data.items.length) {
+                listEl.innerHTML = '<div class="prep-empty">没有匹配的资源</div>';
+                $('filter-meta').textContent = '';
+                return;
+            }
+            listEl.innerHTML = data.items.map(renderCard).join('');
+            $('filter-meta').textContent =
+                `共 ${data.total} 条 · 显示 ${data.items.length} 条`;
+        } catch (e) {
+            listEl.innerHTML =
+                `<div class="prep-empty">加载失败:${escapeHtml(e.message)}</div>`;
+        }
+    }
+
+    // ========== Tab 2: 顶置精选 ==========
+    async function loadFeatured() {
+        const listEl = $('prep-featured-list');
+        listEl.innerHTML = '<div class="prep-empty">加载中...</div>';
+        try {
+            const data = await fetchJson('/api/resources/featured');
+            const arr = [data.listening, data.reading, data.speaking, data.writing]
+                .filter(Boolean);
+            if (!arr.length) {
+                listEl.innerHTML = '<div class="prep-empty">暂无顶置资源</div>';
+                return;
+            }
+            listEl.innerHTML = arr.map(renderCard).join('');
+        } catch (e) {
+            listEl.innerHTML =
+                `<div class="prep-empty">加载失败:${escapeHtml(e.message)}</div>`;
+        }
+    }
+
+    // ========== Tab 3: 按 UP 主 ==========
+    async function loadUps() {
+        const sel = $('up-selector');
+        try {
+            const rows = await fetchJson('/api/resources/ups');
+            if (!rows.length) {
+                sel.innerHTML = '<option value="">暂无 UP 主</option>';
+                return;
+            }
+            sel.innerHTML =
+                '<option value="">选择 UP 主...</option>' +
+                rows.map(u =>
+                    `<option value="${escapeHtml(u.author_name)}">${escapeHtml(u.author_name)} (${u.count})</option>`
+                ).join('');
+        } catch (e) {
+            sel.innerHTML = '<option value="">加载失败</option>';
+        }
+    }
+
+    async function loadByUp(name) {
+        const listEl = $('prep-byup-list');
+        if (!name) {
+            listEl.innerHTML = '<div class="prep-empty">请先选择 UP 主</div>';
+            return;
+        }
+        listEl.innerHTML = '<div class="prep-empty">加载中...</div>';
+        try {
+            const rows = await fetchJson(
+                `/api/resources/by-up?author_name=${encodeURIComponent(name)}&limit=20`
+            );
+            if (!rows.length) {
+                listEl.innerHTML = '<div class="prep-empty">该 UP 主暂无资源</div>';
+                return;
+            }
+            listEl.innerHTML = rows.map(renderCard).join('');
+        } catch (e) {
+            listEl.innerHTML =
+                `<div class="prep-empty">加载失败:${escapeHtml(e.message)}</div>`;
+        }
+    }
+
+    // ========== 事件绑定 ==========
+    tabs.forEach(t => t.addEventListener('click', () => {
+        const name = t.dataset.tab;
+        activateTab(name);
+        if (name === 'browse') loadAll();
+        else if (name === 'featured') loadFeatured();
+        else if (name === 'by-up') { loadUps(); }
+    }));
+    $('filter-apply').addEventListener('click', loadAll);
+    $('up-selector').addEventListener('change', (e) => loadByUp(e.target.value));
+
+    // 初次加载
+    loadAll();
+})();
+</script>
+
+<style>
+.prep-page {
+    max-width: 1080px;
+    margin: 0 auto;
+}
+.prep-page h2 {
+    margin-bottom: 4px;
+}
+.prep-page .lede {
+    color: var(--text-muted);
+    margin-bottom: 16px;
+    font-size: 13px;
+}
+.prep-banner {
+    display: inline-block;
+    margin-left: 8px;
+    padding: 3px 10px;
+    background: #fef3c7;
+    color: #92400e;
+    border-radius: 4px;
+    font-size: 11px;
+}
+
+/* Tab 切换条 */
+.prep-tabs {
+    display: flex;
+    gap: 4px;
+    border-bottom: 1px solid var(--border-color);
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+}
+.prep-tab {
+    padding: 10px 16px;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 13px;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+}
+.prep-tab:hover { color: var(--text-main); }
+.prep-tab.is-open {
+    color: var(--text-main);
+    border-bottom-color: var(--primary-color, #6366f1);
+    font-weight: 600;
+}
+.prep-panel { display: none; padding: 16px 0; }
+.prep-panel.is-open { display: block; }
+
+/* 筛选条 */
+.prep-filter,
+.prep-up-filter {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 14px;
+    padding: 14px 16px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+}
+.prep-filter label,
+.prep-up-filter label {
+    font-size: 13px;
+    color: var(--text-muted);
+}
+.prep-filter select,
+.prep-up-filter select {
+    padding: 6px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-primary);
+    font-size: 14px;
+    color: var(--text-main);
+}
+.prep-meta {
+    margin-left: auto;
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+/* 卡片网格 */
+.prep-card-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+    gap: 14px;
+}
+.prep-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 16px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.prep-card-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 8px;
+}
+.prep-card-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+.prep-card-title {
+    margin: 0;
+    font-size: 15px;
+    line-height: 1.4;
+    font-weight: 600;
+}
+.prep-card-author {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 12px;
+    color: var(--text-muted);
+    flex-wrap: wrap;
+}
+.prep-card-author strong {
+    color: var(--text-main);
+}
+.prep-card-score {
+    margin-left: auto;
+    color: #f59e0b;
+    font-weight: 600;
+    font-family: var(--font-mono, monospace);
+}
+.prep-card-summary {
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--text-main);
+    flex: 1;
+}
+.prep-card-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    border-top: 1px solid var(--border-color);
+    padding-top: 10px;
+}
+
+/* 徽章 */
+.badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 500;
+}
+.badge.skill { background: #dbeafe; color: #1e40af; }
+.badge.type { background: #f3e8ff; color: #6b21a8; }
+.badge.level { background: #e0e7ff; color: #3730a3; }
+.badge.computer { background: #d1fae5; color: #065f46; }
+.badge.paper { background: #fef3c7; color: #92400e; }
+.badge.both { background: var(--bg-primary); color: var(--text-muted); border: 1px solid var(--border-color); }
+.badge.featured { background: #fde68a; color: #92400e; }
+.badge.risk-high { background: #fee2e2; color: #991b1b; }
+.badge.risk-mid { background: #fef3c7; color: #92400e; }
+.badge.source-official { background: #d1fae5; color: #065f46; }
+.badge.source-other { background: var(--bg-primary); color: var(--text-muted); border: 1px solid var(--border-color); }
+.badge.source-unverified { background: #fef3c7; color: #92400e; }
+
+/* 按钮 */
+.btn-primary,
+.btn-secondary {
+    padding: 8px 14px;
+    border-radius: 6px;
+    font-size: 13px;
+    cursor: pointer;
+    border: none;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+.btn-primary {
+    background: var(--primary-color, #6366f1);
+    color: white;
+}
+.btn-secondary {
+    background: var(--bg-primary);
+    color: var(--text-main);
+    border: 1px solid var(--border-color);
+}
+.btn-primary.small,
+.btn-secondary.small {
+    padding: 6px 10px;
+    font-size: 12px;
+}
+
+/* Empty */
+.prep-empty {
+    text-align: center;
+    color: var(--text-muted);
+    padding: 28px;
+    background: var(--bg-secondary);
+    border: 1px dashed var(--border-color);
+    border-radius: 6px;
+    font-size: 13px;
+    grid-column: 1 / -1;
+}
+
+@media (max-width: 700px) {
+    .prep-card-list {
+        grid-template-columns: 1fr;
+    }
+    .prep-card-meta {
+        font-size: 10px;
+    }
+}
+</style>
+{% endblock %}

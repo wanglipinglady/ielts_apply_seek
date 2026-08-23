@@ -21,6 +21,9 @@ def client() -> Iterator[TestClient]:
     os.environ["IELTS_BUDDY_ENV"] = "dev"
     os.environ["IELTS_BUDDY_JWT_SECRET"] = "test-secret-" + "x" * 32
     os.environ["IELTS_BUDDY_WEB_DB_MODE"] = "sqlite"
+    # 关闭启动期种子线程(避免 SQLite 抢锁 + 跨测试残留)
+    os.environ["IELTS_BUDDY_LISTENING_AUTO_SEED"] = "0"
+    os.environ["IELTS_BUDDY_READING_AUTO_SEED"] = "0"
 
     from ielts_buddy.web.main import create_app
     from ielts_buddy.web.auth.repository import create_sqlite_web_user_repository

@@ -2836,16 +2836,33 @@ class SQLitePrepResourceRepository:
         ).fetchall()
         return [dict(r) for r in rows]
 
-    def count_resources(self, skill: Optional[str] = None) -> int:
+    def count_resources(
+        self,
+        skill: Optional[str] = None,
+        level: Optional[str] = None,
+        source_status: Optional[str] = None,
+        is_featured: Optional[bool] = None,
+    ) -> int:
+        """按条件统计(与 list_resources 过滤维度对齐)。"""
+        where = ["1=1"]
+        params: list[Any] = []
         if skill:
-            row = self._conn.execute(
-                "SELECT COUNT(*) AS c FROM prep_resources WHERE skill = ?",
-                (skill,),
-            ).fetchone()
-        else:
-            row = self._conn.execute(
-                "SELECT COUNT(*) AS c FROM prep_resources"
-            ).fetchone()
+            where.append("skill = ?")
+            params.append(skill)
+        if level:
+            where.append("level = ?")
+            params.append(level)
+        if source_status:
+            where.append("source_status = ?")
+            params.append(source_status)
+        if is_featured is not None:
+            where.append("is_featured = ?")
+            params.append(1 if is_featured else 0)
+        sql = (
+            "SELECT COUNT(*) AS c FROM prep_resources WHERE "
+            + " AND ".join(where)
+        )
+        row = self._conn.execute(sql, params).fetchone()
         return int(row["c"])
 
     def update_resource(self, resource_id: int, **kwargs: Any) -> bool:
