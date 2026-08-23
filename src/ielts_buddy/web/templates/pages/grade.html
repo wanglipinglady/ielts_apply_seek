@@ -36,7 +36,9 @@
 
   {# === 批改结果面板 === #}
   <div id="grade-result" class="grade-result" hidden>
-    <h2>批改结果</h2>
+    <h2>批改结果
+      <span id="source-badge" class="source-badge" hidden></span>
+    </h2>
 
     <div class="score-overview">
       <div class="overall-score">
@@ -73,9 +75,25 @@
       <ul id="suggestions" class="suggestion-list"></ul>
     </div>
 
+    <div class="result-section" id="rewrite-section" hidden>
+      <h3>高分改写示例</h3>
+      <div id="rewrite" class="rewrite-box"></div>
+    </div>
+
+    <div class="result-section" id="annotations-section" hidden>
+      <h3>句子级问题标注</h3>
+      <div id="annotations-list" class="annotations-list"></div>
+    </div>
+
+    <div class="result-section" id="paragraphs-section" hidden>
+      <h3>段落结构分析</h3>
+      <div id="paragraphs-list" class="paragraphs-list"></div>
+    </div>
+
     <div class="result-actions">
       <button class="btn-secondary" onclick="resetForm()">重新批改</button>
       <button class="btn-secondary" onclick="saveToPersonal()">保存到个人词库</button>
+      <a class="btn-secondary" href="/api/grade/history?limit=20" target="_blank">查看历史（JSON）</a>
     </div>
   </div>
 </section>
@@ -103,7 +121,14 @@ async function submitEssay(event) {
 
     const submitBtn = document.getElementById('submit-btn');
     submitBtn.disabled = true;
-    submitBtn.textContent = '批改中...';
+    submitBtn.textContent = '批改中（约 10-60s）...';
+
+    // 长任务提示：8s 后按钮加注
+    const longHint = setTimeout(() => {
+        if (submitBtn.disabled) {
+            submitBtn.textContent = '仍在批改，请稍候...';
+        }
+    }, 8000);
 
     const formData = new FormData();
     formData.append('essay', essay);
@@ -118,7 +143,7 @@ async function submitEssay(event) {
 
         if (response.ok) {
             const data = await response.json();
-            showResults(data.result);
+            showResults(data.result, data._meta || {});
         } else {
             const error = await response.json();
             alert('批改失败: ' + (error.detail || '未知错误'));
@@ -126,14 +151,29 @@ async function submitEssay(event) {
     } catch (error) {
         alert('批改失败: ' + error.message);
     } finally {
+        clearTimeout(longHint);
         submitBtn.disabled = false;
         submitBtn.textContent = '提交批改';
     }
 }
 
-function showResults(result) {
+function showResults(result, meta) {
     document.querySelector('.grade-form').hidden = true;
     document.getElementById('grade-result').hidden = false;
+
+    // 来源徽章：真实 LLM / 降级 mock
+    const badge = document.getElementById('source-badge');
+    if (meta.source === 'mock') {
+        badge.textContent = '⚠️ LLM 不可用，本次为本地估算（mock）';
+        badge.className = 'source-badge source-mock';
+        badge.hidden = false;
+    } else if (meta.source === 'llm') {
+        badge.textContent = '✓ 真实 LLM 评分';
+        badge.className = 'source-badge source-llm';
+        badge.hidden = false;
+    } else {
+        badge.hidden = true;
+    }
 
     document.getElementById('overall-score').textContent = result.overall_score;
 
@@ -143,24 +183,98 @@ function showResults(result) {
     document.getElementById('band-lexical').textContent = scores.lexical_resource;
     document.getElementById('band-grammar').textContent = scores.grammar;
 
-    // 错误分析
+    // 错误分析：容忍两种 schema（list[str] 或 计数 dict）
     const errorList = document.getElementById('error-analysis');
-    const errors = result.error_summary;
+    const errors = result.error_summary || {};
+    const errorStats = result.error_stats || {};
     let errorHtml = '';
 
     for (const [type, items] of Object.entries(errors)) {
-        if (items && items.length > 0) {
+        if (Array.isArray(items) && items.length > 0) {
             errorHtml += `<div class="error-category">
-                <h4>${type === 'grammar' ? '语法' : type === 'vocabulary' ? '词汇' : '连贯'}</h4>
-                <ul>${items.map(item => `<li>${item}</li>`).join('')}</ul>
+                <h4>${type === 'grammar' ? '语法' : type === 'vocabulary' ? '词汇' : type === 'coherence' ? '连贯' : type === 'style' ? '风格' : type}</h4>
+                <ul>${items.map(item => `<li>${escapeHtml(String(item))}</li>`).join('')}</ul>
             </div>`;
         }
     }
-    errorList.innerHTML = errorHtml || '<p>未发现明显错误</p>';
+    // 计数补充
+    const statsHtml = Object.keys(errorStats).length
+        ? `<p class="error-stats">问题统计：${Object.entries(errorStats).map(([k, v]) => `${typeName(k)}=${v}`).join('，')}</p>`
+        : '';
+    errorList.innerHTML = errorHtml || statsHtml || '<p>未发现明显错误</p>';
 
     // 建议
     const suggestionList = document.getElementById('suggestions');
-    suggestionList.innerHTML = result.suggestions.map(s => `<li>${s}</li>`).join('');
+    suggestionList.innerHTML = (result.suggestions || []).map(s => `<li>${escapeHtml(String(s))}</li>`).join('');
+
+    // 高分改写
+    const rewriteSection = document.getElementById('rewrite-section');
+    const rewriteEl = document.getElementById('rewrite');
+    if (result.rewrite) {
+        rewriteEl.textContent = result.rewrite;
+        rewriteSection.hidden = false;
+    } else {
+        rewriteSection.hidden = true;
+    }
+
+    // 句子级标注
+    const annSection = document.getElementById('annotations-section');
+    const annList = document.getElementById('annotations-list');
+    if (Array.isArray(result.annotations) && result.annotations.length > 0) {
+        annList.innerHTML = result.annotations.map(ann => `
+            <div class="annotation-item ann-${escapeHtml(ann.severity || 'minor')}">
+                <div class="ann-head">
+                    <span class="ann-issue">${escapeHtml(ann.issue_type || '?')}</span>
+                    <span class="ann-sev">${escapeHtml(ann.severity || 'minor')}</span>
+                </div>
+                <div class="ann-original">${escapeHtml(ann.original || '')}</div>
+                ${ann.comment ? `<div class="ann-comment">说明：${escapeHtml(ann.comment)}</div>` : ''}
+                ${ann.suggestion ? `<div class="ann-sug">建议：${escapeHtml(ann.suggestion)}</div>` : ''}
+            </div>
+        `).join('');
+        annSection.hidden = false;
+    } else {
+        annSection.hidden = true;
+    }
+
+    // 段落结构
+    const paraSection = document.getElementById('paragraphs-section');
+    const paraList = document.getElementById('paragraphs-list');
+    if (Array.isArray(result.paragraphs) && result.paragraphs.length > 0) {
+        paraList.innerHTML = result.paragraphs.map(p => `
+            <div class="para-item">
+                <div class="para-head">
+                    <span class="para-role">${escapeHtml(roleName(p.role))}</span>
+                    <span class="para-score">${p.structure_score}/9</span>
+                    ${p.has_topic_sentence ? '<span class="para-ts">✓ 有主题句</span>' : ''}
+                </div>
+                ${p.comment ? `<div class="para-comment">${escapeHtml(p.comment)}</div>` : ''}
+                ${Array.isArray(p.cohesion_devices) && p.cohesion_devices.length ? `<div class="para-cohesion">衔接词：${p.cohesion_devices.map(d => escapeHtml(String(d))).join('、')}</div>` : ''}
+            </div>
+        `).join('');
+        paraSection.hidden = false;
+    } else {
+        paraSection.hidden = true;
+    }
+}
+
+function escapeHtml(s) {
+    return s
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function typeName(k) {
+    const map = {grammar: '语法', vocabulary: '词汇', coherence: '连贯', style: '风格'};
+    return map[k] || k;
+}
+
+function roleName(r) {
+    const map = {introduction: '引言段', body: '主体段', conclusion: '结论段'};
+    return map[r] || r;
 }
 
 function resetForm() {
@@ -366,6 +480,135 @@ function saveToPersonal() {
     border-radius: 8px;
     font-size: 14px;
     cursor: pointer;
+    text-decoration: none;
+    display: inline-block;
+}
+
+/* === 来源徽章 === */
+.source-badge {
+    display: inline-block;
+    margin-left: 12px;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 500;
+    vertical-align: middle;
+}
+.source-llm {
+    background: #d1fae5;
+    color: #065f46;
+    border: 1px solid #6ee7b7;
+}
+.source-mock {
+    background: #fef3c7;
+    color: #92400e;
+    border: 1px solid #fcd34d;
+}
+
+/* === 高分改写 === */
+.rewrite-box {
+    padding: 14px 18px;
+    background: var(--bg-primary);
+    border-left: 3px solid #10b981;
+    border-radius: 4px;
+    white-space: pre-wrap;
+    line-height: 1.7;
+    font-size: 14px;
+}
+
+/* === 句级标注 === */
+.annotations-list {
+    display: grid;
+    gap: 12px;
+}
+.annotation-item {
+    padding: 12px 16px;
+    background: var(--bg-primary);
+    border-radius: 6px;
+    border-left: 3px solid #94a3b8;
+}
+.annotation-item.ann-major { border-left-color: #f59e0b; }
+.annotation-item.ann-critical { border-left-color: #ef4444; }
+.ann-head {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 6px;
+    font-size: 12px;
+}
+.ann-issue {
+    background: #e0e7ff;
+    color: #3730a3;
+    padding: 2px 8px;
+    border-radius: 10px;
+}
+.ann-sev {
+    color: var(--text-muted);
+}
+.ann-original {
+    font-style: italic;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+    font-size: 13px;
+}
+.ann-comment, .ann-sug {
+    font-size: 13px;
+    line-height: 1.6;
+}
+.ann-sug {
+    color: #065f46;
+    margin-top: 4px;
+}
+
+/* === 段落结构 === */
+.paragraphs-list {
+    display: grid;
+    gap: 12px;
+}
+.para-item {
+    padding: 12px 16px;
+    background: var(--bg-primary);
+    border-radius: 6px;
+    border-left: 3px solid #6366f1;
+}
+.para-head {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    font-size: 13px;
+    margin-bottom: 6px;
+}
+.para-role {
+    background: #e0e7ff;
+    color: #3730a3;
+    padding: 2px 8px;
+    border-radius: 10px;
+}
+.para-score {
+    color: var(--text-main);
+    font-weight: 600;
+}
+.para-ts {
+    color: #065f46;
+    font-size: 12px;
+}
+.para-comment {
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--text-main);
+}
+.para-cohesion {
+    margin-top: 4px;
+    font-size: 12px;
+    color: var(--text-muted);
+}
+.error-stats {
+    margin-top: 8px;
+    padding: 8px 12px;
+    background: var(--bg-primary);
+    border-radius: 4px;
+    font-size: 12px;
+    color: var(--text-muted);
 }
 </style>
 {% endblock %}
