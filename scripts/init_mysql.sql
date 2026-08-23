@@ -178,6 +178,31 @@ CREATE TABLE IF NOT EXISTS vocab_cache (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='大词库缓存';
 
 -- =============================================================
+-- 8.5 typing_history（机考打字练习记录；v3.6 新增,纳入 SYNC_TABLES）
+-- =============================================================
+CREATE TABLE IF NOT EXISTS typing_history (
+    id              BIGINT          NOT NULL AUTO_INCREMENT,
+    user_id         BIGINT          NOT NULL DEFAULT 1,
+    mode            VARCHAR(16)     NOT NULL DEFAULT 'words',
+    prompt_text     MEDIUMTEXT      NOT NULL,
+    typed_text      MEDIUMTEXT      NULL,
+    duration_sec    INT             NOT NULL DEFAULT 0,
+    wpm             DECIMAL(6,2)    NOT NULL DEFAULT 0,
+    accuracy        DECIMAL(5,4)    NOT NULL DEFAULT 0,
+    error_count     INT             NOT NULL DEFAULT 0,
+    total_chars     INT             NOT NULL DEFAULT 0,
+    completed       TINYINT(1)      NOT NULL DEFAULT 1,
+    result_json     MEDIUMTEXT      NOT NULL,
+    created_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP
+                                     ON UPDATE CURRENT_TIMESTAMP,
+    sync_status     VARCHAR(16)     NOT NULL DEFAULT 'synced',
+    PRIMARY KEY (id),
+    KEY idx_th_user_created (user_id, created_at),
+    KEY idx_th_user_mode (user_id, mode)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='机考打字练习记录';
+
+-- =============================================================
 -- 9. cache_meta（缓存元数据）
 -- =============================================================
 CREATE TABLE IF NOT EXISTS cache_meta (
@@ -209,7 +234,7 @@ SET FOREIGN_KEY_CHECKS = 1;
 -- 执行完毕。建议用以下语句验证：
 -- =============================================================
 -- SHOW TABLES;
---   -- 应看到 9 张业务表 + 2 张种子/元数据行
+--   -- 应看到 10 张业务表 + 2 张种子/元数据行
 --
 -- SELECT COUNT(*) AS users_count FROM users;
 --   -- 期望 0（首登时才会创建）

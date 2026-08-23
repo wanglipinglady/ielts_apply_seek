@@ -22,6 +22,7 @@
   │                  │                        │ +error_summary_json      │
   │                  │                        │ +updated_at +sync_status│
   │ articles         │ 表不存在                │ 新建                     │
+  │ typing_history   │ 表不存在（v3.6 新增）     │ 新建                     │
   └──────────────────┴────────────────────────┴──────────────────────────┘
 
 注意：
@@ -141,6 +142,10 @@ def audit(cur) -> dict[str, Any]:
     if not has_table(cur, "articles"):
         report["tables_missing"].append("articles")
 
+    # typing_history 必须存在（v3.6 加入 SYNC_TABLES）
+    if not has_table(cur, "typing_history"):
+        report["tables_missing"].append("typing_history")
+
     # 各表的必填列
     expected_columns = {
         "personal_vocab": ["updated_at", "sync_status"],
@@ -198,6 +203,44 @@ def add_articles_table(cur) -> None:
         """
     )
     print("  ✓ articles 已创建")
+
+
+def add_typing_history_table(cur) -> None:
+    """v3.6 新增：机考打字练习记录表。
+
+    跨设备同步 v3.6 修复后，typing_history 已被加入 SYNC_TABLES，
+    但生产 MySQL 上从来没有这张表 —— pull 直接报 1146 "Table doesn't exist"。
+    本函数幂等建表，schema 与 SQLite / mysql_repo.t_typing_history 对齐。
+    """
+    print("== 创建 typing_history 表 ==")
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS typing_history (
+            id              BIGINT          NOT NULL AUTO_INCREMENT,
+            user_id         BIGINT          NOT NULL DEFAULT 1,
+            mode            VARCHAR(16)     NOT NULL DEFAULT 'words',
+            prompt_text     MEDIUMTEXT      NOT NULL,
+            typed_text      MEDIUMTEXT      NULL,
+            duration_sec    INT             NOT NULL DEFAULT 0,
+            wpm             DECIMAL(6,2)    NOT NULL DEFAULT 0,
+            accuracy        DECIMAL(5,4)    NOT NULL DEFAULT 0,
+            error_count     INT             NOT NULL DEFAULT 0,
+            total_chars     INT             NOT NULL DEFAULT 0,
+            completed       TINYINT(1)      NOT NULL DEFAULT 1,
+            result_json     MEDIUMTEXT      NOT NULL,
+            created_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at      DATETIME        NOT NULL
+                                DEFAULT CURRENT_TIMESTAMP
+                                ON UPDATE CURRENT_TIMESTAMP,
+            sync_status     VARCHAR(16)     NOT NULL DEFAULT 'synced',
+            PRIMARY KEY (id),
+            KEY idx_th_user_created (user_id, created_at),
+            KEY idx_th_user_mode (user_id, mode)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+          COMMENT='机考打字练习记录'
+        """
+    )
+    print("  ✓ typing_history 已创建")
 
 
 def upgrade_personal_vocab(cur) -> None:
@@ -449,6 +492,8 @@ def main() -> int:
     try:
         if "articles" in report["tables_missing"]:
             add_articles_table(cur)
+        if "typing_history" in report["tables_missing"]:
+            add_typing_history_table(cur)
         if "personal_vocab" in report["columns_missing"]:
             upgrade_personal_vocab(cur)
         if "learning_records" in report["columns_missing"]:
