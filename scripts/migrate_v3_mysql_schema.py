@@ -151,6 +151,10 @@ def audit(cur) -> dict[str, Any]:
     if not has_table(cur, "focus_sessions"):
         report["tables_missing"].append("focus_sessions")
 
+    # speaking_practice_records 必须存在（v3.7 P1 口语对练加入 SYNC_TABLES）
+    if not has_table(cur, "speaking_practice_records"):
+        report["tables_missing"].append("speaking_practice_records")
+
     # 各表的必填列
     expected_columns = {
         "personal_vocab": ["updated_at", "sync_status"],
@@ -280,6 +284,52 @@ def add_focus_sessions_table(cur) -> None:
         """
     )
     print("  ✓ focus_sessions 已创建")
+
+
+def add_speaking_practice_records_table(cur) -> None:
+    """v3.7 P1 新增：口语对练历史表。
+
+    与 focus_sessions 同问题：speaking_practice_records 加入 SYNC_TABLES 后，
+    生产 MySQL 没建表 → pull 直接 1146。本函数幂等建表。
+    """
+    print("== 创建 speaking_practice_records 表 ==")
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS speaking_practice_records (
+            id                  BIGINT          NOT NULL AUTO_INCREMENT,
+            user_id             BIGINT          NOT NULL,
+            session_id          VARCHAR(64)     NOT NULL,
+            part                TINYINT         NOT NULL,
+            topic_id            INT             NULL,
+            topic_name          VARCHAR(128)    NOT NULL DEFAULT '',
+            question            TEXT            NOT NULL,
+            audio_path          VARCHAR(512)    NULL,
+            audio_duration_sec  DECIMAL(8,2)    NOT NULL DEFAULT 0,
+            audio_mime          VARCHAR(64)     NOT NULL DEFAULT 'audio/webm',
+            transcript          MEDIUMTEXT      NOT NULL,
+            transcript_tokens   MEDIUMTEXT      NULL,
+            llm_scores          MEDIUMTEXT      NULL,
+            llm_word_errors     MEDIUMTEXT      NULL,
+            llm_grammar_errors  MEDIUMTEXT      NULL,
+            llm_highlights      MEDIUMTEXT      NULL,
+            llm_suggestions     MEDIUMTEXT      NULL,
+            whisper_model       VARCHAR(32)     NOT NULL DEFAULT 'small.en',
+            used_core_ml        TINYINT(1)      NOT NULL DEFAULT 1,
+            score_fallback      TINYINT(1)      NOT NULL DEFAULT 0,
+            created_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at          DATETIME        NOT NULL
+                                    DEFAULT CURRENT_TIMESTAMP
+                                    ON UPDATE CURRENT_TIMESTAMP,
+            sync_status         VARCHAR(16)     NOT NULL DEFAULT 'synced',
+            PRIMARY KEY (id),
+            UNIQUE KEY uk_spr_session (session_id),
+            KEY idx_spr_user_created (user_id, created_at),
+            KEY idx_spr_user_part (user_id, part)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+          COMMENT='口语对练历史（v3.7 P1）'
+        """
+    )
+    print("  ✓ speaking_practice_records 已创建")
 
 
 def upgrade_personal_vocab(cur) -> None:
@@ -535,6 +585,8 @@ def main() -> int:
             add_typing_history_table(cur)
         if "focus_sessions" in report["tables_missing"]:
             add_focus_sessions_table(cur)
+        if "speaking_practice_records" in report["tables_missing"]:
+            add_speaking_practice_records_table(cur)
         if "personal_vocab" in report["columns_missing"]:
             upgrade_personal_vocab(cur)
         if "learning_records" in report["columns_missing"]:

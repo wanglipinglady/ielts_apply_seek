@@ -256,6 +256,42 @@ CREATE TABLE IF NOT EXISTS sync_meta (
 );
 INSERT OR IGNORE INTO sync_meta (id, last_pull_at, last_push_at)
     VALUES (1, NULL, NULL);
+
+-- v3.7：口语对练历史记录（PRD phase-8-speaking-practice）
+-- 每条记录 = 一次完整的「抽题 → 录音 → 转写 → 评分 → 错词回收」流程
+-- audio_path 本地路径(可能因 7 天清理被置 NULL);webm 原始文件存磁盘
+-- 所有 LLM 输出字段均为 JSON 字符串(SQLite 没有 JSON 列,文本存储即可)
+CREATE TABLE IF NOT EXISTS speaking_practice_records (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    session_id TEXT NOT NULL UNIQUE,
+    part INTEGER NOT NULL,
+    topic_id INTEGER,
+    topic_name TEXT DEFAULT '',
+    question TEXT NOT NULL,
+    audio_path TEXT,
+    audio_duration_sec REAL DEFAULT 0,
+    audio_mime TEXT DEFAULT 'audio/webm',
+    transcript TEXT DEFAULT '',
+    transcript_tokens TEXT,        -- JSON: [{word, t0_ms, t1_ms, prob}]
+    llm_scores TEXT,               -- JSON: {fluency, lexical, grammar, pronunciation, overall_band}
+    llm_word_errors TEXT,          -- JSON: [{original, correction, context}]
+    llm_grammar_errors TEXT,       -- JSON: [{original, correction, rule}]
+    llm_highlights TEXT,           -- JSON: [str]
+    llm_suggestions TEXT,          -- JSON: [str]
+    whisper_model TEXT DEFAULT 'small.en',
+    used_core_ml INTEGER DEFAULT 1,
+    score_fallback INTEGER DEFAULT 0,  -- LLM mock 兜底时 = 1
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT '',
+    sync_status TEXT NOT NULL DEFAULT 'synced'
+);
+CREATE INDEX IF NOT EXISTS idx_spr_user_created
+    ON speaking_practice_records(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_spr_session
+    ON speaking_practice_records(session_id);
+CREATE INDEX IF NOT EXISTS idx_spr_user_part
+    ON speaking_practice_records(user_id, part);
 """
 
 # 系统内置分类（每个用户独立一份，不使用 user_id=0 模板）
@@ -685,7 +721,7 @@ class SQLiteLearningRepository:
             }
 
     def get_learned_words(self, user_id: int) -> list[str]:
-        """返回用户学过的所有词（任意时间），用于\"挑没学过的词\"。
+        """返回用户学过的所有词（任意时间），用于"挑没学过的词"。
         注意：与 get_learned_words_today 不同 —— 后者只看今天的。
         """
         rows = self._conn.execute(
@@ -693,6 +729,240 @@ class SQLiteLearningRepository:
             (user_id,),
         ).fetchall()
         return [row["word"] for row in rows]
+
+    # ---- 口语对练错词回收 (v3.7 P1 新增) ----
+    def record_speaking_error(
+        self,
+        user_id: int,
+        word: str,
+        source: str = "speaking",
+    ) -> bool:
+        """对学习记录做"口语来源的错误信号"。
+        不推进 memory_level，仅 wrong_count +1。
+        若用户没学过该词，新建一条 learning_records 行
+        (wrong_count=1, correct_count=0, memory_level=0, last_reviewed=now)。
+        """
+        word_clean = (word or "").strip().lower()
+        if not word_clean:
+            return False
+        now_iso = datetime.now().isoformat(timespec="seconds")
+        try:
+            existing = self._conn.execute(
+                "SELECT id, wrong_count FROM learning_records "
+                "WHERE user_id = ? AND word = ?",
+                (user_id, word_clean),
+            ).fetchone()
+            if existing is None:
+                # 最小 word_data 占位（前端不依赖此字段，原始 vocab 数据由 personal_vocab 维护）
+                placeholder_data = json.dumps(
+                    {"word": word_clean, "meaning": "", "band": 5},
+                    ensure_ascii=False,
+                )
+                self._conn.execute(
+                    """INSERT INTO learning_records
+                       (user_id, word, word_data, memory_level, next_review,
+                        learn_count, correct_count, wrong_count,
+                        first_learned, last_reviewed, source)
+                       VALUES (?, ?, ?, 0, ?, 0, 0, 1, ?, ?, ?)""",
+                    (user_id, word_clean, placeholder_data,
+                     date.today().isoformat(),
+                     now_iso, now_iso, source),
+                )
+            else:
+                self._conn.execute(
+                    """UPDATE learning_records
+                       SET wrong_count = wrong_count + 1,
+                           last_reviewed = ?
+                     WHERE user_id = ? AND word = ?""",
+                    (now_iso, user_id, word_clean),
+                )
+            self._conn.commit()
+            return True
+        except Exception as exc:
+            print(f"[sqlite] record_speaking_error failed: {exc}", file=__import__("sys").stderr)
+            return False
+
+
+# =============================================================
+# SQLiteSpeakingPracticeRepository (v3.7 P1 新增)
+# =============================================================
+
+
+class SQLiteSpeakingPracticeRepository:
+    """SQLite 实现的 SpeakingPracticeRepository。
+    所有方法都带 user_id 隔离。
+    """
+
+    def __init__(self, conn: sqlite3.Connection) -> None:
+        self._conn = conn
+
+    # ---- 写入 ----
+    def create_practice_record(
+        self,
+        user_id: int,
+        session_id: str,
+        part: int,
+        topic_id: Optional[int],
+        topic_name: str,
+        question: str,
+        audio_path: Optional[str],
+        audio_duration_sec: float,
+        audio_mime: str = "audio/webm",
+    ) -> int:
+        """创建一条记录。transcript/scores 等字段留空，后续 update 填。"""
+        now_iso = datetime.now().isoformat(timespec="seconds")
+        cur = self._conn.execute(
+            """INSERT INTO speaking_practice_records
+               (user_id, session_id, part, topic_id, topic_name,
+                question, audio_path, audio_duration_sec, audio_mime,
+                created_at, updated_at, sync_status)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'synced')""",
+            (user_id, session_id, int(part), topic_id, topic_name or "",
+             question, audio_path, float(audio_duration_sec), audio_mime,
+             now_iso, now_iso),
+        )
+        self._conn.commit()
+        return int(cur.lastrowid)
+
+    def update_practice_transcript(
+        self,
+        user_id: int,
+        session_id: str,
+        transcript: str,
+        transcript_tokens: Optional[list[dict]] = None,
+        whisper_model: str = "small.en",
+        used_core_ml: bool = True,
+    ) -> bool:
+        tokens_json = json.dumps(
+            transcript_tokens or [], ensure_ascii=False
+        )
+        cur = self._conn.execute(
+            """UPDATE speaking_practice_records
+               SET transcript = ?, transcript_tokens = ?,
+                   whisper_model = ?, used_core_ml = ?,
+                   updated_at = ?
+             WHERE user_id = ? AND session_id = ?""",
+            (transcript, tokens_json, whisper_model,
+             1 if used_core_ml else 0,
+             datetime.now().isoformat(timespec="seconds"),
+             user_id, session_id),
+        )
+        self._conn.commit()
+        return cur.rowcount > 0
+
+    def update_practice_score(
+        self,
+        user_id: int,
+        session_id: str,
+        scores: dict,
+        word_errors: list[dict],
+        grammar_errors: list[dict],
+        highlights: list[str],
+        suggestions: list[str],
+        score_fallback: bool = False,
+    ) -> bool:
+        cur = self._conn.execute(
+            """UPDATE speaking_practice_records
+               SET llm_scores = ?, llm_word_errors = ?,
+                   llm_grammar_errors = ?, llm_highlights = ?,
+                   llm_suggestions = ?, score_fallback = ?,
+                   updated_at = ?
+             WHERE user_id = ? AND session_id = ?""",
+            (json.dumps(scores, ensure_ascii=False),
+             json.dumps(word_errors, ensure_ascii=False),
+             json.dumps(grammar_errors, ensure_ascii=False),
+             json.dumps(highlights, ensure_ascii=False),
+             json.dumps(suggestions, ensure_ascii=False),
+             1 if score_fallback else 0,
+             datetime.now().isoformat(timespec="seconds"),
+             user_id, session_id),
+        )
+        self._conn.commit()
+        return cur.rowcount > 0
+
+    # ---- 读取 ----
+    def get_practice_record(
+        self,
+        user_id: int,
+        record_id: int,
+    ) -> Optional[dict]:
+        row = self._conn.execute(
+            "SELECT * FROM speaking_practice_records "
+            "WHERE user_id = ? AND id = ?",
+            (user_id, record_id),
+        ).fetchone()
+        return dict(row) if row else None
+
+    def get_practice_by_session(
+        self,
+        user_id: int,
+        session_id: str,
+    ) -> Optional[dict]:
+        row = self._conn.execute(
+            "SELECT * FROM speaking_practice_records "
+            "WHERE user_id = ? AND session_id = ?",
+            (user_id, session_id),
+        ).fetchone()
+        return dict(row) if row else None
+
+    def list_practice_history(
+        self,
+        user_id: int,
+        part: Optional[int] = None,
+        page: int = 1,
+        size: int = 20,
+    ) -> tuple[list[dict], int]:
+        # 统计 + 分页
+        if part is not None:
+            total = self._conn.execute(
+                "SELECT COUNT(*) AS c FROM speaking_practice_records "
+                "WHERE user_id = ? AND part = ?",
+                (user_id, part),
+            ).fetchone()["c"]
+            rows = self._conn.execute(
+                """SELECT * FROM speaking_practice_records
+                   WHERE user_id = ? AND part = ?
+                   ORDER BY created_at DESC LIMIT ? OFFSET ?""",
+                (user_id, part, size, (page - 1) * size),
+            ).fetchall()
+        else:
+            total = self._conn.execute(
+                "SELECT COUNT(*) AS c FROM speaking_practice_records "
+                "WHERE user_id = ?",
+                (user_id,),
+            ).fetchone()["c"]
+            rows = self._conn.execute(
+                """SELECT * FROM speaking_practice_records
+                   WHERE user_id = ?
+                   ORDER BY created_at DESC LIMIT ? OFFSET ?""",
+                (user_id, size, (page - 1) * size),
+            ).fetchall()
+        return [dict(r) for r in rows], int(total)
+
+    # ---- 清理 ----
+    def set_audio_null(self, user_id: int, session_id: str) -> bool:
+        cur = self._conn.execute(
+            "UPDATE speaking_practice_records SET audio_path = NULL, "
+            "updated_at = ? WHERE user_id = ? AND session_id = ?",
+            (datetime.now().isoformat(timespec="seconds"),
+             user_id, session_id),
+        )
+        self._conn.commit()
+        return cur.rowcount > 0
+
+    def delete_old_records_keeping_audio_path(
+        self,
+        cutoff_days: int,
+    ) -> int:
+        """调用前通常已经 NULL 化 audio_path；本方法只删整行。"""
+        cutoff = (date.today() - timedelta(days=cutoff_days)).isoformat()
+        cur = self._conn.execute(
+            "DELETE FROM speaking_practice_records "
+            "WHERE audio_path IS NULL AND DATE(created_at) < ?",
+            (cutoff,),
+        )
+        self._conn.commit()
+        return cur.rowcount
 
 
 # =============================================================
@@ -2021,6 +2291,8 @@ class SQLiteRepositoryContainer:
         self.focus_sessions = SQLiteFocusSessionRepository(self._conn)
         self.article = SQLiteArticleRepository(self._conn)
         self.user = SQLiteUserRepository(self._conn)
+        # v3.7 P1：口语对练历史仓储
+        self.speaking_practice = SQLiteSpeakingPracticeRepository(self._conn)
 
         if cache_path is None:
             # v3：vocab_cache 与业务共用同一个 db 文件（避免维护多份 cache 拷贝）
@@ -2055,6 +2327,7 @@ __all__ = [
     "SQLiteArticleRepository",
     "SQLiteVocabCacheRepository",
     "SQLiteUserRepository",
+    "SQLiteSpeakingPracticeRepository",
     "SQLiteRepositoryContainer",
     "create_sqlite_repositories",
     "REVIEW_INTERVALS",

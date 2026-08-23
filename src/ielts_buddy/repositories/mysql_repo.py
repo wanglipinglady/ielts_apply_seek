@@ -16,7 +16,8 @@ from datetime import date, datetime, timedelta
 from typing import Any, Optional
 
 from sqlalchemy import (
-    BigInteger, Boolean, Column, Date, DateTime, DECIMAL, Integer, MetaData, String,
+    BigInteger, Boolean, Column, Date, DateTime, DECIMAL, Integer,
+    Numeric, SmallInteger, MetaData, String,
     Table, Text, UniqueConstraint, Index, insert, select, update, delete, text,
 )
 from sqlalchemy.engine import Engine
@@ -182,6 +183,37 @@ t_focus_sessions = Table(
     Column("sync_status", String(16), nullable=False, server_default=text("'synced'")),
     Index("idx_fs_user_started", "user_id", "started_at"),
     Index("idx_fs_user_activity", "user_id", "activity"),
+)
+
+# v3.7 P1 口语对练历史表 (PRD: docs/web-mvp/plans/phase-8-speaking-practice.md §6)
+t_speaking_practice_records = Table(
+    "speaking_practice_records", metadata,
+    Column("id", BigInteger, primary_key=True, autoincrement=True),
+    Column("user_id", BigInteger, nullable=False),
+    Column("session_id", String(64), nullable=False),
+    Column("part", SmallInteger, nullable=False),
+    Column("topic_id", Integer, nullable=True),
+    Column("topic_name", String(128), nullable=False, server_default=text("''")),
+    Column("question", Text, nullable=False),
+    Column("audio_path", String(512), nullable=True),
+    Column("audio_duration_sec", Numeric(8, 2), nullable=False, server_default=text("0")),
+    Column("audio_mime", String(64), nullable=False, server_default=text("'audio/webm'")),
+    Column("transcript", Text, nullable=False, server_default=text("''")),
+    Column("transcript_tokens", Text, nullable=True),
+    Column("llm_scores", Text, nullable=True),
+    Column("llm_word_errors", Text, nullable=True),
+    Column("llm_grammar_errors", Text, nullable=True),
+    Column("llm_highlights", Text, nullable=True),
+    Column("llm_suggestions", Text, nullable=True),
+    Column("whisper_model", String(32), nullable=False, server_default=text("'small.en'")),
+    Column("used_core_ml", Boolean, nullable=False, server_default=text("1")),
+    Column("score_fallback", Boolean, nullable=False, server_default=text("0")),
+    Column("created_at", DateTime, nullable=False, server_default=text("CURRENT_TIMESTAMP")),
+    Column("updated_at", DateTime, nullable=False, server_default=text("CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP")),
+    Column("sync_status", String(16), nullable=False, server_default=text("'synced'")),
+    UniqueConstraint("session_id", name="uk_spr_session"),
+    Index("idx_spr_user_created", "user_id", "created_at"),
+    Index("idx_spr_user_part", "user_id", "part"),
 )
 
 t_vocab_cache = Table(
@@ -579,6 +611,243 @@ class MySQLLearningRepository:
                 "SELECT word FROM learning_records WHERE user_id = :uid"
             ), {"uid": user_id}).fetchall()
         return [r[0] for r in rows]
+
+    # ---- 口语对练错词回收 (v3.7 P1) ----
+    def record_speaking_error(
+        self,
+        user_id: int,
+        word: str,
+        source: str = "speaking",
+    ) -> bool:
+        """对 learning_records 做口语错词信号。
+        与 upsert_record 不一样：不推进 memory_level，仅 wrong_count +1；
+        若词不存在则新建 (wrong_count=1, correct_count=0, memory_level=0)。
+        """
+        word_clean = (word or "").strip().lower()
+        if not word_clean:
+            return False
+        now_dt = datetime.now()
+        placeholder_data = json.dumps(
+            {"word": word_clean, "meaning": "", "band": 5},
+            ensure_ascii=False,
+        )
+        try:
+            with self._engine.begin() as conn:
+                existing = conn.execute(
+                    text("SELECT id FROM learning_records "
+                         "WHERE user_id = :uid AND word = :w"),
+                    {"uid": user_id, "w": word_clean},
+                ).fetchone()
+                if existing is None:
+                    conn.execute(text("""
+                        INSERT INTO learning_records
+                        (user_id, word, word_data, memory_level, next_review,
+                         learn_count, correct_count, wrong_count,
+                         first_learned, last_reviewed, source)
+                        VALUES (:uid, :w, :wd, 0, :nr, 0, 0, 1, :fr, :lr, :src)
+                    """), {
+                        "uid": user_id, "w": word_clean,
+                        "wd": placeholder_data,
+                        "nr": date.today().isoformat(),
+                        "fr": now_dt.isoformat(timespec="seconds"),
+                        "lr": now_dt.isoformat(timespec="seconds"),
+                        "src": source,
+                    })
+                else:
+                    conn.execute(text("""
+                        UPDATE learning_records
+                           SET wrong_count = wrong_count + 1,
+                               last_reviewed = :lr
+                         WHERE user_id = :uid AND word = :w
+                    """), {
+                        "uid": user_id, "w": word_clean,
+                        "lr": now_dt.isoformat(timespec="seconds"),
+                    })
+            return True
+        except IntegrityError as exc:
+            print(f"[mysql] record_speaking_error conflict: {exc}", file=__import__("sys").stderr)
+            return False
+        except Exception as exc:
+            print(f"[mysql] record_speaking_error failed: {exc}", file=__import__("sys").stderr)
+            return False
+
+
+# =============================================================
+# 1b. MySQLSpeakingPracticeRepository (v3.7 P1 新增)
+# =============================================================
+
+
+class MySQLSpeakingPracticeRepository:
+    """MySQL 实现的 SpeakingPracticeRepository."""
+
+    def __init__(self, engine: Engine) -> None:
+        self._engine = engine
+
+    # ---- 写入 ----
+    def create_practice_record(
+        self,
+        user_id: int,
+        session_id: str,
+        part: int,
+        topic_id: Optional[int],
+        topic_name: str,
+        question: str,
+        audio_path: Optional[str],
+        audio_duration_sec: float,
+        audio_mime: str = "audio/webm",
+    ) -> int:
+        with self._engine.begin() as conn:
+            result = conn.execute(insert(t_speaking_practice_records).values(
+                user_id=user_id,
+                session_id=session_id,
+                part=int(part),
+                topic_id=topic_id,
+                topic_name=topic_name or "",
+                question=question,
+                audio_path=audio_path,
+                audio_duration_sec=float(audio_duration_sec),
+                audio_mime=audio_mime,
+            ))
+            return int(result.inserted_primary_key[0])
+
+    def update_practice_transcript(
+        self,
+        user_id: int,
+        session_id: str,
+        transcript: str,
+        transcript_tokens: Optional[list[dict]] = None,
+        whisper_model: str = "small.en",
+        used_core_ml: bool = True,
+    ) -> bool:
+        tokens_json = json.dumps(transcript_tokens or [], ensure_ascii=False)
+        with self._engine.begin() as conn:
+            result = conn.execute(
+                update(t_speaking_practice_records)
+                .where(t_speaking_practice_records.c.user_id == user_id,
+                       t_speaking_practice_records.c.session_id == session_id)
+                .values(
+                    transcript=transcript,
+                    transcript_tokens=tokens_json,
+                    whisper_model=whisper_model,
+                    used_core_ml=1 if used_core_ml else 0,
+                )
+            )
+            return result.rowcount > 0
+
+    def update_practice_score(
+        self,
+        user_id: int,
+        session_id: str,
+        scores: dict,
+        word_errors: list[dict],
+        grammar_errors: list[dict],
+        highlights: list[str],
+        suggestions: list[str],
+        score_fallback: bool = False,
+    ) -> bool:
+        with self._engine.begin() as conn:
+            result = conn.execute(
+                update(t_speaking_practice_records)
+                .where(t_speaking_practice_records.c.user_id == user_id,
+                       t_speaking_practice_records.c.session_id == session_id)
+                .values(
+                    llm_scores=json.dumps(scores, ensure_ascii=False),
+                    llm_word_errors=json.dumps(word_errors, ensure_ascii=False),
+                    llm_grammar_errors=json.dumps(grammar_errors, ensure_ascii=False),
+                    llm_highlights=json.dumps(highlights, ensure_ascii=False),
+                    llm_suggestions=json.dumps(suggestions, ensure_ascii=False),
+                    score_fallback=1 if score_fallback else 0,
+                )
+            )
+            return result.rowcount > 0
+
+    # ---- 读取 ----
+    def get_practice_record(
+        self,
+        user_id: int,
+        record_id: int,
+    ) -> Optional[dict]:
+        with self._engine.connect() as conn:
+            row = conn.execute(
+                select(t_speaking_practice_records).where(
+                    t_speaking_practice_records.c.user_id == user_id,
+                    t_speaking_practice_records.c.id == record_id,
+                )
+            ).fetchone()
+            return dict(row._mapping) if row else None
+
+    def get_practice_by_session(
+        self,
+        user_id: int,
+        session_id: str,
+    ) -> Optional[dict]:
+        with self._engine.connect() as conn:
+            row = conn.execute(
+                select(t_speaking_practice_records).where(
+                    t_speaking_practice_records.c.user_id == user_id,
+                    t_speaking_practice_records.c.session_id == session_id,
+                )
+            ).fetchone()
+            return dict(row._mapping) if row else None
+
+    def list_practice_history(
+        self,
+        user_id: int,
+        part: Optional[int] = None,
+        page: int = 1,
+        size: int = 20,
+    ) -> tuple[list[dict], int]:
+        with self._engine.connect() as conn:
+            if part is not None:
+                total = conn.execute(
+                    text("SELECT COUNT(*) FROM speaking_practice_records "
+                         "WHERE user_id = :uid AND part = :p"),
+                    {"uid": user_id, "p": part},
+                ).scalar() or 0
+                rows = conn.execute(
+                    select(t_speaking_practice_records)
+                    .where(t_speaking_practice_records.c.user_id == user_id,
+                           t_speaking_practice_records.c.part == part)
+                    .order_by(t_speaking_practice_records.c.created_at.desc())
+                    .limit(size).offset((page - 1) * size)
+                ).fetchall()
+            else:
+                total = conn.execute(
+                    text("SELECT COUNT(*) FROM speaking_practice_records "
+                         "WHERE user_id = :uid"),
+                    {"uid": user_id},
+                ).scalar() or 0
+                rows = conn.execute(
+                    select(t_speaking_practice_records)
+                    .where(t_speaking_practice_records.c.user_id == user_id)
+                    .order_by(t_speaking_practice_records.c.created_at.desc())
+                    .limit(size).offset((page - 1) * size)
+                ).fetchall()
+        return [dict(r._mapping) for r in rows], int(total)
+
+    # ---- 清理 ----
+    def set_audio_null(self, user_id: int, session_id: str) -> bool:
+        with self._engine.begin() as conn:
+            result = conn.execute(
+                update(t_speaking_practice_records)
+                .where(t_speaking_practice_records.c.user_id == user_id,
+                       t_speaking_practice_records.c.session_id == session_id)
+                .values(audio_path=None)
+            )
+            return result.rowcount > 0
+
+    def delete_old_records_keeping_audio_path(
+        self,
+        cutoff_days: int,
+    ) -> int:
+        cutoff = date.today() - timedelta(days=cutoff_days)
+        with self._engine.begin() as conn:
+            result = conn.execute(
+                delete(t_speaking_practice_records)
+                .where(t_speaking_practice_records.c.audio_path.is_(None),
+                       t_speaking_practice_records.c.created_at < cutoff)
+            )
+            return result.rowcount
 
 
 # =============================================================
@@ -1781,6 +2050,8 @@ class MySQLRepositoryContainer:
         self.focus_sessions = MySQLFocusSessionRepository(self._engine)
         self.user = MySQLUserRepository(self._engine)
         self.vocab_cache = MySQLVocabCacheRepository(self._engine)
+        # v3.7 P1 口语对练历史仓储
+        self.speaking_practice = MySQLSpeakingPracticeRepository(self._engine)
 
     def close(self) -> None:
         self._engine.dispose()
@@ -1804,6 +2075,7 @@ __all__ = [
     "MySQLGradeRepository",
     "MySQLVocabCacheRepository",
     "MySQLUserRepository",
+    "MySQLSpeakingPracticeRepository",
     "MySQLRepositoryContainer",
     "create_mysql_repositories",
     "REVIEW_INTERVALS",

@@ -20,7 +20,7 @@ from ielts_buddy.core import repository as r
 
 
 class TestLearningRepositoryProtocol:
-    """LearningRepository 必须有 13 个方法（v3.6 起 +3 错词本），且全部带 user_id。"""
+    """LearningRepository 必须有 14 个方法（v3.6 +3 错词本;v3.7 +1 口语错词回收），且全部带 user_id。"""
 
     REQUIRED_METHODS = {
         "get_record",
@@ -37,6 +37,8 @@ class TestLearningRepositoryProtocol:
         "get_wrong_words",
         "reset_mistake",
         "get_mistake_stats",
+        # v3.7 P1 口语错词回收
+        "record_speaking_error",
     }
 
     def test_required_methods_exist(self):
@@ -52,6 +54,8 @@ class TestLearningRepositoryProtocol:
             "get_all_records", "get_learned_count", "get_learned_words_today",
             # v3.6 错词本
             "get_wrong_words", "reset_mistake", "get_mistake_stats",
+            # v3.7 P1 口语错词回收
+            "record_speaking_error",
         ]),
     )
     def test_all_methods_take_user_id_as_first_param(self, method_name: str):
@@ -245,6 +249,7 @@ class TestRepositoryContainerProtocol:
 
     REQUIRED_REPO_ATTRS = {
         "learning", "personal_vocab", "exam", "grade", "vocab_cache", "user",
+        "speaking_practice",
     }
 
     def test_required_repo_attrs_in_annotations(self):
@@ -294,6 +299,8 @@ class TestAssertProtocol:
             def get_wrong_words(self, user_id, min_wrong=1, days=None, limit=200): pass
             def reset_mistake(self, user_id, word): pass
             def get_mistake_stats(self, user_id): pass
+            # v3.7 P1 口语错词回收
+            def record_speaking_error(self, user_id, word, source="speaking"): pass
 
         # 不应抛错
         r.assert_repository_implements_protocol(FakeLearning(), r.LearningRepository)
@@ -346,7 +353,7 @@ class TestProtocolConsistency:
     def test_all_protocols_have_distinct_method_counts(self):
         """6 个 Repository 的方法数应当不同（防止命名重复）。"""
         sizes = {
-            "LearningRepository": 13,
+            "LearningRepository": 14,
             "PersonalVocabRepository": 18,
             "ExamRepository": 5,
             "GradeRepository": 4,
@@ -366,10 +373,11 @@ class TestProtocolConsistency:
             )
 
     def test_protocol_module_exports(self):
-        """__all__ 应包含 6 个 Protocol + 工具函数 + Container。"""
+        """__all__ 应包含 7 个 Protocol + 工具函数 + Container。"""
         expected = {
             "LearningRepository", "PersonalVocabRepository", "ExamRepository",
             "GradeRepository", "VocabCacheRepository", "UserRepository",
+            "SpeakingPracticeRepository",
             "RepositoryContainer", "assert_repository_implements_protocol",
         }
         actual = set(r.__all__)

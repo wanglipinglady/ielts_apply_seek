@@ -127,6 +127,29 @@ class LearningRepository(Protocol):
         """
         ...
 
+    # ---- 口语对练错词回收（v3.7 P1 新增）----
+    def record_speaking_error(
+        self,
+        user_id: int,
+        word: str,
+        source: str = "speaking",
+    ) -> bool:
+        """口语对练中识别出来的错词或重点词 → 落到 learning_records.wrong_count +1。
+
+        与 upsert_record 的差异：不会推进 memory_level(口语错词不算"学过",
+        仅是错误信号)。如果用户从未学过该词,新建一条 learning_records 行,
+        wrong_count=1 / correct_count=0 / memory_level=0。
+
+        Args:
+            user_id: 用户 ID(隔离)。
+            word: 目标单词(大小写不敏感,存库用 .lower())。
+            source: 错误来源标记,目前固定为 "speaking"。
+
+        Returns:
+            True 表示插入/更新成功(rowcount > 0)。
+        """
+        ...
+
 
 # =============================================================
 # 2. PersonalVocabRepository — 个人词库 + 分类
@@ -426,13 +449,106 @@ class UserRepository(Protocol):
 
 
 # =============================================================
-# 7. RepositoryContainer — 6 个 Repository 的容器
+# 7. SpeakingPracticeRepository — 口语对练历史（v3.7 P1 新增）
+# =============================================================
+
+
+@runtime_checkable
+class SpeakingPracticeRepository(Protocol):
+    """口语对练历史仓储接口。
+
+    对应 ``speaking_practice_records`` 表。每条记录 = 一次完整的
+    「抽题 → 录音 → 转写 → LLM 评分 → 错词回收」流程。
+    """
+
+    def create_practice_record(
+        self,
+        user_id: int,
+        session_id: str,
+        part: int,
+        topic_id: Optional[int],
+        topic_name: str,
+        question: str,
+        audio_path: Optional[str],
+        audio_duration_sec: float,
+        audio_mime: str = "audio/webm",
+    ) -> int:
+        """创建新对练记录,返回新行 id。score/transcript 等字段留空,后续 update 填。"""
+        ...
+
+    def update_practice_transcript(
+        self,
+        user_id: int,
+        session_id: str,
+        transcript: str,
+        transcript_tokens: Optional[list[dict]] = None,
+        whisper_model: str = "small.en",
+        used_core_ml: bool = True,
+    ) -> bool:
+        """转写完后回填 transcript + tokens。"""
+        ...
+
+    def update_practice_score(
+        self,
+        user_id: int,
+        session_id: str,
+        scores: dict,
+        word_errors: list[dict],
+        grammar_errors: list[dict],
+        highlights: list[str],
+        suggestions: list[str],
+        score_fallback: bool = False,
+    ) -> bool:
+        """LLM 评完分后回填 4 个 JSON 字段。"""
+        ...
+
+    def get_practice_record(
+        self,
+        user_id: int,
+        record_id: int,
+    ) -> Optional[dict]:
+        """按 record_id 取单条详情(限当前用户)。"""
+        ...
+
+    def get_practice_by_session(
+        self,
+        user_id: int,
+        session_id: str,
+    ) -> Optional[dict]:
+        """按 session_id 取一条记录(浏览器提交后回查用)。"""
+        ...
+
+    def list_practice_history(
+        self,
+        user_id: int,
+        part: Optional[int] = None,
+        page: int = 1,
+        size: int = 20,
+    ) -> tuple[list[dict], int]:
+        """分页列历史,按 created_at DESC。返回 (items, total)。"""
+        ...
+
+    def set_audio_null(self, user_id: int, session_id: str) -> bool:
+        """7 天清理时,把 audio_path 设为 NULL(保留记录行,音频文件物理删)。"""
+        ...
+
+    def delete_old_records_keeping_audio_path(
+        self,
+        cutoff_days: int,
+    ) -> int:
+        """可选的策略:清掉 cutoff_days 天前且 audio_path 已 NULL 的整行。
+        本次 MVP 不调用,留接口。返回删除行数。"""
+        ...
+
+
+# =============================================================
+# 8. RepositoryContainer — 7 个 Repository 的容器
 # =============================================================
 
 
 @runtime_checkable
 class RepositoryContainer(Protocol):
-    """6 个 Repository 的聚合。
+    """7 个 Repository 的聚合。
 
     ``db_factory.create_repositories()`` 返回此接口的实现。
     Services 接受一个 ``RepositoryContainer`` 注入。
@@ -444,6 +560,7 @@ class RepositoryContainer(Protocol):
     grade: GradeRepository
     vocab_cache: VocabCacheRepository
     user: UserRepository
+    speaking_practice: SpeakingPracticeRepository
 
     def close(self) -> None:
         """关闭所有底层连接（SQLite / MySQL 连接池）。"""
@@ -497,6 +614,7 @@ __all__ = [
     "GradeRepository",
     "VocabCacheRepository",
     "UserRepository",
+    "SpeakingPracticeRepository",
     "RepositoryContainer",
     "assert_repository_implements_protocol",
 ]

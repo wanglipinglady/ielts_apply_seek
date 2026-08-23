@@ -175,6 +175,39 @@ LLM_TIMEOUT_SECONDS: Final[float] = float(
 LLM_DRY_RUN: Final[bool] = not bool(LLM_API_KEY)
 
 
+def _env_bool(key: str, default: bool) -> bool:
+    """读环境变量解析为 bool。
+    接受 1/true/yes/on(大小写不敏感)→ True;其它→ False。
+    缺失或空串时回退到 default。
+    """
+    raw = os.environ.get(key, "").strip().lower()
+    if not raw:
+        return default
+    return raw in ("1", "true", "yes", "on")
+
+
+# =============================================================
+# v3.7 P1：口语对练 Whisper.cpp 配置
+# =============================================================
+# 模型:small.en / base.en / tiny.en / small / base
+# PRD 决策:选 small.en(英文优化版,M4 + Core ML 30s 音频 ~5s 内的转写精度)
+WHISPER_MODEL: Final[str] = os.environ.get("IELTS_BUDDY_WHISPER_MODEL", "small.en").strip()
+# 语种:MVP 强制 en(雅思口语只有英文)
+WHISPER_LANGUAGE: Final[str] = os.environ.get("IELTS_BUDDY_WHISPER_LANGUAGE", "en").strip()
+# Core ML 加速(Apple Silicon ANE;非 M 系列自动忽略)
+WHISPER_CORE_ML: Final[bool] = _env_bool("IELTS_BUDDY_WHISPER_CORE_ML", True)
+# CPU 推理线程数(M4 8 核建议 4;数据库读写密集时可降)
+WHISPER_THREADS: Final[int] = int(os.environ.get("IELTS_BUDDY_WHISPER_THREADS", "4").strip() or "4")
+# 录音保留天数;web 启动期会同步触发一次清理(PRD §5.6)
+SPEAKING_AUDIO_RETENTION_DAYS: Final[int] = int(
+    os.environ.get("IELTS_BUDDY_SPEAKING_AUDIO_RETENTION_DAYS", "7").strip() or "7"
+)
+# 单次录音长度上限(秒)
+SPEAKING_MAX_DURATION_SEC: Final[int] = int(
+    os.environ.get("IELTS_BUDDY_SPEAKING_MAX_DURATION_SEC", "120").strip() or "120"
+)
+
+
 __all__ = [
     "WEB_HOST",
     "WEB_PORT",
@@ -190,4 +223,10 @@ __all__ = [
     "WEB_DB_URL",
     "get_web_db_path",
     "CORS_ORIGINS",
+    "WHISPER_MODEL",
+    "WHISPER_LANGUAGE",
+    "WHISPER_CORE_ML",
+    "WHISPER_THREADS",
+    "SPEAKING_AUDIO_RETENTION_DAYS",
+    "SPEAKING_MAX_DURATION_SEC",
 ]

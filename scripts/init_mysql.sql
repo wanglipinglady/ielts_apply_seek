@@ -225,6 +225,43 @@ CREATE TABLE IF NOT EXISTS focus_sessions (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='番茄钟专注会话';
 
 -- =============================================================
+-- 8.7 speaking_practice_records（口语对练历史;v3.7 新增,纳入 SYNC_TABLES）
+-- PRD: docs/web-mvp/plans/phase-8-speaking-practice.md §6
+-- 字段注释：所有 LLM 输出为 JSON 字符串（暂不用 MySQL JSON 类型,方便 SQLite 同步对齐）
+-- audio_path 7 天清理后会被置 NULL(物理文件删除)
+-- =============================================================
+CREATE TABLE IF NOT EXISTS speaking_practice_records (
+    id                  BIGINT          NOT NULL AUTO_INCREMENT,
+    user_id             BIGINT          NOT NULL,
+    session_id          VARCHAR(64)     NOT NULL,
+    part                TINYINT         NOT NULL,
+    topic_id            INT             NULL,
+    topic_name          VARCHAR(128)    NOT NULL DEFAULT '',
+    question            TEXT            NOT NULL,
+    audio_path          VARCHAR(512)    NULL,
+    audio_duration_sec  DECIMAL(8,2)    NOT NULL DEFAULT 0,
+    audio_mime          VARCHAR(64)     NOT NULL DEFAULT 'audio/webm',
+    transcript          MEDIUMTEXT      NOT NULL,
+    transcript_tokens   MEDIUMTEXT      NULL,
+    llm_scores          MEDIUMTEXT      NULL,
+    llm_word_errors     MEDIUMTEXT      NULL,
+    llm_grammar_errors  MEDIUMTEXT      NULL,
+    llm_highlights      MEDIUMTEXT      NULL,
+    llm_suggestions     MEDIUMTEXT      NULL,
+    whisper_model       VARCHAR(32)     NOT NULL DEFAULT 'small.en',
+    used_core_ml        TINYINT(1)      NOT NULL DEFAULT 1,
+    score_fallback      TINYINT(1)      NOT NULL DEFAULT 0,
+    created_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP
+                                          ON UPDATE CURRENT_TIMESTAMP,
+    sync_status         VARCHAR(16)     NOT NULL DEFAULT 'synced',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_spr_session (session_id),
+    KEY idx_spr_user_created (user_id, created_at),
+    KEY idx_spr_user_part (user_id, part)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='口语对练历史（v3.7 P1）';
+
+-- =============================================================
 -- 9. cache_meta（缓存元数据）
 -- =============================================================
 CREATE TABLE IF NOT EXISTS cache_meta (
@@ -249,6 +286,15 @@ INSERT IGNORE INTO vocab_categories (user_id, name, description, is_system) VALU
 INSERT IGNORE INTO cache_meta (key_name, value) VALUES
     ('master_json_mtime',  '0'),
     ('curated_json_mtime', '0');
+
+-- =============================================================
+-- 12. SYNC_TABLES 同步列表自检（仅作为文档注释）
+-- =============================================================
+-- 共 11 张业务表:
+--   users / learning_records / personal_vocab / vocab_categories
+--   vocab_category_words / exam_sessions / grade_history
+--   typing_history / focus_sessions / articles / speaking_practice_records
+-- 详见 docs/online_local_技术详解.md §3.2 SYNC_TABLES
 
 SET FOREIGN_KEY_CHECKS = 1;
 
