@@ -90,6 +90,9 @@
         <a href="/mistakes" class="nav-item {% if request.url.path == '/mistakes' %}active{% endif %}">
           <span class="icon">📕</span> 错词本
         </a>
+        <a href="/speak/practice" class="nav-item {% if request.url.path.startswith('/speak/practice') %}active{% endif %}">
+          <span class="icon">🎤</span> 口语对练
+        </a>
       </div>
 
       {# 用户信息 #}

@@ -1,0 +1,959 @@
+{% extends "base.html" %}
+
+{% block page_title %}口语对练{% endblock %}
+
+{% block content %}
+<section class="sp-page">
+  <h2>🎤 口语对练</h2>
+  <p class="lede">
+    录音 + Whisper 转写 + LLM 评分 + 错词自动回收。
+    录音文件本地保留 7 天，过期自动清理。
+  </p>
+
+  <div class="sp-status" id="sp-status">
+    <span class="status-dot" id="status-dot"></span>
+    <span id="status-text">未抽题</span>
+  </div>
+
+  {# ============================================================ #}
+  {# === 工具栏：抽题 + Part 选择 === #}
+  {# ============================================================ #}
+  <div class="sp-toolbar">
+    <label for="sp-part-select">Part：</label>
+    <select id="sp-part-select">
+      <option value="">随机</option>
+      <option value="1">Part 1（日常话题）</option>
+      <option value="2">Part 2（个人陈述）</option>
+      <option value="3">Part 3（深入讨论）</option>
+    </select>
+    <button class="btn-primary" id="sp-draw-btn">🎲 抽题</button>
+    <button class="btn-secondary" id="sp-history-btn">📚 历史记录</button>
+    <span class="sp-meta">单次录音上限 {{ max_duration_sec }} 秒</span>
+  </div>
+
+  {# ============================================================ #}
+  {# === 题目卡片 === #}
+  {# ============================================================ #}
+  <div class="sp-question-card" id="sp-question-card">
+    <div class="sp-empty">点击「抽题」开始一次口语练习。</div>
+  </div>
+
+  {# ============================================================ #}
+  {# === 录音面板 === #}
+  {# ============================================================ #}
+  <div class="sp-record-panel" id="sp-record-panel">
+    <div class="record-row">
+      <button class="btn-record" id="sp-record-btn" disabled>
+        <span class="record-icon">●</span>
+        <span id="record-label">录音</span>
+      </button>
+      <button class="btn-stop" id="sp-stop-btn" disabled>■ 停止</button>
+      <button class="btn-primary" id="sp-submit-btn" disabled>📤 提交评分</button>
+    </div>
+    <div class="record-hint" id="sp-record-hint">先抽题，再开始录音</div>
+    <audio id="sp-playback" controls style="display:none"></audio>
+  </div>
+
+  {# ============================================================ #}
+  {# === 评分结果 === #}
+  {# ============================================================ #}
+  <div class="sp-result" id="sp-result"></div>
+
+  {# ============================================================ #}
+  {# === 历史列表（默认折叠） === #}
+  {# ============================================================ #}
+  <div class="sp-history" id="sp-history">
+    <div class="sp-history-head">
+      <h3>📚 历史记录</h3>
+      <button class="btn-secondary" id="sp-history-close">关闭</button>
+    </div>
+    <div class="sp-history-filter">
+      <label>Part：</label>
+      <select id="sp-history-part">
+        <option value="">全部</option>
+        <option value="1">Part 1</option>
+        <option value="2">Part 2</option>
+        <option value="3">Part 3</option>
+      </select>
+      <button class="btn-secondary" id="sp-history-reload">↻ 刷新</button>
+    </div>
+    <div class="sp-history-list" id="sp-history-list">
+      <div class="empty-state">暂无记录</div>
+    </div>
+  </div>
+</section>
+
+<script>
+(function() {
+    'use strict';
+
+    const $ = (id) => document.getElementById(id);
+
+    // ========== 元素 ==========
+    const statusDot = $('status-dot');
+    const statusText = $('status-text');
+    const partSelect = $('sp-part-select');
+    const drawBtn = $('sp-draw-btn');
+    const historyBtn = $('sp-history-btn');
+    const questionCard = $('sp-question-card');
+    const recordBtn = $('sp-record-btn');
+    const stopBtn = $('sp-stop-btn');
+    const submitBtn = $('sp-submit-btn');
+    const recordLabel = $('record-label');
+    const recordHint = $('sp-record-hint');
+    const playback = $('sp-playback');
+    const result = $('sp-result');
+    const historyPanel = $('sp-history');
+    const historyClose = $('sp-history-close');
+    const historyPart = $('sp-history-part');
+    const historyReload = $('sp-history-reload');
+    const historyList = $('sp-history-list');
+
+    const MAX_DURATION = {{ max_duration_sec }};
+
+    // ========== 状态 ==========
+    let currentSession = null;        // start 返回的题目信息
+    let mediaRecorder = null;
+    let audioChunks = [];
+    let audioBlob = null;
+    let audioMime = 'audio/webm';
+    let recordStartTs = 0;
+    let timerInterval = null;
+    let historyLoaded = false;
+
+    // ========== 工具 ==========
+    function escapeHtml(s) {
+        return String(s ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function setStatus(text, color) {
+        statusText.textContent = text;
+        statusDot.style.background = color || '#94a3b8';
+    }
+
+    function fmtDuration(sec) {
+        if (sec == null) return '—';
+        const m = Math.floor(sec / 60);
+        const s = Math.floor(sec % 60);
+        return `${m}:${String(s).padStart(2, '0')}`;
+    }
+
+    async function fetchJson(url, opts = {}) {
+        const resp = await fetch(url, { credentials: 'same-origin', ...opts });
+        if (!resp.ok) {
+            let err = {};
+            try { err = await resp.json(); } catch (_) {}
+            throw new Error(err.detail || `HTTP ${resp.status}`);
+        }
+        return resp.json();
+    }
+
+    // ========== 抽题 ==========
+    async function drawTopic() {
+        drawBtn.disabled = true;
+        drawBtn.textContent = '抽题中...';
+        setStatus('抽题中...', '#f59e0b');
+        try {
+            const part = partSelect.value;
+            const url = part ? `/api/speak/practice/start?part=${part}`
+                             : '/api/speak/practice/start';
+            currentSession = await fetchJson(url, { method: 'POST' });
+            renderQuestion(currentSession);
+            recordBtn.disabled = false;
+            recordHint.textContent = '点击「录音」开始（最长 ' + MAX_DURATION + ' 秒）';
+            setStatus('已抽题,可开始录音', '#10b981');
+            submitBtn.disabled = true;
+            audioBlob = null;
+            audioChunks = [];
+            playback.style.display = 'none';
+            playback.src = '';
+            result.innerHTML = '';
+        } catch (e) {
+            setStatus('抽题失败', '#ef4444');
+            questionCard.innerHTML =
+                `<div class="empty-state">抽题失败:${escapeHtml(e.message)}</div>`;
+        } finally {
+            drawBtn.disabled = false;
+            drawBtn.textContent = '🎲 抽题';
+        }
+    }
+
+    function renderQuestion(s) {
+        const vocabHtml = (s.vocab || [])
+            .map(v => `<span class="vocab-chip">${escapeHtml(v)}</span>`)
+            .join(' ');
+        questionCard.innerHTML = `
+            <div class="q-head">
+                <span class="part-badge part-${s.part}">${escapeHtml(s.part_label)}</span>
+                <span class="q-id">#${s.topic_id}</span>
+            </div>
+            <h3 class="q-topic">${escapeHtml(s.topic)}</h3>
+            <div class="q-block">
+                <div class="q-label">📋 题目</div>
+                <div class="q-text">${escapeHtml(s.question)}</div>
+            </div>
+            <div class="q-block">
+                <div class="q-label">🔑 关键词汇</div>
+                <div class="q-vocab">${vocabHtml}</div>
+            </div>
+            ${s.sample_answer ? `
+            <div class="q-block q-sample">
+                <div class="q-label">📝 参考范文</div>
+                <p>${escapeHtml(s.sample_answer)}</p>
+            </div>` : ''}
+            ${s.tips ? `
+            <div class="q-block q-tips">
+                <div class="q-label">💡 答题技巧</div>
+                <p>${escapeHtml(s.tips)}</p>
+            </div>` : ''}
+        `;
+    }
+
+    // ========== 录音 ==========
+    function pickMime() {
+        const candidates = [
+            'audio/webm;codecs=opus',
+            'audio/webm',
+            'audio/mp4',
+            'audio/ogg;codecs=opus',
+        ];
+        for (const m of candidates) {
+            if (window.MediaRecorder && MediaRecorder.isTypeSupported(m)) {
+                return m;
+            }
+        }
+        return '';
+    }
+
+    async function startRecord() {
+        if (!currentSession) {
+            alert('请先抽题');
+            return;
+        }
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            alert('当前浏览器不支持麦克风录制，请使用最新版 Chrome / Edge / Safari');
+            return;
+        }
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            audioMime = pickMime() || 'audio/webm';
+            audioChunks = [];
+            mediaRecorder = new MediaRecorder(stream, audioMime ? { mimeType: audioMime } : undefined);
+            mediaRecorder.ondataavailable = (e) => {
+                if (e.data && e.data.size > 0) audioChunks.push(e.data);
+            };
+            mediaRecorder.onstop = () => {
+                audioBlob = new Blob(audioChunks, { type: audioMime || 'audio/webm' });
+                playback.src = URL.createObjectURL(audioBlob);
+                playback.style.display = 'block';
+                submitBtn.disabled = false;
+                recordLabel.textContent = '重录';
+                stream.getTracks().forEach(t => t.stop());
+            };
+            mediaRecorder.start();
+            recordStartTs = Date.now();
+            recordBtn.disabled = true;
+            stopBtn.disabled = false;
+            submitBtn.disabled = true;
+            recordHint.textContent = '录音中...';
+            recordHint.classList.add('recording');
+            // 1s tick + 自动停止
+            timerInterval = setInterval(() => {
+                const sec = (Date.now() - recordStartTs) / 1000;
+                if (sec >= MAX_DURATION) {
+                    stopRecord();
+                } else {
+                    recordHint.textContent = `录音中... ${fmtDuration(sec)} / ${MAX_DURATION}s`;
+                }
+            }, 500);
+        } catch (e) {
+            alert('无法访问麦克风:' + e.message);
+            recordBtn.disabled = false;
+        }
+    }
+
+    function stopRecord() {
+        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+            mediaRecorder.stop();
+        }
+        if (timerInterval) {
+            clearInterval(timerInterval);
+            timerInterval = null;
+        }
+        recordBtn.disabled = false;
+        stopBtn.disabled = true;
+        recordHint.classList.remove('recording');
+    }
+
+    // ========== 提交 ==========
+    async function submitRecording() {
+        if (!currentSession || !audioBlob) return;
+        submitBtn.disabled = true;
+        submitBtn.textContent = '处理中...';
+        setStatus('转写 + 评分中...', '#f59e0b');
+        result.innerHTML = '<div class="empty-state">正在转写 + LLM 评分,请稍候...</div>';
+
+        const actualSec = (Date.now() - recordStartTs) / 1000;
+        const ext = audioMime.includes('mp4') ? 'mp4'
+                  : audioMime.includes('ogg') ? 'ogg'
+                  : audioMime.includes('wav') ? 'wav'
+                  : 'webm';
+        const filename = `recording.${ext}`;
+
+        const fd = new FormData();
+        fd.append('session_id', currentSession.session_id);
+        fd.append('part', String(currentSession.part));
+        fd.append('topic_id', String(currentSession.topic_id));
+        fd.append('topic_name', currentSession.topic);
+        fd.append('question', currentSession.question);
+        fd.append('actual_duration_sec', String(actualSec.toFixed(2)));
+        fd.append('vocab_hints', (currentSession.vocab || []).join(','));
+        fd.append('sample_answer', currentSession.sample_answer || '');
+        fd.append('audio', audioBlob, filename);
+
+        try {
+            const body = await fetchJson('/api/speak/practice/submit', {
+                method: 'POST',
+                body: fd,
+            });
+            renderResult(body);
+            setStatus('完成', '#10b981');
+            // 抽完题后清空当前 session,引导下一次抽题
+            currentSession = null;
+            recordBtn.disabled = true;
+            submitBtn.disabled = true;
+            recordHint.textContent = '点击「抽题」进入下一轮';
+            if (historyPanel.classList.contains('is-open')) {
+                await loadHistory();
+            }
+        } catch (e) {
+            setStatus('提交失败', '#ef4444');
+            result.innerHTML =
+                `<div class="empty-state">提交失败:${escapeHtml(e.message)}</div>`;
+        } finally {
+            submitBtn.disabled = false;
+            submitBtn.textContent = '📤 提交评分';
+        }
+    }
+
+    function renderResult(body) {
+        const s = body.scores;
+        const errs = body.word_errors || [];
+        const sugg = body.suggestions || [];
+        const high = body.highlights || [];
+
+        const fallbackFlags = [];
+        if (body.whisper_fallback) fallbackFlags.push('转写降级');
+        if (body.score_fallback) fallbackFlags.push('评分降级');
+        const fallbackHtml = fallbackFlags.length
+            ? `<span class="badge warn">${fallbackFlags.join(' / ')}</span>` : '';
+
+        const errHtml = errs.map(we => `
+            <li>
+                <code class="we-wrong">${escapeHtml(we.original || we.word)}</code>
+                → <code class="we-right">${escapeHtml(we.correction || we.word)}</code>
+                ${we.context ? `<span class="we-ctx">"${escapeHtml(we.context)}"</span>` : ''}
+            </li>
+        `).join('');
+
+        const suggHtml = sugg.map(t => `<li>${escapeHtml(t)}</li>`).join('');
+        const highHtml = high.map(t => `<li>${escapeHtml(t)}</li>`).join('');
+
+        result.innerHTML = `
+            <div class="result-card">
+                <div class="result-head">
+                    <h3>评分结果 ${fallbackHtml}</h3>
+                    <a href="/api/speak/practice/audio/${body.session_id}"
+                       target="_blank" class="audio-link">🔊 我的录音</a>
+                </div>
+
+                <div class="score-grid">
+                    <div class="score-cell">
+                        <div class="score-label">Fluency</div>
+                        <div class="score-value">${s.fluency.toFixed(1)}</div>
+                    </div>
+                    <div class="score-cell">
+                        <div class="score-label">Lexical</div>
+                        <div class="score-value">${s.lexical.toFixed(1)}</div>
+                    </div>
+                    <div class="score-cell">
+                        <div class="score-label">Grammar</div>
+                        <div class="score-value">${s.grammar.toFixed(1)}</div>
+                    </div>
+                    <div class="score-cell">
+                        <div class="score-label">Pronunciation</div>
+                        <div class="score-value">${s.pronunciation.toFixed(1)}</div>
+                    </div>
+                    <div class="score-cell overall">
+                        <div class="score-label">Overall</div>
+                        <div class="score-value-big">${s.overall_band.toFixed(1)}</div>
+                    </div>
+                </div>
+
+                <section class="result-section">
+                    <h4>📝 转写</h4>
+                    <p class="transcript">${escapeHtml(body.transcript || '(空)')}</p>
+                </section>
+
+                <section class="result-section">
+                    <h4>✨ 亮点</h4>
+                    <ul class="result-list">${highHtml || '<li>暂无</li>'}</ul>
+                </section>
+
+                <section class="result-section">
+                    <h4>🎯 改进建议</h4>
+                    <ul class="result-list">${suggHtml || '<li>暂无</li>'}</ul>
+                </section>
+
+                ${errs.length ? `
+                <section class="result-section">
+                    <h4>🛠 错词（已自动加入错词本）</h4>
+                    <ul class="word-errors">${errHtml}</ul>
+                </section>` : ''}
+            </div>
+        `;
+    }
+
+    // ========== 历史 ==========
+    async function loadHistory() {
+        const part = historyPart.value;
+        const url = part
+            ? `/api/speak/practice/history?part=${part}&size=50`
+            : '/api/speak/practice/history?size=50';
+        historyList.innerHTML = '<div class="empty-state">加载中...</div>';
+        try {
+            const body = await fetchJson(url);
+            renderHistory(body.items || []);
+            historyLoaded = true;
+        } catch (e) {
+            historyList.innerHTML =
+                `<div class="empty-state">加载失败:${escapeHtml(e.message)}</div>`;
+        }
+    }
+
+    function renderHistory(items) {
+        if (!items.length) {
+            historyList.innerHTML = '<div class="empty-state">暂无记录</div>';
+            return;
+        }
+        const html = items.map(it => {
+            const band = it.overall_band != null
+                ? `<span class="band-badge">${it.overall_band.toFixed(1)}</span>`
+                : '<span class="band-badge none">—</span>';
+            const audioBtn = it.audio_url
+                ? `<a href="${it.audio_url}" target="_blank" class="btn-secondary small">🔊</a>`
+                : '';
+            return `
+                <div class="hist-card">
+                    <div class="hist-head">
+                        <span class="part-badge part-${it.part}">Part ${it.part}</span>
+                        ${band}
+                        <span class="hist-time">${escapeHtml(it.created_at)}</span>
+                    </div>
+                    <div class="hist-topic">${escapeHtml(it.topic || '(未命名)')}</div>
+                    <div class="hist-q">${escapeHtml(it.question || '')}</div>
+                    <div class="hist-meta">
+                        <span>⏱ ${fmtDuration(it.audio_duration_sec)}</span>
+                        <span>📝 错词 ${it.word_error_count}</span>
+                        ${audioBtn}
+                    </div>
+                </div>
+            `;
+        }).join('');
+        historyList.innerHTML = html;
+    }
+
+    function toggleHistory() {
+        const open = historyPanel.classList.toggle('is-open');
+        if (open && !historyLoaded) {
+            loadHistory();
+        }
+    }
+
+    // ========== 事件绑定 ==========
+    drawBtn.addEventListener('click', drawTopic);
+    recordBtn.addEventListener('click', startRecord);
+    stopBtn.addEventListener('click', stopRecord);
+    submitBtn.addEventListener('click', submitRecording);
+    historyBtn.addEventListener('click', toggleHistory);
+    historyClose.addEventListener('click', () => {
+        historyPanel.classList.remove('is-open');
+    });
+    historyReload.addEventListener('click', loadHistory);
+
+})();
+</script>
+
+<style>
+.sp-page {
+    max-width: 1000px;
+    margin: 0 auto;
+}
+.sp-page h2 {
+    margin-bottom: 4px;
+}
+.sp-page .lede {
+    color: var(--text-muted);
+    margin-bottom: 20px;
+    font-size: 13px;
+}
+
+.sp-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    background: var(--bg-secondary);
+    border-radius: 16px;
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 16px;
+}
+.status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #94a3b8;
+    display: inline-block;
+}
+
+.sp-toolbar {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+    padding: 12px 16px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    margin-bottom: 16px;
+}
+.sp-toolbar label {
+    font-size: 13px;
+    color: var(--text-muted);
+}
+.sp-toolbar select {
+    padding: 6px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-primary);
+    font-size: 14px;
+}
+.sp-meta {
+    margin-left: auto;
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.btn-primary, .btn-secondary {
+    padding: 8px 14px;
+    border-radius: 6px;
+    font-size: 13px;
+    cursor: pointer;
+    border: none;
+}
+.btn-primary {
+    background: var(--primary-color, #6366f1);
+    color: white;
+}
+.btn-secondary {
+    background: var(--bg-primary);
+    color: var(--text-main);
+    border: 1px solid var(--border-color);
+}
+.btn-secondary.small {
+    padding: 4px 8px;
+    font-size: 12px;
+}
+.btn-primary:disabled, .btn-secondary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.sp-question-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 18px 22px;
+    margin-bottom: 16px;
+}
+.sp-question-card .sp-empty {
+    color: var(--text-muted);
+    text-align: center;
+    padding: 24px 0;
+    font-size: 14px;
+}
+.q-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+.q-id {
+    font-family: var(--font-mono, monospace);
+    font-size: 12px;
+    color: var(--text-soft);
+}
+.q-topic {
+    margin: 0 0 16px;
+    font-size: 18px;
+    font-weight: 600;
+}
+.q-block {
+    margin-bottom: 12px;
+}
+.q-label {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+}
+.q-text {
+    font-size: 15px;
+    line-height: 1.6;
+}
+.q-vocab {
+    line-height: 1.8;
+}
+.vocab-chip {
+    display: inline-block;
+    padding: 2px 8px;
+    margin: 2px 2px;
+    background: rgba(99, 102, 241, 0.08);
+    color: var(--primary-color);
+    border-radius: 4px;
+    font-size: 12px;
+}
+.q-sample {
+    background: rgba(99, 102, 241, 0.04);
+    border-left: 3px solid var(--primary-color);
+    padding: 10px 14px;
+    border-radius: 4px;
+}
+.q-tips {
+    background: rgba(245, 158, 11, 0.06);
+    border-left: 3px solid #f59e0b;
+    padding: 10px 14px;
+    border-radius: 4px;
+}
+
+.part-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+}
+.part-badge.part-1 { background: #dbeafe; color: #1e40af; }
+.part-badge.part-2 { background: #fef3c7; color: #92400e; }
+.part-badge.part-3 { background: #ede9fe; color: #5b21b6; }
+
+.sp-record-panel {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 18px 22px;
+    margin-bottom: 16px;
+}
+.record-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+.btn-record {
+    padding: 12px 24px;
+    background: #ef4444;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+}
+.btn-record:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+.btn-stop {
+    padding: 12px 18px;
+    background: #475569;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    cursor: pointer;
+}
+.btn-stop:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+.record-icon {
+    margin-right: 6px;
+}
+.record-hint {
+    margin-top: 10px;
+    font-size: 12px;
+    color: var(--text-muted);
+}
+.record-hint.recording {
+    color: #ef4444;
+    font-weight: 500;
+}
+audio {
+    width: 100%;
+    margin-top: 12px;
+}
+
+.sp-result {
+    margin-bottom: 16px;
+}
+.result-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 20px 24px;
+}
+.result-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--border-color);
+}
+.result-head h3 {
+    margin: 0;
+    font-size: 16px;
+}
+.badge.warn {
+    display: inline-block;
+    padding: 2px 8px;
+    background: #fef3c7;
+    color: #92400e;
+    border-radius: 10px;
+    font-size: 11px;
+    margin-left: 8px;
+    font-weight: 600;
+}
+.audio-link {
+    color: var(--primary-color);
+    text-decoration: none;
+    font-size: 13px;
+}
+
+.score-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 8px;
+    margin-bottom: 16px;
+}
+.score-cell {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 12px;
+    text-align: center;
+}
+.score-cell.overall {
+    background: var(--primary-color);
+    border-color: var(--primary-color);
+    color: white;
+}
+.score-cell.overall .score-label,
+.score-cell.overall .score-value-big {
+    color: white;
+}
+.score-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+}
+.score-value {
+    font-size: 22px;
+    font-weight: 700;
+    font-family: var(--font-mono, monospace);
+}
+.score-value-big {
+    font-size: 32px;
+    font-weight: 700;
+    font-family: var(--font-mono, monospace);
+}
+
+.result-section {
+    margin-bottom: 14px;
+}
+.result-section h4 {
+    margin: 0 0 6px;
+    font-size: 14px;
+}
+.transcript {
+    background: var(--bg-primary);
+    padding: 10px 14px;
+    border-radius: 6px;
+    border-left: 3px solid var(--primary-color);
+    line-height: 1.6;
+    font-size: 14px;
+}
+.result-list {
+    margin: 0;
+    padding-left: 22px;
+    line-height: 1.7;
+    font-size: 13px;
+}
+.word-errors {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+.word-errors li {
+    padding: 6px 10px;
+    background: var(--bg-primary);
+    border-radius: 4px;
+    margin-bottom: 4px;
+    font-size: 13px;
+}
+.we-wrong {
+    background: #fee2e2;
+    color: #991b1b;
+    padding: 1px 6px;
+    border-radius: 3px;
+    text-decoration: line-through;
+}
+.we-right {
+    background: #d1fae5;
+    color: #065f46;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-weight: 600;
+}
+.we-ctx {
+    color: var(--text-muted);
+    margin-left: 8px;
+    font-style: italic;
+    font-size: 12px;
+}
+
+.sp-history {
+    display: none;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 18px 22px;
+    margin-top: 16px;
+}
+.sp-history.is-open {
+    display: block;
+}
+.sp-history-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+.sp-history-head h3 {
+    margin: 0;
+    font-size: 15px;
+}
+.sp-history-filter {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 12px;
+}
+.sp-history-filter select {
+    padding: 4px 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 13px;
+    background: var(--bg-primary);
+}
+.sp-history-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 12px;
+}
+.hist-card {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 12px 14px;
+}
+.hist-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+    flex-wrap: wrap;
+}
+.band-badge {
+    padding: 1px 8px;
+    background: var(--primary-color);
+    color: white;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    font-family: var(--font-mono, monospace);
+}
+.band-badge.none {
+    background: var(--text-muted);
+}
+.hist-time {
+    margin-left: auto;
+    font-size: 11px;
+    color: var(--text-muted);
+    font-family: var(--font-mono, monospace);
+}
+.hist-topic {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 4px;
+}
+.hist-q {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+}
+.hist-meta {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 12px;
+    color: var(--text-muted);
+}
+.hist-meta .btn-secondary.small {
+    margin-left: auto;
+}
+
+.empty-state {
+    text-align: center;
+    color: var(--text-muted);
+    padding: 24px;
+    background: var(--bg-primary);
+    border: 1px dashed var(--border-color);
+    border-radius: 6px;
+    font-size: 13px;
+}
+
+@media (max-width: 700px) {
+    .score-grid {
+        grid-template-columns: repeat(3, 1fr);
+    }
+    .score-cell.overall {
+        grid-column: span 3;
+    }
+    .sp-toolbar .sp-meta {
+        margin-left: 0;
+    }
+}
+</style>
+{% endblock %}
