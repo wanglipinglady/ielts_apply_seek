@@ -358,12 +358,15 @@
 
     function openNoteDialog(completed) {
         state.completed = completed;
+        // 用 class 切换:避免 hidden 属性 + display:flex 的特异性冲突
         noteDialog.hidden = false;
+        noteDialog.classList.add('is-open');
         noteInput.value = '';
         noteInput.focus();
     }
 
     function closeNoteDialog() {
+        noteDialog.classList.remove('is-open');
         noteDialog.hidden = true;
     }
 
@@ -679,14 +682,28 @@
 }
 
 /* note dialog */
+/* 关键:hidden 属性 + display:flex 的特异性冲突修复。
+   用户态 CSS [hidden]{display:none} 与 .note-dialog{display:flex}
+   特异性相同,作者样式胜出 → 弹窗从页面加载就一直显示。
+   修复:用 .is-open 类切换显示,不再依赖 hidden 属性。
+   <div id="note-dialog" class="note-dialog" hidden> 默认无 .is-open → display:none
+   openNoteDialog() 加 .is-open → display:flex
+*/
 .note-dialog {
     position: fixed;
     inset: 0;
     background: rgba(0,0,0,0.4);
-    display: flex;
     align-items: center;
     justify-content: center;
     z-index: 100;
+    display: none;
+}
+.note-dialog.is-open {
+    display: flex;
+}
+/* 兜底:即便有人写了 hidden 属性,也得真隐藏 */
+.note-dialog[hidden] {
+    display: none !important;
 }
 
 .note-card {

@@ -83,6 +83,52 @@ def test_pomodoro_page_authenticated_returns_html(client_with_db: TestClient) ->
     assert "番茄钟" in r.text
 
 
+def test_note_dialog_hidden_by_default(client_with_db: TestClient) -> None:
+    """回归测试:页面加载时,完成备注弹窗必须默认隐藏。
+
+    Bug 现场:'.note-dialog{display:flex}' 覆盖了 user agent 的
+    '[hidden]{display:none}'(特异性相同,作者样式胜出) → 弹窗从页面
+    加载就一直显示。用户感觉"番茄钟页面自动弹窗",点击取消/保存也没反应。
+    """
+    import re
+    user = _register(client_with_db, email="pomo-dialog-hidden@example.com")
+    r = client_with_db.get("/pomodoro", headers=user["headers"])
+    assert r.status_code == 200
+    # 抓 <div class="note-dialog" id="note-dialog" hidden>
+    # 或  <div id="note-dialog" ... hidden>
+    m = re.search(
+        r'<div[^>]*id="note-dialog"[^>]*>',
+        r.text,
+    )
+    assert m is not None, "页面必须有 #note-dialog 元素"
+    tag = m.group(0)
+    has_hidden_attr = "hidden" in tag
+    # .is-open 不应在初始 HTML 中出现(只能由 JS 后加)
+    has_is_open = "is-open" in tag
+    assert has_hidden_attr or not has_is_open, (
+        f"完成备注弹窗必须在页面初始时隐藏。"
+        f"实际:hidden_attr={has_hidden_attr}, is_open={has_is_open}。"
+        f"如果都 False,说明 hidden 属性被 display:flex 覆盖了。"
+    )
+    # 必须有 note-cancel / note-save 按钮供点击
+    assert 'id="note-cancel"' in r.text
+    assert 'id="note-save"' in r.text
+
+
+def test_note_dialog_has_open_class_toggle_css(client_with_db: TestClient) -> None:
+    """回归测试:CSS 中必须有 .note-dialog.is-open 的 display:flex 规则。
+
+    修复方案:把 display:flex 从 .note-dialog 默认样式里挪到
+    .note-dialog.is-open 类选择器中。这样 .is-open class 存在才显示。
+    """
+    user = _register(client_with_db, email="pomo-dialog-css@example.com")
+    r = client_with_db.get("/pomodoro", headers=user["headers"])
+    assert r.status_code == 200
+    # 模板内嵌 style 必须包含 .note-dialog.is-open{display:flex}
+    assert ".note-dialog.is-open" in r.text
+    assert ".note-dialog[hidden]" in r.text
+
+
 # =============================================================
 # 2. /api/pomodoro/start
 # =============================================================
