@@ -7,7 +7,7 @@
 
 关键设计：
   - 每张业务表独立同步：personal_vocab / learning_records / vocab_categories /
-    vocab_category_words / exam_sessions / grade_history / articles
+    vocab_category_words / exam_sessions / grade_history / articles / typing_history
   - sync_meta 单行表记录 last_pull_at / last_push_at / last_error
   - 写入同步状态：'synced' / 'pending_upload'
   - users 表单独处理（结构简单，按 username 拉取）
@@ -127,6 +127,26 @@ SYNC_TABLES: list[dict[str, Any]] = [
         "cols": [
             "user_id", "title", "source_text", "translation", "word_count",
             "diff_words_json", "translation_source", "analysis_source",
+            "created_at", "updated_at",
+        ],
+        "conflict_key": ["user_id", "id"],
+        "include_id": True,
+    },
+    {
+        # v3.6: typing_history 机考打字记录 —— 修复"跨设备丢分"隐患
+        # 两端 schema 字段一致（SQLite / MySQL 都有 user_id/mode/prompt_text/typed_text/
+        # duration_sec/wpm/accuracy/error_count/total_chars/completed/result_json/
+        # created_at/updated_at/sync_status）。
+        # SQLite 端 PRIMARY KEY (id) → conflict_target 在 _pull_table 里取 ["id"]。
+        # 用 (user_id, id) 业务键：保证同一 user 下 id 不冲突；两侧自增对齐。
+        "name": "typing_history",
+        "id_col": "id",
+        "user_col": "user_id",
+        "ts_col": "updated_at",
+        "cols": [
+            "user_id", "mode", "prompt_text", "typed_text",
+            "duration_sec", "wpm", "accuracy", "error_count",
+            "total_chars", "completed", "result_json",
             "created_at", "updated_at",
         ],
         "conflict_key": ["user_id", "id"],
