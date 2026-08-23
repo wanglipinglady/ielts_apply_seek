@@ -655,8 +655,164 @@ class ListeningPracticeRepository(Protocol):
 
 
 @runtime_checkable
+class PrepResourceRepository(Protocol):
+    """备考资源广场仓储接口（v3.8 新增）。
+
+    跨用户共享的 B 站资源元数据,不在 SYNC_TABLES。
+    """
+
+    def seed_resource(
+        self,
+        title: str,
+        bv_id: str,
+        url: str,
+        author_name: str,
+        skill: str,
+        video_type: str,
+        level: str,
+        method_summary: str,
+        source_status: str,
+        author_uid: Optional[int] = None,
+        uploader_name: Optional[str] = None,
+        uploader_uid: Optional[int] = None,
+        publish_date: Optional[str] = None,
+        duration_sec: int = 0,
+        outdated_risk: str = "low",
+        format_compatible: str = "computer",
+        computer_delivery_only: bool = True,
+        is_featured: bool = False,
+        recommend_score: float = 0.0,
+        sort_order: int = 100,
+        related_action_url: Optional[str] = None,
+        related_action_label: Optional[str] = None,
+    ) -> int:
+        """插入或更新一条资源(UNIQUE bv_id 兜底 upsert)。"""
+        ...
+
+    def get_resource(self, resource_id: int) -> Optional[dict]:
+        """单条资源详情。"""
+        ...
+
+    def get_resource_by_bv(self, bv_id: str) -> Optional[dict]:
+        """按 B 站 BV 号查询(防重复种子)。"""
+        ...
+
+    def list_resources(
+        self,
+        skill: Optional[str] = None,
+        level: Optional[str] = None,
+        source_status: Optional[str] = None,
+        is_featured: Optional[bool] = None,
+        sort_by: str = "recommend_score",  # recommend_score / sort_order / publish_date
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[dict]:
+        """按多条件过滤 + 排序 + 分页。"""
+        ...
+
+    def list_featured(self, skill: Optional[str] = None, limit: int = 5) -> list[dict]:
+        """列出顶置资源(is_featured=1)。"""
+        ...
+
+    def list_by_up(self, author_name: str, limit: int = 20) -> list[dict]:
+        """列出某 UP 主的所有资源。"""
+        ...
+
+    def count_resources(self, skill: Optional[str] = None) -> int:
+        """资源总数(按 skill 过滤)。"""
+        ...
+
+    def update_resource(self, resource_id: int, **kwargs: Any) -> bool:
+        """更新任意字段(只更新传入的非 None 值)。"""
+        ...
+
+    def delete_resource(self, resource_id: int) -> bool:
+        """删除资源(谨慎用,前台目前不暴露)。"""
+        ...
+
+    def list_distinct_ups(self) -> list[dict]:
+        """列出所有 UP 主 + 资源数。"""
+        ...
+
+
+@runtime_checkable
+class ReadingPracticeRepository(Protocol):
+    """Reading 真题题库仓储接口（v3.8 新增）。"""
+
+    # ---- 题库 ----
+    def seed_passage(
+        self,
+        section: str,
+        set_id: int,
+        qid: int,
+        passage_number: int,
+        title: str,
+        topic: str,
+        question_type: str,
+        passage_text: str,
+        stem: str,
+        options: Optional[list[str]],
+        answer: str,
+        explanation: str,
+        word_count: int = 0,
+        source_line: Optional[int] = None,
+    ) -> int:
+        """插入或更新一道题(UNIQUE(section, set_id, qid) 兜底 upsert)。"""
+        ...
+
+    def get_passage(self, question_id: int) -> Optional[dict]:
+        """单题详情(含 options 已 parse)。"""
+        ...
+
+    def list_sections_with_counts(self) -> list[dict]:
+        """返回 [{section, total_sets, total_passages}]。"""
+        ...
+
+    def list_sets_by_section(self, section: str) -> list[dict]:
+        """返回该 Section 档位下每套的元信息。"""
+        ...
+
+    def list_passages_by_set(self, section: str, set_id: int) -> list[dict]:
+        """按 qid 排序返回该套所有题。"""
+        ...
+
+    def count_passages(self) -> int:
+        """总题数(用于启动期判断是否需要种子)。"""
+        ...
+
+    # ---- 答题记录 ----
+    def record_attempt(
+        self,
+        user_id: int,
+        question_id: int,
+        user_answer: str,
+        is_correct: bool,
+        duration_sec: float = 0.0,
+    ) -> int:
+        """记录一次答题;返回 attempt id。"""
+        ...
+
+    def list_user_attempts(
+        self,
+        user_id: int,
+        page: int = 1,
+        size: int = 20,
+        section: Optional[str] = None,
+    ) -> tuple[list[dict], int]:
+        """返回 (items, total)。"""
+        ...
+
+    def get_user_stats(self, user_id: int) -> dict:
+        """返回 {total_attempts, correct_count, accuracy, by_section}。"""
+        ...
+
+
+# =============================================================
+
+
+@runtime_checkable
 class RepositoryContainer(Protocol):
-    """8 个 Repository 的聚合。
+    """10 个 Repository 的聚合(v3.8 新增 PrepResource + Reading)。
 
     ``db_factory.create_repositories()`` 返回此接口的实现。
     Services 接受一个 ``RepositoryContainer`` 注入。
@@ -670,6 +826,8 @@ class RepositoryContainer(Protocol):
     user: UserRepository
     speaking_practice: SpeakingPracticeRepository
     listening_practice: ListeningPracticeRepository
+    prep_resource: PrepResourceRepository
+    reading_practice: ReadingPracticeRepository
 
     def close(self) -> None:
         """关闭所有底层连接（SQLite / MySQL 连接池）。"""
@@ -725,6 +883,8 @@ __all__ = [
     "UserRepository",
     "SpeakingPracticeRepository",
     "ListeningPracticeRepository",
+    "PrepResourceRepository",
+    "ReadingPracticeRepository",
     "RepositoryContainer",
     "assert_repository_implements_protocol",
 ]

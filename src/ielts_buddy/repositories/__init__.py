@@ -9,6 +9,8 @@ SQLite 端：
 - focus_sessions (v3.6 番茄钟)
 - articles / sync_meta / speaking_practice_records (v3.7 P1 口语对练)
 - listening_questions / listening_attempts (v3.7 P2 真·听力题库)
+- prep_resources (v3.8 P3.1 备考资源广场)
+- reading_passages / reading_attempts (v3.8 P3.2 Reading 真题题库)
 """
 from ielts_buddy.repositories.sqlite_repo import (
     REVIEW_INTERVALS,
@@ -19,6 +21,8 @@ from ielts_buddy.repositories.sqlite_repo import (
     SQLiteLearningRepository,
     SQLiteListeningPracticeRepository,
     SQLitePersonalVocabRepository,
+    SQLitePrepResourceRepository,
+    SQLiteReadingPracticeRepository,
     SQLiteRepositoryContainer,
     SQLiteSpeakingPracticeRepository,
     SQLiteTypingRepository,
@@ -36,6 +40,8 @@ try:
         MySQLLearningRepository,
         MySQLListeningPracticeRepository,
         MySQLPersonalVocabRepository,
+        MySQLPrepResourceRepository,
+        MySQLReadingPracticeRepository,
         MySQLRepositoryContainer,
         MySQLSpeakingPracticeRepository,
         MySQLTypingRepository,
@@ -58,6 +64,8 @@ __all__ = [
     "SQLiteUserRepository",
     "SQLiteSpeakingPracticeRepository",
     "SQLiteListeningPracticeRepository",
+    "SQLitePrepResourceRepository",
+    "SQLiteReadingPracticeRepository",
     "SQLiteRepositoryContainer",
     "create_sqlite_repositories",
     "REVIEW_INTERVALS",
@@ -75,6 +83,8 @@ if _MYSQL_AVAILABLE:
         "MySQLUserRepository",
         "MySQLSpeakingPracticeRepository",
         "MySQLListeningPracticeRepository",
+        "MySQLPrepResourceRepository",
+        "MySQLReadingPracticeRepository",
         "MySQLRepositoryContainer",
         "create_mysql_repositories",
     ]

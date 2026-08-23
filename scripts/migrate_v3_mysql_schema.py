@@ -404,6 +404,120 @@ def add_listening_attempts_table(cur) -> None:
     print("  ✓ listening_attempts 已创建")
 
 
+def add_prep_resources_table(cur) -> None:
+    """v3.8 P3.1 新增:备考资源广场表。
+
+    跨用户共享元数据;不进 SYNC_TABLES。
+    """
+    print("== 创建 prep_resources 表 ==")
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS prep_resources (
+            id                    BIGINT          NOT NULL AUTO_INCREMENT,
+            title                 VARCHAR(256)    NOT NULL,
+            bv_id                 VARCHAR(32)     NOT NULL,
+            url                   VARCHAR(512)    NOT NULL,
+            author_name           VARCHAR(64)     NOT NULL,
+            author_uid            BIGINT          NULL,
+            uploader_name         VARCHAR(64)     NOT NULL DEFAULT '',
+            uploader_uid          BIGINT          NULL,
+            skill                 VARCHAR(16)     NOT NULL,
+            video_type            VARCHAR(16)     NOT NULL,
+            level                 VARCHAR(16)     NOT NULL,
+            method_summary        TEXT            NOT NULL,
+            source_status         VARCHAR(32)     NOT NULL DEFAULT 'verified_repost',
+            publish_date          DATE            NULL,
+            duration_sec          INT             NOT NULL DEFAULT 0,
+            outdated_risk         VARCHAR(16)     NOT NULL DEFAULT 'low',
+            format_compatible     VARCHAR(16)     NOT NULL DEFAULT 'computer',
+            computer_delivery_only TINYINT(1)     NOT NULL DEFAULT 1,
+            is_featured           TINYINT(1)      NOT NULL DEFAULT 0,
+            recommend_score       DECIMAL(4,2)    NOT NULL DEFAULT 0.0,
+            sort_order            INT             NOT NULL DEFAULT 100,
+            related_action_url    VARCHAR(256)    NULL,
+            related_action_label  VARCHAR(64)     NULL,
+            created_at            DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at            DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP
+                                                  ON UPDATE CURRENT_TIMESTAMP,
+            sync_status           VARCHAR(16)     NOT NULL DEFAULT 'synced',
+            PRIMARY KEY (id),
+            UNIQUE KEY uk_pr_bv_id (bv_id),
+            KEY idx_pr_skill (skill),
+            KEY idx_pr_score (recommend_score),
+            KEY idx_pr_author (author_name)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+          COMMENT='备考资源广场（v3.8 P3.1）'
+        """
+    )
+    print("  ✓ prep_resources 已创建")
+
+
+def add_reading_passages_table(cur) -> None:
+    """v3.8 P3.2 新增:Reading 真题题库表。
+
+    LLM 出题;跨用户共享题库,不进 SYNC_TABLES。
+    """
+    print("== 创建 reading_passages 表 ==")
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS reading_passages (
+            id                    BIGINT          NOT NULL AUTO_INCREMENT,
+            section               VARCHAR(16)     NOT NULL,
+            set_id                INT             NOT NULL,
+            qid                   INT             NOT NULL,
+            passage_number        SMALLINT        NOT NULL,
+            title                 VARCHAR(256)    NOT NULL,
+            topic                 VARCHAR(128)    NOT NULL DEFAULT '',
+            question_type         VARCHAR(32)     NOT NULL,
+            word_count            INT             NOT NULL DEFAULT 0,
+            passage_text          TEXT            NOT NULL,
+            stem                  TEXT            NOT NULL,
+            options_json          TEXT            NULL,
+            answer                VARCHAR(256)    NOT NULL,
+            explanation           TEXT            NOT NULL DEFAULT '',
+            source_line           INT             NULL,
+            created_at            DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at            DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP
+                                                  ON UPDATE CURRENT_TIMESTAMP,
+            sync_status           VARCHAR(16)     NOT NULL DEFAULT 'synced',
+            PRIMARY KEY (id),
+            UNIQUE KEY uk_rp_section_set_qid (section, set_id, qid),
+            KEY idx_rp_section_set (section, set_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+          COMMENT='Reading 真题题库（v3.8 P3.2）'
+        """
+    )
+    print("  ✓ reading_passages 已创建")
+
+
+def add_reading_attempts_table(cur) -> None:
+    """v3.8 P3.2 新增:Reading 答题记录表。
+
+    纳入 SYNC_TABLES(每个用户有独立答题记录)。
+    """
+    print("== 创建 reading_attempts 表 ==")
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS reading_attempts (
+            id                    BIGINT          NOT NULL AUTO_INCREMENT,
+            user_id               BIGINT          NOT NULL,
+            question_id           BIGINT          NOT NULL,
+            user_answer           VARCHAR(256)    NOT NULL,
+            is_correct            TINYINT(1)      NOT NULL DEFAULT 0,
+            duration_sec          DECIMAL(8,2)    NOT NULL DEFAULT 0,
+            created_at            DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at            DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP
+                                                  ON UPDATE CURRENT_TIMESTAMP,
+            sync_status           VARCHAR(16)     NOT NULL DEFAULT 'synced',
+            PRIMARY KEY (id),
+            KEY idx_rat_user_created (user_id, created_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+          COMMENT='Reading 答题记录（v3.8 P3.2）'
+        """
+    )
+    print("  ✓ reading_attempts 已创建")
+
+
 def upgrade_personal_vocab(cur) -> None:
     print("== 升级 personal_vocab ==")
     # personal_vocab.updated_at 已存在（DEFAULT ON UPDATE）
@@ -663,6 +777,12 @@ def main() -> int:
             add_listening_questions_table(cur)
         if "listening_attempts" in report["tables_missing"]:
             add_listening_attempts_table(cur)
+        if "prep_resources" in report["tables_missing"]:
+            add_prep_resources_table(cur)
+        if "reading_passages" in report["tables_missing"]:
+            add_reading_passages_table(cur)
+        if "reading_attempts" in report["tables_missing"]:
+            add_reading_attempts_table(cur)
         if "personal_vocab" in report["columns_missing"]:
             upgrade_personal_vocab(cur)
         if "learning_records" in report["columns_missing"]:

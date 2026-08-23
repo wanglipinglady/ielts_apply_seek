@@ -332,6 +332,78 @@ CREATE INDEX IF NOT EXISTS idx_la_user_created
     ON listening_attempts(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_la_user_q
     ON listening_attempts(user_id, question_id);
+
+-- v3.8 备考资源广场(v3.8 P3 新增)
+CREATE TABLE IF NOT EXISTS prep_resources (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    bv_id TEXT NOT NULL,
+    url TEXT NOT NULL,
+    author_name TEXT NOT NULL,
+    author_uid INTEGER,
+    uploader_name TEXT NOT NULL DEFAULT '',
+    uploader_uid INTEGER,
+    skill TEXT NOT NULL,                 -- listening | reading | speaking | writing | general
+    video_type TEXT NOT NULL,            -- methodology | planning | tips | pitfalls | mock | vocab
+    level TEXT NOT NULL,                  -- 0-5 | 5-6 | 6.5-7 | 7+
+    method_summary TEXT NOT NULL,
+    source_status TEXT NOT NULL DEFAULT 'verified_repost',  -- official | institution | verified_repost | unverified_repost
+    publish_date TEXT,
+    duration_sec INTEGER DEFAULT 0,
+    outdated_risk TEXT NOT NULL DEFAULT 'low',  -- low | medium | high
+    format_compatible TEXT NOT NULL DEFAULT 'computer',  -- computer | paper_based | both
+    computer_delivery_only INTEGER NOT NULL DEFAULT 1,
+    is_featured INTEGER NOT NULL DEFAULT 0,
+    recommend_score REAL NOT NULL DEFAULT 0.0,
+    sort_order INTEGER NOT NULL DEFAULT 100,
+    related_action_url TEXT,
+    related_action_label TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT '',
+    sync_status TEXT NOT NULL DEFAULT 'synced',
+    UNIQUE(bv_id)
+);
+CREATE INDEX IF NOT EXISTS idx_pr_skill ON prep_resources(skill);
+CREATE INDEX IF NOT EXISTS idx_pr_score ON prep_resources(recommend_score DESC);
+CREATE INDEX IF NOT EXISTS idx_pr_author ON prep_resources(author_name);
+
+-- v3.8 Reading 真题题库(v3.8 P3 新增)
+CREATE TABLE IF NOT EXISTS reading_passages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    section TEXT NOT NULL,                -- easy | medium | hard | academic
+    set_id INTEGER NOT NULL,
+    qid INTEGER NOT NULL,
+    passage_number INTEGER NOT NULL,       -- 1 / 2 / 3
+    title TEXT NOT NULL,
+    topic TEXT NOT NULL DEFAULT '',
+    question_type TEXT NOT NULL,           -- tfng | multiple_choice | matching | summary | sentence_completion
+    word_count INTEGER NOT NULL DEFAULT 0,
+    passage_text TEXT NOT NULL,
+    stem TEXT NOT NULL,
+    options_json TEXT,
+    answer TEXT NOT NULL,
+    explanation TEXT NOT NULL DEFAULT '',
+    source_line INTEGER,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT '',
+    sync_status TEXT NOT NULL DEFAULT 'synced',
+    UNIQUE(section, set_id, qid)
+);
+CREATE INDEX IF NOT EXISTS idx_rp_section_set ON reading_passages(section, set_id);
+
+CREATE TABLE IF NOT EXISTS reading_attempts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    question_id INTEGER NOT NULL,
+    user_answer TEXT NOT NULL,
+    is_correct INTEGER NOT NULL DEFAULT 0,
+    duration_sec REAL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT '',
+    sync_status TEXT NOT NULL DEFAULT 'synced'
+);
+CREATE INDEX IF NOT EXISTS idx_rat_user_created
+    ON reading_attempts(user_id, created_at DESC);
 """
 
 # 系统内置分类（每个用户独立一份，不使用 user_id=0 模板）
@@ -2601,12 +2673,480 @@ class SQLiteUserRepository:
 
 
 # =============================================================
+# 6b. SQLitePrepResourceRepository (v3.8 P3 新增 - 备考资源广场)
+# =============================================================
+
+
+class SQLitePrepResourceRepository:
+    """SQLite 实现的 PrepResourceRepository。
+
+    跨用户共享的 B 站资源元数据;不在 SYNC_TABLES。
+    """
+
+    def __init__(self, conn: sqlite3.Connection) -> None:
+        self._conn = conn
+
+    def seed_resource(
+        self,
+        title: str,
+        bv_id: str,
+        url: str,
+        author_name: str,
+        skill: str,
+        video_type: str,
+        level: str,
+        method_summary: str,
+        source_status: str,
+        author_uid: Optional[int] = None,
+        uploader_name: Optional[str] = None,
+        uploader_uid: Optional[int] = None,
+        publish_date: Optional[str] = None,
+        duration_sec: int = 0,
+        outdated_risk: str = "low",
+        format_compatible: str = "computer",
+        computer_delivery_only: bool = True,
+        is_featured: bool = False,
+        recommend_score: float = 0.0,
+        sort_order: int = 100,
+        related_action_url: Optional[str] = None,
+        related_action_label: Optional[str] = None,
+    ) -> int:
+        """插入或更新一条资源(UNIQUE bv_id 兜底 upsert)。"""
+        now = datetime.now().isoformat(timespec="seconds")
+        try:
+            cur = self._conn.execute(
+                """INSERT INTO prep_resources
+                   (title, bv_id, url, author_name, author_uid,
+                    uploader_name, uploader_uid, skill, video_type, level,
+                    method_summary, source_status, publish_date,
+                    duration_sec, outdated_risk, format_compatible,
+                    computer_delivery_only, is_featured, recommend_score,
+                    sort_order, related_action_url, related_action_label,
+                    created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                           ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                           ?, ?, ?, ?, ?)""",
+                (title, bv_id, url, author_name, author_uid,
+                 uploader_name or "", uploader_uid, skill, video_type, level,
+                 method_summary, source_status, publish_date,
+                 duration_sec, outdated_risk, format_compatible,
+                 1 if computer_delivery_only else 0,
+                 1 if is_featured else 0, float(recommend_score),
+                 int(sort_order), related_action_url, related_action_label,
+                 now, now),
+            )
+            self._conn.commit()
+            return int(cur.lastrowid)
+        except sqlite3.IntegrityError:
+            # 已存在 → UPDATE
+            self._conn.execute(
+                """UPDATE prep_resources SET
+                     title = ?, url = ?, author_name = ?, author_uid = ?,
+                     uploader_name = ?, uploader_uid = ?, skill = ?,
+                     video_type = ?, level = ?, method_summary = ?,
+                     source_status = ?, publish_date = ?,
+                     duration_sec = ?, outdated_risk = ?, format_compatible = ?,
+                     computer_delivery_only = ?, is_featured = ?,
+                     recommend_score = ?, sort_order = ?,
+                     related_action_url = ?, related_action_label = ?,
+                     updated_at = ?
+                   WHERE bv_id = ?""",
+                (title, url, author_name, author_uid,
+                 uploader_name or "", uploader_uid, skill, video_type, level,
+                 method_summary, source_status, publish_date,
+                 duration_sec, outdated_risk, format_compatible,
+                 1 if computer_delivery_only else 0,
+                 1 if is_featured else 0, float(recommend_score),
+                 int(sort_order), related_action_url, related_action_label,
+                 now, bv_id),
+            )
+            self._conn.commit()
+            row = self._conn.execute(
+                "SELECT id FROM prep_resources WHERE bv_id = ?",
+                (bv_id,),
+            ).fetchone()
+            return int(row["id"]) if row else -1
+
+    def get_resource(self, resource_id: int) -> Optional[dict]:
+        row = self._conn.execute(
+            "SELECT * FROM prep_resources WHERE id = ?",
+            (int(resource_id),),
+        ).fetchone()
+        return dict(row) if row else None
+
+    def get_resource_by_bv(self, bv_id: str) -> Optional[dict]:
+        row = self._conn.execute(
+            "SELECT * FROM prep_resources WHERE bv_id = ?",
+            (bv_id,),
+        ).fetchone()
+        return dict(row) if row else None
+
+    def list_resources(
+        self,
+        skill: Optional[str] = None,
+        level: Optional[str] = None,
+        source_status: Optional[str] = None,
+        is_featured: Optional[bool] = None,
+        sort_by: str = "recommend_score",
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[dict]:
+        where = ["1=1"]
+        params: list[Any] = []
+        if skill:
+            where.append("skill = ?")
+            params.append(skill)
+        if level:
+            where.append("level = ?")
+            params.append(level)
+        if source_status:
+            where.append("source_status = ?")
+            params.append(source_status)
+        if is_featured is not None:
+            where.append("is_featured = ?")
+            params.append(1 if is_featured else 0)
+        order_map = {
+            "recommend_score": "recommend_score DESC, sort_order ASC",
+            "sort_order": "sort_order ASC, recommend_score DESC",
+            "publish_date": "publish_date DESC NULLS LAST, recommend_score DESC",
+        }
+        order = order_map.get(sort_by, order_map["recommend_score"])
+        sql = (
+            "SELECT * FROM prep_resources WHERE "
+            + " AND ".join(where)
+            + f" ORDER BY {order} LIMIT ? OFFSET ?"
+        )
+        params.extend([int(limit), int(offset)])
+        rows = self._conn.execute(sql, params).fetchall()
+        return [dict(r) for r in rows]
+
+    def list_featured(self, skill: Optional[str] = None, limit: int = 5) -> list[dict]:
+        return self.list_resources(
+            skill=skill, is_featured=True, sort_by="recommend_score",
+            limit=limit, offset=0,
+        )
+
+    def list_by_up(self, author_name: str, limit: int = 20) -> list[dict]:
+        rows = self._conn.execute(
+            """SELECT * FROM prep_resources
+               WHERE author_name = ?
+               ORDER BY recommend_score DESC, sort_order ASC
+               LIMIT ?""",
+            (author_name, int(limit)),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def count_resources(self, skill: Optional[str] = None) -> int:
+        if skill:
+            row = self._conn.execute(
+                "SELECT COUNT(*) AS c FROM prep_resources WHERE skill = ?",
+                (skill,),
+            ).fetchone()
+        else:
+            row = self._conn.execute(
+                "SELECT COUNT(*) AS c FROM prep_resources"
+            ).fetchone()
+        return int(row["c"])
+
+    def update_resource(self, resource_id: int, **kwargs: Any) -> bool:
+        """更新任意字段(只更新传入的非 None 值)。"""
+        if not kwargs:
+            return False
+        # 字段白名单(避免 SQL 注入)
+        allowed = {
+            "title", "url", "method_summary", "source_status", "publish_date",
+            "duration_sec", "outdated_risk", "is_featured",
+            "recommend_score", "sort_order",
+            "related_action_url", "related_action_label",
+        }
+        sets = []
+        params: list[Any] = []
+        for k, v in kwargs.items():
+            if k in allowed and v is not None:
+                sets.append(f"{k} = ?")
+                params.append(v)
+        if not sets:
+            return False
+        sets.append("updated_at = ?")
+        params.append(datetime.now().isoformat(timespec="seconds"))
+        params.append(int(resource_id))
+        sql = f"UPDATE prep_resources SET {', '.join(sets)} WHERE id = ?"
+        cur = self._conn.execute(sql, params)
+        self._conn.commit()
+        return cur.rowcount > 0
+
+    def delete_resource(self, resource_id: int) -> bool:
+        cur = self._conn.execute(
+            "DELETE FROM prep_resources WHERE id = ?",
+            (int(resource_id),),
+        )
+        self._conn.commit()
+        return cur.rowcount > 0
+
+    def list_distinct_ups(self) -> list[dict]:
+        rows = self._conn.execute(
+            """SELECT author_name, COUNT(*) AS cnt
+               FROM prep_resources
+               GROUP BY author_name
+               ORDER BY cnt DESC, author_name ASC"""
+        ).fetchall()
+        return [{"author_name": r["author_name"], "count": int(r["cnt"])}
+                for r in rows]
+
+
+# =============================================================
+# 6c. SQLiteReadingPracticeRepository (v3.8 P3 新增 - Reading 真题题库)
+# =============================================================
+
+
+class SQLiteReadingPracticeRepository:
+    """SQLite 实现的 ReadingPracticeRepository。"""
+
+    def __init__(self, conn: sqlite3.Connection) -> None:
+        self._conn = conn
+
+    # ---- 题库 ----
+    def seed_passage(
+        self,
+        section: str,
+        set_id: int,
+        qid: int,
+        passage_number: int,
+        title: str,
+        topic: str,
+        question_type: str,
+        passage_text: str,
+        stem: str,
+        options: Optional[list[str]],
+        answer: str,
+        explanation: str,
+        word_count: int = 0,
+        source_line: Optional[int] = None,
+    ) -> int:
+        now = datetime.now().isoformat(timespec="seconds")
+        opts_json = json.dumps(options, ensure_ascii=False) if options else None
+        try:
+            cur = self._conn.execute(
+                """INSERT INTO reading_passages
+                   (section, set_id, qid, passage_number, title, topic,
+                    question_type, word_count, passage_text, stem,
+                    options_json, answer, explanation, source_line,
+                    created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (section, set_id, qid, passage_number, title, topic,
+                 question_type, word_count, passage_text, stem,
+                 opts_json, answer, explanation, source_line,
+                 now, now),
+            )
+            self._conn.commit()
+            return int(cur.lastrowid)
+        except sqlite3.IntegrityError:
+            self._conn.execute(
+                """UPDATE reading_passages SET
+                     passage_number = ?, title = ?, topic = ?,
+                     question_type = ?, word_count = ?, passage_text = ?,
+                     stem = ?, options_json = ?, answer = ?, explanation = ?,
+                     source_line = ?, updated_at = ?
+                 WHERE section = ? AND set_id = ? AND qid = ?""",
+                (passage_number, title, topic, question_type, word_count,
+                 passage_text, stem, opts_json, answer, explanation,
+                 source_line, now, section, set_id, qid),
+            )
+            self._conn.commit()
+            row = self._conn.execute(
+                "SELECT id FROM reading_passages "
+                "WHERE section=? AND set_id=? AND qid=?",
+                (section, set_id, qid),
+            ).fetchone()
+            return int(row["id"]) if row else -1
+
+    def get_passage(self, question_id: int) -> Optional[dict]:
+        row = self._conn.execute(
+            "SELECT * FROM reading_passages WHERE id = ?",
+            (int(question_id),),
+        ).fetchone()
+        if row is None:
+            return None
+        d = dict(row)
+        if d.get("options_json"):
+            try:
+                d["options"] = json.loads(d["options_json"])
+            except Exception:
+                d["options"] = []
+        else:
+            d["options"] = None
+        return d
+
+    def list_sections_with_counts(self) -> list[dict]:
+        rows = self._conn.execute(
+            """SELECT section,
+                      COUNT(DISTINCT set_id) AS total_sets,
+                      COUNT(*) AS total_passages
+               FROM reading_passages
+               GROUP BY section
+               ORDER BY section"""
+        ).fetchall()
+        return [
+            {
+                "section": r["section"],
+                "total_sets": int(r["total_sets"]),
+                "total_passages": int(r["total_passages"]),
+            }
+            for r in rows
+        ]
+
+    def list_sets_by_section(self, section: str) -> list[dict]:
+        rows = self._conn.execute(
+            """SELECT set_id, MIN(passage_number) AS first_passage,
+                      COUNT(*) AS question_count,
+                      MIN(title) AS first_title,
+                      MIN(topic) AS first_topic
+               FROM reading_passages
+               WHERE section = ?
+               GROUP BY set_id
+               ORDER BY set_id""",
+            (section,),
+        ).fetchall()
+        return [
+            {
+                "set_id": int(r["set_id"]),
+                "section": section,
+                "first_passage": int(r["first_passage"] or 1),
+                "question_count": int(r["question_count"]),
+                "title": r["first_title"] or "",
+                "topic": r["first_topic"] or "",
+            }
+            for r in rows
+        ]
+
+    def list_passages_by_set(self, section: str, set_id: int) -> list[dict]:
+        rows = self._conn.execute(
+            """SELECT * FROM reading_passages
+               WHERE section = ? AND set_id = ?
+               ORDER BY qid""",
+            (section, set_id),
+        ).fetchall()
+        items = []
+        for row in rows:
+            d = dict(row)
+            if d.get("options_json"):
+                try:
+                    d["options"] = json.loads(d["options_json"])
+                except Exception:
+                    d["options"] = []
+            else:
+                d["options"] = None
+            items.append(d)
+        return items
+
+    def count_passages(self) -> int:
+        row = self._conn.execute(
+            "SELECT COUNT(*) AS c FROM reading_passages"
+        ).fetchone()
+        return int(row["c"])
+
+    # ---- 答题记录 ----
+    def record_attempt(
+        self,
+        user_id: int,
+        question_id: int,
+        user_answer: str,
+        is_correct: bool,
+        duration_sec: float = 0.0,
+    ) -> int:
+        now = datetime.now().isoformat(timespec="seconds")
+        cur = self._conn.execute(
+            """INSERT INTO reading_attempts
+               (user_id, question_id, user_answer, is_correct,
+                duration_sec, created_at)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (user_id, question_id, user_answer,
+             1 if is_correct else 0, duration_sec, now),
+        )
+        self._conn.commit()
+        return int(cur.lastrowid)
+
+    def list_user_attempts(
+        self,
+        user_id: int,
+        page: int = 1,
+        size: int = 20,
+        section: Optional[str] = None,
+    ) -> tuple[list[dict], int]:
+        where_parts = ["a.user_id = ?"]
+        params: list[Any] = [user_id]
+        if section is not None:
+            where_parts.append("p.section = ?")
+            params.append(section)
+        total_row = self._conn.execute(
+            f"SELECT COUNT(*) AS cnt FROM reading_attempts a "
+            f"LEFT JOIN reading_passages p ON a.question_id = p.id "
+            f"WHERE {' AND '.join(where_parts)}",
+            params,
+        ).fetchone()
+        total = int(total_row["cnt"])
+        offset = max(0, (page - 1) * size)
+        rows = self._conn.execute(
+            f"""SELECT a.id, a.user_id, a.question_id, a.user_answer,
+                       a.is_correct, a.duration_sec, a.created_at,
+                       p.section AS section, p.set_id, p.qid,
+                       p.title, p.question_type
+                FROM reading_attempts a
+                LEFT JOIN reading_passages p ON a.question_id = p.id
+                WHERE {' AND '.join(where_parts)}
+                ORDER BY a.created_at DESC
+                LIMIT ? OFFSET ?""",
+            params + [size, offset],
+        ).fetchall()
+        return [dict(r) for r in rows], total
+
+    def get_user_stats(self, user_id: int) -> dict:
+        total_row = self._conn.execute(
+            """SELECT COUNT(*) AS total_attempts,
+                      SUM(is_correct) AS correct_count
+               FROM reading_attempts WHERE user_id = ?""",
+            (user_id,),
+        ).fetchone()
+        total = int(total_row["total_attempts"] or 0)
+        correct = int(total_row["correct_count"] or 0)
+
+        by_section_rows = self._conn.execute(
+            """SELECT p.section,
+                      COUNT(*) AS attempts,
+                      SUM(a.is_correct) AS correct
+               FROM reading_attempts a
+               LEFT JOIN reading_passages p ON a.question_id = p.id
+               WHERE a.user_id = ? AND p.section IS NOT NULL
+               GROUP BY p.section
+               ORDER BY p.section""",
+            (user_id,),
+        ).fetchall()
+        by_section = {
+            r["section"]: {
+                "attempts": int(r["attempts"]),
+                "correct": int(r["correct"] or 0),
+                "accuracy": (
+                    round((int(r["correct"] or 0) / int(r["attempts"])) * 100, 1)
+                    if int(r["attempts"]) > 0 else 0.0
+                ),
+            }
+            for r in by_section_rows
+        }
+        return {
+            "total_attempts": total,
+            "correct_count": correct,
+            "accuracy": round(correct / total * 100, 1) if total > 0 else 0.0,
+            "by_section": by_section,
+        }
+
+
+# =============================================================
 # 7. SQLiteRepositoryContainer
 # =============================================================
 
 
 class SQLiteRepositoryContainer:
-    """6 个 SQLite Repository 的容器。"""
+    """SQLite Repository 容器(v3.8 升级为 10 个)。"""
 
     def __init__(
         self,
@@ -2645,6 +3185,10 @@ class SQLiteRepositoryContainer:
         self.speaking_practice = SQLiteSpeakingPracticeRepository(self._conn)
         # v3.7 P2：真·听力题库仓储
         self.listening_practice = SQLiteListeningPracticeRepository(self._conn)
+        # v3.8 P3.1：备考资源广场
+        self.prep_resource = SQLitePrepResourceRepository(self._conn)
+        # v3.8 P3.2：Reading 真题题库
+        self.reading_practice = SQLiteReadingPracticeRepository(self._conn)
 
         if cache_path is None:
             # v3：vocab_cache 与业务共用同一个 db 文件（避免维护多份 cache 拷贝）

@@ -258,6 +258,80 @@ t_listening_attempts = Table(
     Index("idx_la_user_q", "user_id", "question_id"),
 )
 
+# v3.8 备考资源广场(v3.8 P3.1 新增)
+t_prep_resources = Table(
+    "prep_resources", metadata,
+    Column("id", BigInteger, primary_key=True, autoincrement=True),
+    Column("title", String(256), nullable=False),
+    Column("bv_id", String(32), nullable=False),
+    Column("url", String(512), nullable=False),
+    Column("author_name", String(64), nullable=False),
+    Column("author_uid", BigInteger, nullable=True),
+    Column("uploader_name", String(64), nullable=False, server_default=text("''")),
+    Column("uploader_uid", BigInteger, nullable=True),
+    Column("skill", String(16), nullable=False),  # listening | reading | speaking | writing | general
+    Column("video_type", String(16), nullable=False),  # methodology | planning | tips | pitfalls | mock | vocab
+    Column("level", String(16), nullable=False),  # 0-5 | 5-6 | 6.5-7 | 7+
+    Column("method_summary", Text, nullable=False),
+    Column("source_status", String(32), nullable=False, server_default=text("'verified_repost'")),
+    Column("publish_date", Date, nullable=True),
+    Column("duration_sec", Integer, nullable=False, server_default=text("0")),
+    Column("outdated_risk", String(16), nullable=False, server_default=text("'low'")),
+    Column("format_compatible", String(16), nullable=False, server_default=text("'computer'")),
+    Column("computer_delivery_only", Boolean, nullable=False, server_default=text("1")),
+    Column("is_featured", Boolean, nullable=False, server_default=text("0")),
+    Column("recommend_score", Numeric(4, 2), nullable=False, server_default=text("0.0")),
+    Column("sort_order", Integer, nullable=False, server_default=text("100")),
+    Column("related_action_url", String(256), nullable=True),
+    Column("related_action_label", String(64), nullable=True),
+    Column("created_at", DateTime, nullable=False, server_default=text("CURRENT_TIMESTAMP")),
+    Column("updated_at", DateTime, nullable=False, server_default=text("CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP")),
+    Column("sync_status", String(16), nullable=False, server_default=text("'synced'")),
+    UniqueConstraint("bv_id", name="uk_pr_bv_id"),
+    Index("idx_pr_skill", "skill"),
+    Index("idx_pr_score", "recommend_score"),
+    Index("idx_pr_author", "author_name"),
+)
+
+# v3.8 Reading 真题题库(v3.8 P3.2 新增)
+t_reading_passages = Table(
+    "reading_passages", metadata,
+    Column("id", BigInteger, primary_key=True, autoincrement=True),
+    Column("section", String(16), nullable=False),  # easy | medium | hard | academic
+    Column("set_id", Integer, nullable=False),
+    Column("qid", Integer, nullable=False),
+    Column("passage_number", SmallInteger, nullable=False),
+    Column("title", String(256), nullable=False),
+    Column("topic", String(128), nullable=False, server_default=text("''")),
+    Column("question_type", String(32), nullable=False),
+    Column("word_count", Integer, nullable=False, server_default=text("0")),
+    Column("passage_text", Text, nullable=False),
+    Column("stem", Text, nullable=False),
+    Column("options_json", Text, nullable=True),
+    Column("answer", String(256), nullable=False),
+    Column("explanation", Text, nullable=False, server_default=text("''")),
+    Column("source_line", Integer, nullable=True),
+    Column("created_at", DateTime, nullable=False, server_default=text("CURRENT_TIMESTAMP")),
+    Column("updated_at", DateTime, nullable=False, server_default=text("CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP")),
+    Column("sync_status", String(16), nullable=False, server_default=text("'synced'")),
+    UniqueConstraint("section", "set_id", "qid", name="uk_rp_section_set_qid"),
+    Index("idx_rp_section_set", "section", "set_id"),
+)
+
+t_reading_attempts = Table(
+    "reading_attempts", metadata,
+    Column("id", BigInteger, primary_key=True, autoincrement=True),
+    Column("user_id", BigInteger, nullable=False),
+    Column("question_id", BigInteger, nullable=False),
+    Column("user_answer", String(256), nullable=False),
+    Column("is_correct", Boolean, nullable=False, server_default=text("0")),
+    Column("duration_sec", Numeric(8, 2), nullable=False, server_default=text("0")),
+    Column("created_at", DateTime, nullable=False, server_default=text("CURRENT_TIMESTAMP")),
+    Column("updated_at", DateTime, nullable=False, server_default=text("CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP")),
+    Column("sync_status", String(16), nullable=False, server_default=text("'synced'")),
+    Index("idx_rat_user_created", "user_id", "created_at"),
+)
+
 t_vocab_cache = Table(
     "vocab_cache", metadata,
     Column("word", String(128), primary_key=True),
@@ -2373,8 +2447,458 @@ def _build_mysql_url(
     )
 
 
+class MySQLPrepResourceRepository:
+    """MySQL 实现的 PrepResourceRepository(v3.8 新增)。"""
+
+    def __init__(self, engine: Engine) -> None:
+        self._engine = engine
+
+    def seed_resource(
+        self,
+        title: str,
+        bv_id: str,
+        url: str,
+        author_name: str,
+        skill: str,
+        video_type: str,
+        level: str,
+        method_summary: str,
+        source_status: str,
+        author_uid: Optional[int] = None,
+        uploader_name: Optional[str] = None,
+        uploader_uid: Optional[int] = None,
+        publish_date: Optional[str] = None,
+        duration_sec: int = 0,
+        outdated_risk: str = "low",
+        format_compatible: str = "computer",
+        computer_delivery_only: bool = True,
+        is_featured: bool = False,
+        recommend_score: float = 0.0,
+        sort_order: int = 100,
+        related_action_url: Optional[str] = None,
+        related_action_label: Optional[str] = None,
+    ) -> int:
+        now = datetime.now()
+        with self._engine.begin() as conn:
+            try:
+                res = conn.execute(
+                    insert(t_prep_resources).values(
+                        title=title, bv_id=bv_id, url=url,
+                        author_name=author_name, author_uid=author_uid,
+                        uploader_name=uploader_name or "", uploader_uid=uploader_uid,
+                        skill=skill, video_type=video_type, level=level,
+                        method_summary=method_summary,
+                        source_status=source_status,
+                        publish_date=publish_date,
+                        duration_sec=duration_sec,
+                        outdated_risk=outdated_risk,
+                        format_compatible=format_compatible,
+                        computer_delivery_only=1 if computer_delivery_only else 0,
+                        is_featured=1 if is_featured else 0,
+                        recommend_score=float(recommend_score),
+                        sort_order=int(sort_order),
+                        related_action_url=related_action_url,
+                        related_action_label=related_action_label,
+                        created_at=now, updated_at=now,
+                    )
+                )
+                return int(res.inserted_primary_key[0])
+            except IntegrityError:
+                conn.execute(
+                    update(t_prep_resources)
+                    .where(t_prep_resources.c.bv_id == bv_id)
+                    .values(
+                        title=title, url=url,
+                        author_name=author_name, author_uid=author_uid,
+                        uploader_name=uploader_name or "", uploader_uid=uploader_uid,
+                        skill=skill, video_type=video_type, level=level,
+                        method_summary=method_summary,
+                        source_status=source_status,
+                        publish_date=publish_date,
+                        duration_sec=duration_sec,
+                        outdated_risk=outdated_risk,
+                        format_compatible=format_compatible,
+                        computer_delivery_only=1 if computer_delivery_only else 0,
+                        is_featured=1 if is_featured else 0,
+                        recommend_score=float(recommend_score),
+                        sort_order=int(sort_order),
+                        related_action_url=related_action_url,
+                        related_action_label=related_action_label,
+                        updated_at=now,
+                    )
+                )
+                row = conn.execute(
+                    select(t_prep_resources.c.id)
+                    .where(t_prep_resources.c.bv_id == bv_id)
+                ).fetchone()
+                return int(row[0]) if row else -1
+
+    def get_resource(self, resource_id: int) -> Optional[dict]:
+        with self._engine.connect() as conn:
+            row = conn.execute(
+                select(t_prep_resources)
+                .where(t_prep_resources.c.id == int(resource_id))
+            ).fetchone()
+        return dict(row._mapping) if row else None
+
+    def get_resource_by_bv(self, bv_id: str) -> Optional[dict]:
+        with self._engine.connect() as conn:
+            row = conn.execute(
+                select(t_prep_resources)
+                .where(t_prep_resources.c.bv_id == bv_id)
+            ).fetchone()
+        return dict(row._mapping) if row else None
+
+    def list_resources(
+        self,
+        skill: Optional[str] = None,
+        level: Optional[str] = None,
+        source_status: Optional[str] = None,
+        is_featured: Optional[bool] = None,
+        sort_by: str = "recommend_score",
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[dict]:
+        where = ["1=1"]
+        params: dict[str, Any] = {}
+        if skill:
+            where.append("skill = :skill")
+            params["skill"] = skill
+        if level:
+            where.append("level = :level")
+            params["level"] = level
+        if source_status:
+            where.append("source_status = :ss")
+            params["ss"] = source_status
+        if is_featured is not None:
+            where.append("is_featured = :feat")
+            params["feat"] = 1 if is_featured else 0
+        order_map = {
+            "recommend_score": "recommend_score DESC, sort_order ASC",
+            "sort_order": "sort_order ASC, recommend_score DESC",
+            "publish_date": "publish_date DESC NULLS LAST, recommend_score DESC",
+        }
+        order = order_map.get(sort_by, order_map["recommend_score"])
+        sql = (
+            "SELECT * FROM prep_resources WHERE "
+            + " AND ".join(where)
+            + f" ORDER BY {order} LIMIT :limit OFFSET :offset"
+        )
+        params["limit"] = int(limit)
+        params["offset"] = int(offset)
+        with self._engine.connect() as conn:
+            rows = conn.execute(text(sql), params).fetchall()
+        return [dict(r._mapping) for r in rows]
+
+    def list_featured(self, skill: Optional[str] = None, limit: int = 5) -> list[dict]:
+        return self.list_resources(
+            skill=skill, is_featured=True, sort_by="recommend_score",
+            limit=limit, offset=0,
+        )
+
+    def list_by_up(self, author_name: str, limit: int = 20) -> list[dict]:
+        sql = (
+            "SELECT * FROM prep_resources WHERE author_name = :author "
+            "ORDER BY recommend_score DESC, sort_order ASC LIMIT :limit"
+        )
+        with self._engine.connect() as conn:
+            rows = conn.execute(
+                text(sql),
+                {"author": author_name, "limit": int(limit)},
+            ).fetchall()
+        return [dict(r._mapping) for r in rows]
+
+    def count_resources(self, skill: Optional[str] = None) -> int:
+        with self._engine.connect() as conn:
+            if skill:
+                row = conn.execute(
+                    text("SELECT COUNT(*) AS c FROM prep_resources WHERE skill = :s"),
+                    {"s": skill},
+                ).fetchone()
+            else:
+                row = conn.execute(
+                    text("SELECT COUNT(*) AS c FROM prep_resources")
+                ).fetchone()
+        return int(row[0])
+
+    def update_resource(self, resource_id: int, **kwargs: Any) -> bool:
+        if not kwargs:
+            return False
+        allowed = {
+            "title", "url", "method_summary", "source_status", "publish_date",
+            "duration_sec", "outdated_risk", "is_featured",
+            "recommend_score", "sort_order",
+            "related_action_url", "related_action_label",
+        }
+        sets = []
+        params: dict[str, Any] = {}
+        for k, v in kwargs.items():
+            if k in allowed and v is not None:
+                sets.append(f"{k} = :{k}")
+                params[k] = v
+        if not sets:
+            return False
+        sets.append("updated_at = :upd")
+        params["upd"] = datetime.now()
+        params["rid"] = int(resource_id)
+        sql = f"UPDATE prep_resources SET {', '.join(sets)} WHERE id = :rid"
+        with self._engine.begin() as conn:
+            res = conn.execute(text(sql), params)
+        return res.rowcount > 0
+
+    def delete_resource(self, resource_id: int) -> bool:
+        with self._engine.begin() as conn:
+            res = conn.execute(
+                text("DELETE FROM prep_resources WHERE id = :rid"),
+                {"rid": int(resource_id)},
+            )
+        return res.rowcount > 0
+
+    def list_distinct_ups(self) -> list[dict]:
+        with self._engine.connect() as conn:
+            rows = conn.execute(text(
+                "SELECT author_name, COUNT(*) AS cnt FROM prep_resources "
+                "GROUP BY author_name ORDER BY cnt DESC, author_name ASC"
+            )).fetchall()
+        return [{"author_name": r[0], "count": int(r[1])} for r in rows]
+
+
+class MySQLReadingPracticeRepository:
+    """MySQL 实现的 ReadingPracticeRepository(v3.8 新增)。"""
+
+    def __init__(self, engine: Engine) -> None:
+        self._engine = engine
+
+    def seed_passage(
+        self,
+        section: str,
+        set_id: int,
+        qid: int,
+        passage_number: int,
+        title: str,
+        topic: str,
+        question_type: str,
+        passage_text: str,
+        stem: str,
+        options: Optional[list[str]],
+        answer: str,
+        explanation: str,
+        word_count: int = 0,
+        source_line: Optional[int] = None,
+    ) -> int:
+        now = datetime.now()
+        opts_json = json.dumps(options, ensure_ascii=False) if options else None
+        with self._engine.begin() as conn:
+            try:
+                res = conn.execute(insert(t_reading_passages).values(
+                    section=section, set_id=set_id, qid=qid,
+                    passage_number=passage_number, title=title, topic=topic,
+                    question_type=question_type, word_count=word_count,
+                    passage_text=passage_text, stem=stem,
+                    options_json=opts_json, answer=answer,
+                    explanation=explanation, source_line=source_line,
+                    created_at=now, updated_at=now,
+                ))
+                return int(res.inserted_primary_key[0])
+            except IntegrityError:
+                conn.execute(
+                    update(t_reading_passages)
+                    .where(
+                        t_reading_passages.c.section == section,
+                        t_reading_passages.c.set_id == set_id,
+                        t_reading_passages.c.qid == qid,
+                    )
+                    .values(
+                        passage_number=passage_number, title=title, topic=topic,
+                        question_type=question_type, word_count=word_count,
+                        passage_text=passage_text, stem=stem,
+                        options_json=opts_json, answer=answer,
+                        explanation=explanation, source_line=source_line,
+                        updated_at=now,
+                    )
+                )
+                row = conn.execute(
+                    select(t_reading_passages.c.id)
+                    .where(
+                        t_reading_passages.c.section == section,
+                        t_reading_passages.c.set_id == set_id,
+                        t_reading_passages.c.qid == qid,
+                    )
+                ).fetchone()
+                return int(row[0]) if row else -1
+
+    def get_passage(self, question_id: int) -> Optional[dict]:
+        with self._engine.connect() as conn:
+            row = conn.execute(
+                select(t_reading_passages)
+                .where(t_reading_passages.c.id == int(question_id))
+            ).fetchone()
+        if row is None:
+            return None
+        d = dict(row._mapping)
+        if d.get("options_json"):
+            try:
+                d["options"] = json.loads(d["options_json"])
+            except Exception:
+                d["options"] = []
+        else:
+            d["options"] = None
+        return d
+
+    def list_sections_with_counts(self) -> list[dict]:
+        with self._engine.connect() as conn:
+            rows = conn.execute(text(
+                "SELECT section, COUNT(DISTINCT set_id) AS total_sets, "
+                "COUNT(*) AS total_passages FROM reading_passages "
+                "GROUP BY section ORDER BY section"
+            )).fetchall()
+        return [
+            {
+                "section": r[0],
+                "total_sets": int(r[1]),
+                "total_passages": int(r[2]),
+            }
+            for r in rows
+        ]
+
+    def list_sets_by_section(self, section: str) -> list[dict]:
+        with self._engine.connect() as conn:
+            rows = conn.execute(text(
+                "SELECT set_id, MIN(passage_number) AS first_passage, "
+                "COUNT(*) AS question_count, MIN(title) AS first_title, "
+                "MIN(topic) AS first_topic "
+                "FROM reading_passages WHERE section = :sec "
+                "GROUP BY set_id ORDER BY set_id"
+            ), {"sec": section}).fetchall()
+        return [
+            {
+                "set_id": int(r[0]),
+                "section": section,
+                "first_passage": int(r[1] or 1),
+                "question_count": int(r[2]),
+                "title": r[3] or "",
+                "topic": r[4] or "",
+            }
+            for r in rows
+        ]
+
+    def list_passages_by_set(self, section: str, set_id: int) -> list[dict]:
+        with self._engine.connect() as conn:
+            rows = conn.execute(
+                select(t_reading_passages)
+                .where(
+                    t_reading_passages.c.section == section,
+                    t_reading_passages.c.set_id == set_id,
+                )
+                .order_by(t_reading_passages.c.qid)
+            ).fetchall()
+        items = []
+        for row in rows:
+            d = dict(row._mapping)
+            if d.get("options_json"):
+                try:
+                    d["options"] = json.loads(d["options_json"])
+                except Exception:
+                    d["options"] = []
+            else:
+                d["options"] = None
+            items.append(d)
+        return items
+
+    def count_passages(self) -> int:
+        with self._engine.connect() as conn:
+            row = conn.execute(
+                text("SELECT COUNT(*) FROM reading_passages")
+            ).fetchone()
+        return int(row[0])
+
+    def record_attempt(
+        self,
+        user_id: int,
+        question_id: int,
+        user_answer: str,
+        is_correct: bool,
+        duration_sec: float = 0.0,
+    ) -> int:
+        with self._engine.begin() as conn:
+            res = conn.execute(insert(t_reading_attempts).values(
+                user_id=user_id, question_id=question_id,
+                user_answer=user_answer,
+                is_correct=1 if is_correct else 0,
+                duration_sec=duration_sec,
+                created_at=datetime.now(),
+            ))
+        return int(res.inserted_primary_key[0])
+
+    def list_user_attempts(
+        self,
+        user_id: int,
+        page: int = 1,
+        size: int = 20,
+        section: Optional[str] = None,
+    ) -> tuple[list[dict], int]:
+        where = ["a.user_id = :uid"]
+        params: dict[str, Any] = {"uid": user_id}
+        if section is not None:
+            where.append("p.section = :sec")
+            params["sec"] = section
+        where_sql = " AND ".join(where)
+        with self._engine.connect() as conn:
+            total = conn.execute(text(
+                f"SELECT COUNT(*) FROM reading_attempts a "
+                f"LEFT JOIN reading_passages p ON a.question_id = p.id "
+                f"WHERE {where_sql}"
+            ), params).scalar() or 0
+            rows = conn.execute(text(
+                f"""SELECT a.id, a.user_id, a.question_id, a.user_answer,
+                          a.is_correct, a.duration_sec, a.created_at,
+                          p.section AS section, p.set_id, p.qid,
+                          p.title, p.question_type
+                   FROM reading_attempts a
+                   LEFT JOIN reading_passages p ON a.question_id = p.id
+                   WHERE {where_sql}
+                   ORDER BY a.created_at DESC
+                   LIMIT :limit OFFSET :offset"""
+            ), {**params, "limit": int(size),
+                "offset": max(0, (page - 1) * size)}).fetchall()
+        return [dict(r._mapping) for r in rows], int(total)
+
+    def get_user_stats(self, user_id: int) -> dict:
+        with self._engine.connect() as conn:
+            total_row = conn.execute(text(
+                "SELECT COUNT(*) AS total, SUM(is_correct) AS correct "
+                "FROM reading_attempts WHERE user_id = :uid"
+            ), {"uid": user_id}).fetchone()
+            total = int(total_row[0] or 0)
+            correct = int(total_row[1] or 0)
+            by_rows = conn.execute(text(
+                "SELECT p.section, COUNT(*) AS attempts, "
+                "SUM(a.is_correct) AS correct "
+                "FROM reading_attempts a "
+                "LEFT JOIN reading_passages p ON a.question_id = p.id "
+                "WHERE a.user_id = :uid AND p.section IS NOT NULL "
+                "GROUP BY p.section ORDER BY p.section"
+            ), {"uid": user_id}).fetchall()
+        by_section = {}
+        for r in by_rows:
+            sec = r[0]
+            attempts = int(r[1])
+            c = int(r[2] or 0)
+            by_section[sec] = {
+                "attempts": attempts,
+                "correct": c,
+                "accuracy": round(c / attempts * 100, 1) if attempts > 0 else 0.0,
+            }
+        return {
+            "total_attempts": total,
+            "correct_count": correct,
+            "accuracy": round(correct / total * 100, 1) if total > 0 else 0.0,
+            "by_section": by_section,
+        }
+
+
 class MySQLRepositoryContainer:
-    """6 个 MySQL Repository 的容器。
+    """10 个 MySQL Repository 的容器(v3.8 新增 2 个)。
 
     与 SQLite 容器相比，MySQL 容器只持有一个 SQLAlchemy Engine：
     - 业务表（learning_records / personal_vocab / ...）和共享缓存表
@@ -2407,6 +2931,10 @@ class MySQLRepositoryContainer:
         self.speaking_practice = MySQLSpeakingPracticeRepository(self._engine)
         # v3.7 P2 真·听力题库仓储
         self.listening_practice = MySQLListeningPracticeRepository(self._engine)
+        # v3.8 P3.1 备考资源广场
+        self.prep_resource = MySQLPrepResourceRepository(self._engine)
+        # v3.8 P3.2 Reading 真题题库
+        self.reading_practice = MySQLReadingPracticeRepository(self._engine)
 
     def close(self) -> None:
         self._engine.dispose()
@@ -2432,6 +2960,8 @@ __all__ = [
     "MySQLUserRepository",
     "MySQLSpeakingPracticeRepository",
     "MySQLListeningPracticeRepository",
+    "MySQLPrepResourceRepository",
+    "MySQLReadingPracticeRepository",
     "MySQLRepositoryContainer",
     "create_mysql_repositories",
     "REVIEW_INTERVALS",

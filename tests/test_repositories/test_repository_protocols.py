@@ -250,6 +250,7 @@ class TestRepositoryContainerProtocol:
     REQUIRED_REPO_ATTRS = {
         "learning", "personal_vocab", "exam", "grade", "vocab_cache", "user",
         "speaking_practice", "listening_practice",
+        "prep_resource", "reading_practice",
     }
 
     def test_required_repo_attrs_in_annotations(self):
@@ -373,11 +374,12 @@ class TestProtocolConsistency:
             )
 
     def test_protocol_module_exports(self):
-        """__all__ 应包含 8 个 Protocol + 工具函数 + Container。"""
+        """__all__ 应包含 10 个 Protocol + 工具函数 + Container。"""
         expected = {
             "LearningRepository", "PersonalVocabRepository", "ExamRepository",
             "GradeRepository", "VocabCacheRepository", "UserRepository",
             "SpeakingPracticeRepository", "ListeningPracticeRepository",
+            "PrepResourceRepository", "ReadingPracticeRepository",
             "RepositoryContainer", "assert_repository_implements_protocol",
         }
         actual = set(r.__all__)
