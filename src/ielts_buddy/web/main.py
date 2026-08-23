@@ -44,6 +44,7 @@ from ielts_buddy.web.routers import report as report_routes
 from ielts_buddy.web.routers import articles as articles_routes
 from ielts_buddy.web.routers import typing as typing_routes
 from ielts_buddy.web.routers import pomodoro as pomodoro_routes
+from ielts_buddy.web.routers import calendar as calendar_routes
 
 # 模板目录 = 本文件所在目录/templates
 WEB_DIR = Path(__file__).resolve().parent
@@ -307,6 +308,8 @@ def create_app() -> FastAPI:
     app.include_router(typing_routes.api_router)
     app.include_router(pomodoro_routes.router)
     app.include_router(pomodoro_routes.api_router)
+    app.include_router(calendar_routes.router)
+    app.include_router(calendar_routes.api_router)
 
     return app
 
