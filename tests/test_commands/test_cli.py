@@ -56,36 +56,43 @@ class TestVocabRandom:
     """测试 vocab random 命令"""
 
     def test_random_default(self, runner: CliRunner):
-        result = runner.invoke(cli, ["vocab", "random"])
+        result = runner.invoke(cli, ["vocab", "random", "--no-learn"])
         assert result.exit_code == 0
         assert "随机单词" in result.output
 
     def test_random_count(self, runner: CliRunner):
-        result = runner.invoke(cli, ["vocab", "random", "-n", "3"])
+        # --no-learn 走纯展示路径，不依赖登录态
+        result = runner.invoke(cli, ["vocab", "random", "-n", "3", "--no-learn"])
         assert result.exit_code == 0
         assert "共 3 个" in result.output
 
     def test_random_band5(self, runner: CliRunner):
-        result = runner.invoke(cli, ["vocab", "random", "-n", "2", "-b", "5"])
+        result = runner.invoke(cli, ["vocab", "random", "-n", "2", "-b", "5", "--no-learn"])
         assert result.exit_code == 0
 
     def test_random_band6(self, runner: CliRunner):
-        result = runner.invoke(cli, ["vocab", "random", "-n", "2", "-b", "6"])
+        result = runner.invoke(cli, ["vocab", "random", "-n", "2", "-b", "6", "--no-learn"])
         assert result.exit_code == 0
 
     def test_random_band7(self, runner: CliRunner):
-        result = runner.invoke(cli, ["vocab", "random", "-n", "2", "-b", "7"])
+        result = runner.invoke(cli, ["vocab", "random", "-n", "2", "-b", "7", "--no-learn"])
         assert result.exit_code == 0
 
     def test_random_zero_count(self, runner: CliRunner):
-        result = runner.invoke(cli, ["vocab", "random", "-n", "0"])
+        result = runner.invoke(cli, ["vocab", "random", "-n", "0", "--no-learn"])
         assert result.exit_code == 0
         assert "没有找到匹配的单词" in result.output
 
     def test_random_unsupported_band(self, runner: CliRunner):
-        result = runner.invoke(cli, ["vocab", "random", "-b", "4"])
+        result = runner.invoke(cli, ["vocab", "random", "-b", "4", "--no-learn"])
         assert result.exit_code == 0
         assert "没有找到匹配的单词" in result.output
+
+    def test_random_no_learn_requires_login(self, runner: CliRunner):
+        """不传 --no-learn 又没登录时应提示登录。"""
+        result = runner.invoke(cli, ["vocab", "random", "-n", "1"])
+        assert result.exit_code == 0
+        assert "未登录" in result.output
 
 
 class TestVocabQuiz:
@@ -251,12 +258,12 @@ class TestVocabRandomBand8and9:
     """测试 Band 8/9 词库随机"""
 
     def test_random_band8(self, runner: CliRunner):
-        result = runner.invoke(cli, ["vocab", "random", "-n", "2", "-b", "8"])
+        result = runner.invoke(cli, ["vocab", "random", "-n", "2", "-b", "8", "--no-learn"])
         assert result.exit_code == 0
         assert "随机单词" in result.output
 
     def test_random_band9(self, runner: CliRunner):
-        result = runner.invoke(cli, ["vocab", "random", "-n", "2", "-b", "9"])
+        result = runner.invoke(cli, ["vocab", "random", "-n", "2", "-b", "9", "--no-learn"])
         assert result.exit_code == 0
         assert "随机单词" in result.output
 

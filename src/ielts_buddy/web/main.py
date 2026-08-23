@@ -62,42 +62,54 @@ def _build_templates() -> Jinja2Templates:
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """启动时：开业务仓库容器（学习记录/个人词库/题库等）+ web_user_repo；关闭时关。
+    """v3 启动：MySQL 主存 + SQLite 自动降级。
 
-    关键设计：**web_user_repo 与业务数据共用同一个存储引擎**，避免账号/数据分叉
-    导致"重启丢失账号"或"账号存在但看不到业务数据"。
-
-    - online (MySQL)：web_users 与 learning_records / personal_vocab / exam_results
-      都在同一 MySQL 实例的同一 engine 下，事务一致。
-    - sqlite：web_users 与业务表都在 ``~/.ielts-buddy/web_data.db`` 同一个文件下。
+    - 测试覆盖：如果 app.state.container 已被 conftest 注入，跳过
+    - 默认行为：按 ``IELTS_BUDDY_WEB_DB_MODE`` 配置选择 prefer_mode
+      - online（默认）：尝试连 MySQL；不通则降级到 SQLite
+      - sqlite：强制本地 SQLite，不创建 MySQL container
+    - web_user_repo：随当前 backend 切换（online 用 MySQLWebUserRepository，
+      fallback 用 SQLiteWebUserRepository）
     """
     # 测试覆盖：如果 app.state.container 已被 conftest 注入，跳过
     if getattr(app.state, "container", None) is None:
-        if web_config.WEB_DB_MODE == "online":
-            # MySQL 模式：使用远程数据库永久存储
-            from ielts_buddy.repositories.mysql_repo import (
-                create_mysql_repositories,
-            )
-            container = create_mysql_repositories(
-                connection_url=web_config.WEB_DB_URL or None
-            )
-            app.state.container = container
-        else:
-            # SQLite 模式：使用本地文件存储
-            web_db = Path(web_config.get_web_db_path())
-            # 父目录不存在则创建（生产部署通常是空挂载）
-            web_db.parent.mkdir(parents=True, exist_ok=True)
-            app.state.container = create_repositories(
-                mode="local", db_path=web_db
-            )
+        from ielts_buddy.repositories.fallback_repo import create_fallback_container
 
-    # 关键：用业务容器同一份 engine 构造 web_user_repo，避免账号与数据分叉
+        sqlite_path = Path(web_config.get_web_db_path())
+        prefer_mode = (
+            "sqlite" if web_config.WEB_DB_MODE == "sqlite"
+            else "online"
+        )
+        app.state.container = create_fallback_container(
+            sqlite_db_path=sqlite_path,
+            mysql_url=web_config.WEB_DB_URL,
+            prefer_mode=prefer_mode,
+        )
+
+    # web_user_repo：复用当前 backend 的连接
     if getattr(app.state, "web_user_repo", None) is None:
         app.state.web_user_repo = _open_default_user_repo()
+
+    # 启动后台同步任务（v3）
+    if getattr(app.state, "sync_worker", None) is None:
+        from ielts_buddy.services.sync import start_sync_worker
+        interval = int(os.environ.get("IELTS_BUDDY_SYNC_INTERVAL_SEC", "30"))
+        app.state.sync_worker = start_sync_worker(
+            container=app.state.container,
+            interval_seconds=interval,
+        )
 
     try:
         yield
     finally:
+        # 停同步
+        worker = getattr(app.state, "sync_worker", None)
+        if worker is not None:
+            try:
+                worker.stop()
+            except Exception:
+                pass
+            app.state.sync_worker = None
         # web_user_repo 关
         repo = getattr(app.state, "web_user_repo", None)
         if repo is not None:
@@ -117,44 +129,38 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 def _open_default_user_repo():
-    """web_user_repo：与业务数据共享同一存储连接。
+    """v3 web_user_repo：跟随当前 backend 切换。
 
-    关键：无论 MySQL 还是 SQLite 模式，web_user_repo 都复用业务容器已
-    创建好的连接（MySQL engine / SQLite conn），而不是再单独创建一份。
-
-    带来的好处：
-    1. web_users 与业务表在同一个物理实例/文件中，账号与数据一致。
-    2. 重启服务不会丢失账号（之前测试脚本误删 db 才是真因）。
-    3. 测试时 conftest 注入 container 后，本函数自动复用。
-
-    注意：SQLite 模式下，业务容器已经打开了 ``web_data.db`` 的连接，
-    并创建了业务表的 schema；这里再 ``executescript(_WEB_USERS_SCHEMA)``
-    追加 web_users 表。两者共享同一 conn。
+    - 如果容器是 FallbackContainer 且当前模式 online → MySQLWebUserRepository
+    - 如果是 FallbackContainer 但模式 fallback → SQLiteWebUserRepository（共用 conn）
+    - 老代码兼容：直接是 SQLiteRepositoryContainer / MySQLRepositoryContainer
     """
-    if web_config.WEB_DB_MODE == "online":
-        # MySQL 模式：复用业务容器的 engine
-        from ielts_buddy.web.auth.repository import MySQLWebUserRepository
-        container = getattr(app.state, "container", None)
-        if container is None:
-            from ielts_buddy.repositories.mysql_repo import create_mysql_repositories
-            container = create_mysql_repositories(
-                connection_url=web_config.WEB_DB_URL or None
-            )
-            app.state.container = container
-        return MySQLWebUserRepository(container._engine)
-    else:
-        # SQLite 模式：复用业务容器的 conn（不是再开一个）
-        from ielts_buddy.web.auth.repository import SQLiteWebUserRepository
-        from ielts_buddy.web.auth.repository import _SCHEMA as _WEB_USERS_SCHEMA
-        container = getattr(app.state, "container", None)
-        if container is not None and getattr(container, "_conn", None) is not None:
-            # 共用业务 conn：web_users 表 schema 直接挂在业务库里
-            return SQLiteWebUserRepository(container._conn)
-        # 兜底：业务 container 未注入（如 conftest 走了别的路径）
+    from ielts_buddy.web.auth.repository import (
+        MySQLWebUserRepository, SQLiteWebUserRepository,
+    )
+
+    container = getattr(app.state, "container", None)
+    if container is None:
         from pathlib import Path
         db_path = Path(web_config.get_web_db_path())
         db_path.parent.mkdir(parents=True, exist_ok=True)
         return create_sqlite_web_user_repository(str(db_path))
+
+    # FallbackContainer：看 current_mode 决定走哪个 web_user_repo 实现
+    if hasattr(container, "current_mode") and hasattr(container, "online"):
+        if container.current_mode == "online" and container.online is not None:
+            return MySQLWebUserRepository(container.online._engine)
+        # fallback 模式：复用 SQLite container 的 conn（与业务表同 db）
+        sqlite_conn = getattr(container.offline, "_conn", None)
+        if sqlite_conn is not None:
+            return SQLiteWebUserRepository(sqlite_conn)
+
+    # 直接是 MySQLRepositoryContainer（兼容老测试）
+    if hasattr(container, "_engine"):
+        return MySQLWebUserRepository(container._engine)
+    if hasattr(container, "_conn"):
+        return SQLiteWebUserRepository(container._conn)
+    raise RuntimeError("无法根据 container 决定 web_user_repo 类型")
 
 
 def create_app() -> FastAPI:
@@ -184,13 +190,42 @@ def create_app() -> FastAPI:
 
     @app.get("/healthz", response_class=JSONResponse)
     async def healthz() -> dict[str, Any]:
-        """健康检查：返回服务名与版本。"""
-        return {
+        """健康检查：服务名 + 版本 + DB backend 状态 + 同步状态。"""
+        result: dict[str, Any] = {
             "status": "ok",
             "app": "ielts-buddy-web",
             "version": app.version,
-            "db_mode": web_config.WEB_DB_MODE,
+            "prefer_mode": web_config.WEB_DB_MODE,
         }
+
+        container = getattr(app.state, "container", None)
+        if container is not None and hasattr(container, "current_mode"):
+            result["db_mode"] = container.current_mode
+            result["mysql_reachable"] = container.mysql_reachable
+            # 同步状态
+            try:
+                sqlite_conn = container.offline._conn
+                cur = sqlite_conn.execute(
+                    "SELECT last_pull_at, last_push_at, last_error, last_error_at "
+                    "FROM sync_meta WHERE id=1"
+                )
+                row = cur.fetchone()
+                if row:
+                    result["sync"] = {
+                        "last_pull_at": row[0],
+                        "last_push_at": row[1],
+                        "last_error": row[2],
+                        "last_error_at": row[3],
+                    }
+                # pending_upload 计数
+                cur = sqlite_conn.execute(
+                    "SELECT COUNT(*) FROM personal_vocab "
+                    "WHERE sync_status='pending_upload'"
+                )
+                result["pending_upload_personal_vocab"] = cur.fetchone()[0]
+            except Exception as e:
+                result["sync_meta_error"] = str(e)
+        return result
 
     @app.get("/", response_class=HTMLResponse)
     async def index(request: Request) -> HTMLResponse:

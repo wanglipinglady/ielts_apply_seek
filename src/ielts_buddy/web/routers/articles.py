@@ -32,6 +32,7 @@ from ielts_buddy.services.vocab_service import VocabService
 from ielts_buddy.web.auth.deps import get_current_user, get_current_user_optional
 from ielts_buddy.web.auth.repository import WebUser
 from ielts_buddy.web.llm_service import get_llm_service
+from ielts_buddy.web.routers.lookup import resolve_word_metadata
 from ielts_buddy.web.services import get_vocab_service
 
 
@@ -154,6 +155,9 @@ def _auto_detect_diff_words(
 ) -> list[ArticleWord]:
     """自动识别生词：内置词库命中 + band 过滤 + 去重 + 用户额外追加。
 
+    注意：此函数仅做同步的内置词库查表 O(N)；
+    用户手动追加的词在 ``_auto_detect_diff_words_async`` 里**异步**走三层 fallback。
+
     Returns:
         ArticleWord 列表（auto_marked=True），每个词带 band/meaning/phonetic。
     """
@@ -179,7 +183,7 @@ def _auto_detect_diff_words(
                 analysis_source="builtin",
             ))
 
-    # 2) 用户手动追加的词（即使 band 低也标记）
+    # 2) 用户手动追加的词（占位记录；释义/音标/词性在 async 阶段补全）
     for extra in extra_words:
         e = extra.strip().lower()
         if not e or e in seen:
@@ -194,9 +198,46 @@ def _auto_detect_diff_words(
             band=db_word.band if db_word else None,
             context_sentence=_extract_context_sentence(text, e),
             auto_marked=False,  # 用户手动追加
-            analysis_source="builtin" if db_word else "fallback",
+            analysis_source="builtin" if db_word else "pending_lookup",
         ))
 
+    return diff_words
+
+
+async def _enrich_user_added_words(
+    diff_words: list[ArticleWord],
+    vocab: VocabService,
+) -> list[ArticleWord]:
+    """对用户手动追加的词（``analysis_source='pending_lookup'``）走三层 fallback 补全。
+
+    复用 ``resolve_word_metadata()``：内置词库 → 词典 API + MyMemory → LLM。
+    不阻塞主流程：手动追加的词不多（≤ 几十个），并行 fallback 调用是合理的。
+    如果某个词三层都没拿到意义，仍以空字段返回，由用户在 UI 看到并手动补充。
+    """
+    pending = [dw for dw in diff_words if dw.analysis_source == "pending_lookup"]
+    if not pending:
+        return diff_words
+
+    metas = await asyncio.gather(
+        *(resolve_word_metadata(dw.word, vocab) for dw in pending)
+    )
+
+    by_word = {dw.word: dw for dw in pending}
+    for meta in metas:
+        w = meta.get("word", "").strip().lower()
+        if not w or w not in by_word:
+            continue
+        dw = by_word[w]
+        # 用户填的字段优先；fallback 只填空字段
+        if not dw.phonetic and meta.get("phonetic"):
+            dw.phonetic = meta["phonetic"]
+        if not dw.pos and meta.get("pos"):
+            dw.pos = meta["pos"]
+        if not dw.meaning_cn:
+            dw.meaning_cn = meta.get("meaning_cn") or meta.get("meaning_en") or ""
+        if dw.band is None and meta.get("band") is not None:
+            dw.band = meta["band"]
+        dw.analysis_source = meta.get("source") or "fallback"
     return diff_words
 
 
@@ -318,6 +359,10 @@ async def api_translate_article(
 
     # 1) 自动识别生词（同步，O(N)）
     diff_words = _auto_detect_diff_words(text, vocab, body.min_band, body.extra_words)
+
+    # 1.5) 用户手动追加的词走三层 fallback 补全（异步）
+    #     —— 复用 resolve_word_metadata()：内置词库 → 词典 API + MyMemory → LLM
+    diff_words = await _enrich_user_added_words(diff_words, vocab)
 
     # 2) 并行：LLM 翻译 + LLM 生词分析（两次独立调用）
     llm = get_llm_service()

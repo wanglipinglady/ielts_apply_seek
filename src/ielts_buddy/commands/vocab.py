@@ -11,6 +11,9 @@ from rich.panel import Panel
 from rich.table import Table
 
 from ielts_buddy.core.models import PersonalWord
+from ielts_buddy.core.config import Config, get_mode
+from ielts_buddy.repositories import create_repositories
+from ielts_buddy.services.auth_service import AuthService, NotLoggedInError
 from ielts_buddy.services.personal_vocab_service import PersonalVocabService
 from ielts_buddy.services.review_service import ReviewService
 from ielts_buddy.services.vocab_service import VocabService
@@ -46,15 +49,53 @@ def vocab():
 @vocab.command()
 @click.option("-n", "--count", default=5, help="抽取数量", show_default=True)
 @click.option("-b", "--band", type=int, default=None, help="按 band 等级筛选 (5-9)")
+@click.option(
+    "--learn/--no-learn",
+    "record_learn_flag",
+    default=True,
+    help="是否按 web 学习模式（认识/不认识 + 艾宾浩斯记录）。默认开启；--no-learn 仅展示。",
+    show_default=True,
+)
 @_source_option
-def random(count: int, band: int | None, source: str):
-    """随机抽取单词"""
+def random(count: int, band: int | None, source: str, record_learn_flag: bool):
+    """随机抽取单词（对齐 web /study/random：可标记认识/不认识并记录到复习曲线）"""
     svc = _load_vocab(source)
 
-    words = svc.random_words(count, band)
-    if not words:
+    # ---- 登录态校验（仅在需要写记录时） ----
+    user_id: int | None = None
+    if record_learn_flag:
+        try:
+            auth = AuthService()
+            try:
+                user_id = auth.get_current_user_id()
+                if user_id is None:
+                    raise NotLoggedInError("未登录")
+            finally:
+                auth.close()
+        except NotLoggedInError:
+            console.print(
+                "[red]当前未登录，无法记录学习结果。[/red]\n"
+                "请先执行：[bold cyan]ib login <用户名>[/bold cyan]"
+            )
+            return
+
+    # ---- 抽样（尽量避开已学过的词；不足时回退到全量） ----
+    candidates = svc.random_words(count, band)
+    if not candidates:
         console.print("[yellow]没有找到匹配的单词。[/yellow]")
         return
+
+    if record_learn_flag and user_id is not None:
+        try:
+            container = create_repositories(mode=get_mode(Config()))
+            learned = set(container.learning.get_learned_words(user_id))
+            unseen = [w for w in candidates if w.word not in learned]
+            container.close()
+            words = unseen if unseen else candidates
+        except Exception:
+            words = candidates
+    else:
+        words = candidates
 
     source_label = "大词库" if source == "master" else "精选"
     table = Table(title=f"随机单词 (共 {len(words)} 个) [{source_label}]", show_lines=True)
@@ -70,23 +111,124 @@ def random(count: int, band: int | None, source: str):
 
     console.print(table)
 
-    # 显示详情
-    for w in words:
-        parts = []
-        parts.append(f"[bold cyan]{w.word}[/bold cyan]  {w.phonetic}  [green]{w.pos}[/green]")
-        parts.append(f"[yellow]{w.meaning}[/yellow]")
-        if w.example:
-            parts.append(f"\n[italic]例: {w.example}[/italic]")
-            if w.example_cn:
-                parts.append(f"[dim]    {w.example_cn}[/dim]")
-        if w.collocations:
-            parts.append(f"\n搭配: {', '.join(w.collocations)}")
-        if w.synonyms:
-            parts.append(f"同义: {', '.join(w.synonyms)}")
-        if w.etymology:
-            parts.append(f"词源: {w.etymology}")
+    # ---- 仅展示模式（--no-record）：保持原有行为 ----
+    if not record_learn_flag:
+        for w in words:
+            parts = []
+            parts.append(f"[bold cyan]{w.word}[/bold cyan]  {w.phonetic}  [green]{w.pos}[/green]")
+            parts.append(f"[yellow]{w.meaning}[/yellow]")
+            if w.example:
+                parts.append(f"\n[italic]例: {w.example}[/italic]")
+                if w.example_cn:
+                    parts.append(f"[dim]    {w.example_cn}[/dim]")
+            if w.collocations:
+                parts.append(f"\n搭配: {', '.join(w.collocations)}")
+            if w.synonyms:
+                parts.append(f"同义: {', '.join(w.synonyms)}")
+            if w.etymology:
+                parts.append(f"词源: {w.etymology}")
 
-        console.print(Panel("\n".join(parts), border_style="blue"))
+            console.print(Panel("\n".join(parts), border_style="blue"))
+        return
+
+    # ---- 学习模式：逐词询问 认识/不认识，写入复习曲线 ----
+    review = ReviewService(user_id=user_id)
+    try:
+        due_count_fn = review.get_due_count
+        initial_due = due_count_fn()
+    except Exception:
+        initial_due = None
+
+    console.print(
+        f"\n[bold]随机学习[/bold]  共 {len(words)} 个  "
+        f"[dim]y=认识  n=不认识  s=跳过(不记录)  q=退出[/dim]\n"
+    )
+
+    known = 0
+    unknown = 0
+    skipped = 0
+    answered = 0
+    total = len(words)
+
+    try:
+        for i, w in enumerate(words, 1):
+            console.print(
+                f"[bold cyan]({i}/{total}) {w.word}[/bold cyan]  "
+                f"{w.phonetic}  [green]{w.pos}[/green]"
+            )
+            console.print(f"  释义: [yellow]{w.meaning}[/yellow]")
+            if w.example:
+                console.print(f"  [italic]例: {w.example}[/italic]")
+            if w.collocations:
+                console.print(f"  搭配: [dim]{', '.join(w.collocations)}[/dim]")
+
+            try:
+                answer = input("  认识吗？[bold](Y/n/s/q)[/bold]: ").strip().lower()
+            except EOFError:
+                console.print("\n[dim]已中断[/dim]")
+                break
+
+            if answer in ("q", "quit"):
+                console.print("[dim]已退出本次学习。[/dim]")
+                break
+            if answer in ("s", "skip"):
+                skipped += 1
+                console.print("  [dim]跳过，未记录[/dim]\n")
+                continue
+
+            # 默认（空 / y / yes）= 认识；其他 = 不认识
+            is_correct = answer in ("", "y", "yes")
+
+            try:
+                review.record_learn(w, is_correct, source="cli_random")
+            except Exception as e:  # noqa: BLE001 - 记录失败仅提示，不中断流程
+                console.print(f"  [red]记录失败：{e}[/red]")
+                continue
+
+            answered += 1
+            if is_correct:
+                known += 1
+                console.print("  [green]✓ 已记录为 认识[/green]\n")
+            else:
+                unknown += 1
+                console.print(
+                    "  [red]✗ 已记录为 不认识[/red]  "
+                    "[dim]→ 进入待复习（艾宾浩斯曲线）[/dim]\n"
+                )
+    except KeyboardInterrupt:
+        console.print("\n[dim]学习中断[/dim]")
+
+    review.close()
+
+    # ---- 完成总结 ----
+    console.print(
+        f"\n[bold]本次学习总结[/bold]  "
+        f"回答 {answered} 个  "
+        f"[green]认识 {known}[/green]  "
+        f"[red]不认识 {unknown}[/red]  "
+        f"[dim]跳过 {skipped}[/dim]"
+    )
+    try:
+        review2 = ReviewService(user_id=user_id)
+        try:
+            new_due = review2.get_due_count()
+            if initial_due is not None:
+                delta = new_due - initial_due
+                if delta > 0:
+                    console.print(
+                        f"[dim]待复习 +{delta}（当前共 {new_due} 个待复习）[/dim]"
+                    )
+                else:
+                    console.print(f"[dim]当前共 {new_due} 个待复习[/dim]")
+        finally:
+            review2.close()
+    except Exception:
+        pass
+
+    console.print(
+        "[dim]提示：学习记录将在 ~30s 后自动同步到 web 端，"
+        "届时可在仪表盘的『今日新学』『今日复习』中看到。[/dim]"
+    )
 
 
 @vocab.command()

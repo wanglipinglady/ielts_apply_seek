@@ -11,11 +11,13 @@ GET /api/lookup/word?word=xxx
 2. MyMemory 翻译失败/低质量（quality<0.5）→ 仍用英文释义，让用户手填
 3. LLM 第三层只在"词典 API 也查不到"时触发
 4. dry-run 模式下 LLM 返回 mock 占位符
+5. ``resolve_word_metadata()`` 是核心 helper，
+   既给 ``/api/lookup/word`` 用，也给 ``/api/personal/words/batch`` 批量加入时用
 """
 from __future__ import annotations
 
 import asyncio
-from typing import Annotated, Optional
+from typing import Annotated, Any, Optional
 
 from fastapi import APIRouter, Depends, Query
 
@@ -67,7 +69,7 @@ async def _maybe_convert_to_dj(
 ) -> str:
     """异步调用 LLM 把 IPA 转 DJ 音标；无 key/失败时返回空字符串。
 
-    返回空字符串让上层 fallback 到原 IPA（不阻塞）。
+    返回空字符串让上层 fallback 到原 IPA（不阻塞主流程）。
     只在输入是 IPA 时才转写；已是 DJ 时直接跳过。
     """
     if not ipa_phonetic or phonetic_system != "ipa":
@@ -84,25 +86,18 @@ async def _maybe_convert_to_dj(
         return ""
 
 
-@api_router.get("/word")
-async def api_lookup_word(
-    word: Annotated[str, Query(min_length=1, max_length=100)],
-    vocab: Annotated[VocabService, Depends(get_vocab_service)],
-) -> dict:
-    """联网查单词：内置词库 → 词典 API + MyMemory 翻译 → LLM 三层 fallback。
+async def resolve_word_metadata(
+    word: str, vocab: VocabService
+) -> dict[str, Any]:
+    """三层 fallback 查词元数据（内置词库 → 词典 API → LLM）。
+
+    返回结构与 ``/api/lookup/word`` 完全一致，但作为 helper 给其他路由复用
+    （如 ``POST /api/personal/words/batch`` 批量加入时也走相同链路补全释义）。
 
     返回字段：
-    - word: 查询的单词
-    - phonetic: 音标
-    - pos: 词性
-    - meaning_cn: 中文释义
-    - meaning_en: 英文释义
-    - example: 例句
-    - example_cn: 例句中文
-    - band: 词库 band（内置词库命中才有）
-    - topic: 主题（内置词库命中才有）
-    - source: builtin / dictionary_api / llm / mock / none
-    - confidence: high / medium / low
+    - word / phonetic / phonetic_system / phonetic_region
+    - pos / meaning_cn / meaning_en / example / example_cn
+    - band / topic / source / confidence
     """
     word_clean = word.strip()
     if not word_clean:
@@ -194,4 +189,16 @@ async def api_lookup_word(
     }
 
 
-__all__ = ["api_router"]
+@api_router.get("/word")
+async def api_lookup_word(
+    word: Annotated[str, Query(min_length=1, max_length=100)],
+    vocab: Annotated[VocabService, Depends(get_vocab_service)],
+) -> dict:
+    """联网查单词：内置词库 → 词典 API + MyMemory 翻译 → LLM 三层 fallback。
+
+    返回字段：见 ``resolve_word_metadata()``。
+    """
+    return await resolve_word_metadata(word, vocab)
+
+
+__all__ = ["api_router", "resolve_word_metadata"]

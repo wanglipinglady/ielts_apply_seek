@@ -26,16 +26,29 @@ SET time_zone = '+08:00';
 SET FOREIGN_KEY_CHECKS = 0;
 
 -- =============================================================
--- 1. users（联网模式用户表）
+-- 1. users（统一用户表 — CLI 与 Web 共享同一身份）
 -- =============================================================
+-- v3 改造：
+--   - CLI 与 Web 共用一张 users 表，通过 username 唯一标识一个人
+--   - email/password_hash 仅 Web 注册时填写（CLI 登录为 NULL）
+--   - 保留原 id 不变以兼容老外键引用
 CREATE TABLE IF NOT EXISTS users (
     id              BIGINT          NOT NULL AUTO_INCREMENT,
     username        VARCHAR(64)     NOT NULL,
+    email           VARCHAR(255)    NULL,
+    password_hash   VARCHAR(255)    NULL,
+    display_name    VARCHAR(64)     NULL,
     created_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
     last_login_at   DATETIME        NULL,
     PRIMARY KEY (id),
-    UNIQUE KEY uk_users_username (username)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='联网模式用户表';
+    UNIQUE KEY uk_users_username (username),
+    UNIQUE KEY uk_users_email (email)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='统一用户表（CLI + Web 共用）';
+
+-- 老 users 表无 email/password_hash 列 → 补齐（幂等）
+-- 使用存储过程式条件判断的简化版：MySQL 8.0 接受 IF NOT EXISTS 风格需通过 INFORMATION_SCHEMA
+-- 这里手工检测：若列不存在则 ALTER（脚本手动跑过一次的标记）
+-- 由于 SQL 脚本无控制流，下面由 Python 迁移脚本负责 ALTER。
 
 -- =============================================================
 -- 2. learning_records（艾宾浩斯复习核心表）
@@ -175,10 +188,13 @@ CREATE TABLE IF NOT EXISTS cache_meta (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='缓存元数据';
 
 -- =============================================================
--- 10. web_users（Web 端独立账号体系）
+-- 10. web_users（已迁移账户的历史表 — 保留以防外键回查）
 -- -------------------------------------------------------------
--- 与 CLI 的 users 表物理隔离：web_users.id 与 users.id 互不干扰
--- 用 bcrypt 哈希（password_hash），邮箱唯一约束
+-- v3 改造：
+--   - 合并到 users 表后，web_users 仅作为"已迁移历史"标记保留
+--   - 加 is_migrated 列：1=已合并到 users，0=未合并（兼容老数据）
+--   - 加 users_id 列：指向合并后的 users.id，方便回查
+--   - 不再接受新写入（新用户走 users.email）
 -- =============================================================
 CREATE TABLE IF NOT EXISTS web_users (
     id              BIGINT          NOT NULL AUTO_INCREMENT,
@@ -186,9 +202,26 @@ CREATE TABLE IF NOT EXISTS web_users (
     password_hash   VARCHAR(255)    NOT NULL,
     created_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
     last_login_at   DATETIME        NULL,
+    is_migrated     TINYINT(1)      NOT NULL DEFAULT 0,
+    users_id        BIGINT          NULL,
     PRIMARY KEY (id),
-    UNIQUE KEY uk_web_users_email (email)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Web 端用户表（与 CLI users 表隔离）';
+    UNIQUE KEY uk_web_users_email (email),
+    KEY idx_web_users_migrated (is_migrated, users_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Web 端老账号历史表（v3 起合并到 users）';
+
+-- =============================================================
+-- 10.5 user_id_mapping（web_users.id ↔ users.id 显式映射表）
+-- -------------------------------------------------------------
+-- v3 改造：迁移期使用的双向映射，方便 sync worker 跨身份回查
+-- 后续 web_users 表废弃后，此表也只读
+-- =============================================================
+CREATE TABLE IF NOT EXISTS user_id_mapping (
+    web_user_id     BIGINT          NOT NULL,
+    users_id        BIGINT          NOT NULL,
+    created_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (web_user_id),
+    KEY idx_uim_users (users_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='web_users.id ↔ users.id 映射';
 
 -- =============================================================
 -- 11. 初始化数据

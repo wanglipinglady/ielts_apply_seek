@@ -26,6 +26,7 @@ from ielts_buddy.repositories import SQLiteRepositoryContainer
 from ielts_buddy.services.vocab_service import VocabService
 from ielts_buddy.web.auth.deps import get_current_user, get_current_user_optional
 from ielts_buddy.web.auth.repository import WebUser
+from ielts_buddy.web.routers.lookup import resolve_word_metadata
 from ielts_buddy.web.services import get_container, get_vocab_service
 
 
@@ -490,7 +491,7 @@ def api_export_words(
 
 
 @api_router.post("/words/batch")
-def api_add_words_batch(
+async def api_add_words_batch(
     request: Request,
     user: Annotated[WebUser, Depends(get_current_user)],
     body: BatchWordAdd,
@@ -501,9 +502,13 @@ def api_add_words_batch(
     流程：
     1. 遍历 body.words（每个是 ArticleWord dict）
     2. 优先用 dict 自带的 phonetic/meaning/pos/band 等；
-       缺失字段回落到 VocabService 查内置词库
+       缺失字段走三层 fallback 补全（内置词库 → 词典 API + MyMemory → LLM）
+       —— 即 ``resolve_word_metadata()``，与 ``/api/lookup/word`` 同源
     3. 个人词库已存在 → skip_existing=True 时跳过；否则报错
     4. 返回 {added: [...], skipped: [...], failed: [...]}
+
+    注：如果三层 fallback 仍拿不到 meaning（极端情况：所有源都失败），
+    该词进 failed 并返回 reason='无法补全 meaning'，不会写空释义进库。
     """
     container = _get_container(request)
     if container is None:
@@ -519,17 +524,29 @@ def api_add_words_batch(
             failed.append({"word": "", "reason": "empty word"})
             continue
 
-        # 优先级：dict 字段 > 内置词库补全
-        db_word = vocab.get_word(word_text)
         try:
-            meaning = w.get("meaning_cn") or (db_word.meaning if db_word else "")
-            phonetic = w.get("phonetic") or (db_word.phonetic if db_word else "")
-            pos = w.get("pos") or (db_word.pos if db_word else "")
+            # 走三层 fallback 补全释义/音标/词性
+            meta = await resolve_word_metadata(word_text, vocab)
+            meaning = w.get("meaning_cn") or meta.get("meaning_cn") or meta.get("meaning_en") or ""
+            phonetic = w.get("phonetic") or meta.get("phonetic") or ""
+            pos = w.get("pos") or meta.get("pos") or ""
             band = w.get("band")
-            if band is None and db_word is not None:
-                band = db_word.band
+            if band is None and meta.get("band") is not None:
+                band = meta["band"]
             if band is None:
                 band = 5
+
+            # 三层 fallback + 用户 context 全空 → 不入库（避免空释义污染）
+            if not meaning:
+                failed.append({
+                    "word": word_text,
+                    "reason": (
+                        f"无法补全 meaning（内置词库/词典 API/LLM 均未命中，"
+                        f"source={meta.get('source')}）"
+                    ),
+                })
+                continue
+
             # 把同义/反义信息塞进 note，方便后续查看
             note_parts = []
             if w.get("synonyms"):
@@ -550,9 +567,9 @@ def api_add_words_batch(
                 meaning=meaning,
                 pos=pos,
                 band=band,
-                topic=db_word.topic if db_word else "",
-                example=db_word.example if db_word else "",
-                example_cn=db_word.example_cn if db_word else "",
+                topic=meta.get("topic") or "",
+                example=meta.get("example") or "",
+                example_cn=meta.get("example_cn") or "",
                 note=note,
                 source="article",
             )

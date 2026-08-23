@@ -100,8 +100,17 @@ def get_stats_service(
     ``user_id`` 由路由层在拿到可选 user 后注入。
     """
     # 拿不到 user 时 user_id=0 表示"无数据"，路由层会先判 None → 跳登录
-    # _conn 是 SQLite，_engine 是 MySQL，两者至少有一个
-    conn = getattr(container, "_conn", None) or getattr(container, "_engine", None)
+    # v3：FallbackContainer 是双 backend 抽象，没有直接的 _conn/_engine；
+    #     通过 ``.offline`` (SQLite) 或 ``.online`` (MySQL) 拿到真实连接
+    if hasattr(container, "offline") and hasattr(container, "online"):
+        # FallbackContainer
+        if container.current_mode == "online" and container.online is not None:
+            conn = container.online._engine
+        else:
+            conn = container.offline._conn
+    else:
+        # 老接口兼容：直接是 SQLiteRepositoryContainer / MySQLRepositoryContainer
+        conn = getattr(container, "_conn", None) or getattr(container, "_engine", None)
     if conn is None:
         raise RuntimeError(
             "业务容器既无 _conn 也无 _engine，请检查 repositories 工厂实现"

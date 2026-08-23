@@ -17,6 +17,7 @@ from ielts_buddy.commands.report import report
 from ielts_buddy.commands.speak import speak
 from ielts_buddy.commands.stats import stats
 from ielts_buddy.commands.sync import sync
+from ielts_buddy.commands.db_status import db_status
 from ielts_buddy.commands.vocab import vocab
 from ielts_buddy.commands.write import write
 from ielts_buddy.commands.course import course
@@ -188,6 +189,7 @@ cli.add_command(feishu)
 cli.add_command(recommend)
 cli.add_command(course)
 cli.add_command(auth)
+cli.add_command(db_status)
 
 
 if __name__ == "__main__":

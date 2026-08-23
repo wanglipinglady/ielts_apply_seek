@@ -64,6 +64,106 @@ ib stats show                 # 查看学习统计
 ib recommend                  # 智能推荐下一步
 ```
 
+## 🌐 v3 多端同步（MySQL 主存 + SQLite 离线）
+
+> 2026-08 起，Web/CLI 数据自动共享到云端 MySQL；离线时本地 SQLite 兜底。
+
+### 模式说明
+
+| 模式 | 触发条件 | 行为 |
+|---|---|---|
+| `online`（默认） | 启动期能 ping 通 MySQL | 读写全走 MySQL；本地 SQLite 仅作缓存 |
+| `fallback_sqlite` | MySQL 临时不可达 | 读写本地 SQLite + 标 `pending_upload`；MySQL 恢复后自动回切 |
+| `sqlite` | 强制 `IELTS_BUDDY_WEB_DB_MODE=sqlite` 或 `IELTS_BUDDY_MODE=local` | 仅本地 SQLite，不推送 |
+
+### Web 启动
+
+```bash
+# 默认（online + 自动降级）
+python -m ielts_buddy.web --port 8000
+
+# 强制本地
+IELTS_BUDDY_WEB_DB_MODE=sqlite python -m ielts_buddy.web --port 8000
+
+# 自定义 MySQL（覆盖默认 118.190.148.121:3306）
+IELTS_BUDDY_WEB_DB_URL='mysql+pymysql://user:pwd@host:3306/db?charset=utf8mb4' \
+    python -m ielts_buddy.web --port 8000
+
+# 关闭后台同步（写本地后不推 MySQL）
+IELTS_BUDDY_SYNC_INTERVAL_SEC=0 python -m ielts_buddy.web --port 8000
+```
+
+启动后访问：
+- `http://127.0.0.1:8000/healthz` —— 后端状态 + 同步水位 + pending_upload 计数
+- `http://127.0.0.1:8000/login` —— 登录（用统一 users 表里的账号）
+
+### CLI 启动
+
+```bash
+# 1. 在线模式登录（必须在 users 表里存在）
+ib auth login wanglipingresume
+
+# 2. 查看同步状态
+ib db-status show
+#   DB Mode: online
+#   MySQL 可达: ✓
+#   上次同步:
+#     pull: 2026-08-22T17:43:56+00:00
+#     push: 2026-08-22T17:35:43+00:00
+#   pending_upload 计数：
+#     personal_vocab       0
+#     learning_records     0
+#     ...
+
+# 3. 立即同步一次（推本地 + 拉远端）
+ib db-status sync-now
+
+# 4. 长驻后台 daemon（适合 nohup 后台跑）
+nohup ib sync daemon --interval 60 > ~/.ielts-buddy/sync.log 2>&1 &
+```
+
+### 配置文件位置
+
+- CLI 主配置：`~/.ielts-buddy/config.toml`（`[general].mode`）
+- Web 环境变量：项目根目录 `.env`
+- 数据文件：`~/.ielts-buddy/ielts_buddy.db`（CLI 与 Web 共享）
+- 同步错误日志：`~/.ielts-buddy/sync_errors.log`
+- 备份：`~/.ielts-buddy/backup_v3_<时间戳>.json`
+
+### 数据共享原理
+
+```
+任意一台机器登录同一账号 → 看到同一份数据
+       │
+       │  每 30s 后台增量同步
+       ▼
+  ┌─────────────────────────┐
+  │  MySQL (云端主存)        │ ← 所有设备最终都到这里
+  └─────────────────────────┘
+       ▲           ▲
+       │           │
+   ┌───┴──┐    ┌───┴──┐
+   │ 设备 A│    │ 设备 B│   ← 各有自己的 SQLite 缓存
+   └──────┘    └──────┘
+```
+
+冲突解决：`updated_at` 时间戳比较，新者赢（last-write-wins）。
+
+### 首次部署（已有老版本数据）
+
+```bash
+# 1. 升级 MySQL schema（articles 表 + 各表 updated_at/sync_status）
+MYSQL_PASSWORD='xxx' python scripts/migrate_v3_mysql_schema.py
+
+# 2. 合并 web_users → users
+MYSQL_PASSWORD='xxx' python scripts/migrate_v3_users_merge.py
+
+# 3. 重启 web/CLI，自动跑 SQLite _MIGRATIONS（幂等）
+```
+
+详细设计见 [`docs/v3_mysql_fallback_design.md`](docs/v3_mysql_fallback_design.md)，
+实施复盘见 [`docs/v3_retrospective.md`](docs/v3_retrospective.md)。
+
 ## 📖 词库
 
 内置 **4485 个** 雅思核心词汇（大词库），覆盖 Band 5-9：
@@ -245,6 +345,11 @@ pytest --cov=ielts_buddy         # 覆盖率报告
 
 ## 📋 版本历史
 
+- **v3.0.0** (2026-08-23) — **MySQL 主存 + SQLite 自动降级 + 双向同步**
+  - Web/CLI 共用统一 `users` 表，跨设备共享数据
+  - MySQL 不可达时自动降级到本地 SQLite，恢复后自动同步
+  - last-write-wins 冲突解决
+  - 详见 [`docs/v3_mysql_fallback_design.md`](docs/v3_mysql_fallback_design.md)
 - **v1.2.0** (2026-03-07) — 智能推荐 + 飞书同步 + 自动化推送
 - **v1.1.0** (2026-03-06) — AI 批改 + 模拟考试 + GitHub Pages 部署
 - **v1.0.0** (2026-03-06) — 14 命令组 MVP 完整版

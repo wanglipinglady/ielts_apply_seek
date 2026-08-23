@@ -105,23 +105,27 @@ COOKIE_SAMESITE: Final[str] = os.environ.get(
 # ===== 数据库 =====
 
 def _resolve_db_mode() -> str:
-    """Web 端数据库模式。
+    """Web 端数据库模式（v3：默认 online，自动 fallback 到 sqlite）。
 
-    默认 ``sqlite``：账号与业务数据统一存于 ``~/.ielts-buddy/web_data.db``，
-    零配置即可运行，重启服务不会丢账号（web_users 与业务表共存于同一文件）。
+    默认 ``online``：连远程 MySQL（118.190.148.121:3306/ietls_learn_online）。
+    启动时尝试连接 MySQL：
+      - 成功 → app.state.mode = "online"
+      - 失败 → 自动降级到本地 SQLite（~/.ielts-buddy/ielts_buddy.db）
 
-    生产环境通过环境变量 ``IELTS_BUDDY_WEB_DB_MODE=online`` 切换到 MySQL。
+    通过环境变量 ``IELTS_BUDDY_WEB_DB_MODE`` 可强制指定模式：
+      - ``online`` / ``mysql`` → 远程 MySQL（默认）
+      - ``sqlite`` / ``memory`` → 强制本地 SQLite
     """
-    env = os.environ.get("IELTS_BUDDY_WEB_DB_MODE", "sqlite").strip().lower()
+    env = os.environ.get("IELTS_BUDDY_WEB_DB_MODE", "online").strip().lower()
     if env in ("online", "mysql"):
         return "online"
     if env in ("sqlite", "memory"):
         return "sqlite"
     warnings.warn(
-        f"IELTS_BUDDY_WEB_DB_MODE={env!r} 非法，回退到 sqlite",
+        f"IELTS_BUDDY_WEB_DB_MODE={env!r} 非法，回退到 online",
         stacklevel=2,
     )
-    return "sqlite"
+    return "online"
 
 
 WEB_DB_MODE: Final[str] = _resolve_db_mode()
@@ -129,16 +133,17 @@ WEB_DB_URL: Final[str] = os.environ.get("IELTS_BUDDY_WEB_DB_URL", "")
 
 
 def get_web_db_path() -> str:
-    """Web 端 SQLite 数据库路径（每次调用动态读取环境变量）。
+    """Web 端 SQLite 数据库路径（v3：与 CLI 共用同一个文件）。
 
     优先级：
     1. 环境变量 ``IELTS_BUDDY_WEB_SQLITE_PATH``
-    2. ``~/.ielts-buddy/web_data.db``（与 CLI 的 ``data.db`` 物理隔离）
+    2. ``~/.ielts-buddy/ielts_buddy.db``（v3：CLI 与 Web 共用）
+       （老版本叫 ``web_data.db``，仍存在作为 fallback 缓存）
     """
     p = os.environ.get("IELTS_BUDDY_WEB_SQLITE_PATH", "").strip()
     if p:
         return p
-    return str(Path("~/.ielts-buddy/web_data.db").expanduser())
+    return str(Path("~/.ielts-buddy/ielts_buddy.db").expanduser())
 
 
 # ===== CORS =====

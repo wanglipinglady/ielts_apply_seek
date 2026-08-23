@@ -51,6 +51,8 @@ CREATE TABLE IF NOT EXISTS learning_records (
     is_starred INTEGER DEFAULT 0,
     is_difficult INTEGER DEFAULT 0,
     source TEXT DEFAULT 'builtin',
+    updated_at TEXT NOT NULL DEFAULT '',
+    sync_status TEXT NOT NULL DEFAULT 'synced',
     UNIQUE (user_id, word)
 );
 CREATE INDEX IF NOT EXISTS idx_lr_user_review
@@ -75,6 +77,7 @@ CREATE TABLE IF NOT EXISTS personal_vocab (
     source TEXT DEFAULT 'manual',
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
+    sync_status TEXT NOT NULL DEFAULT 'synced',
     UNIQUE (user_id, word)
 );
 CREATE INDEX IF NOT EXISTS idx_pv_user ON personal_vocab(user_id);
@@ -86,6 +89,8 @@ CREATE TABLE IF NOT EXISTS vocab_categories (
     description TEXT DEFAULT '',
     is_system INTEGER DEFAULT 0,
     created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT '',
+    sync_status TEXT NOT NULL DEFAULT 'synced',
     UNIQUE (user_id, name)
 );
 CREATE INDEX IF NOT EXISTS idx_vc_user ON vocab_categories(user_id);
@@ -112,7 +117,9 @@ CREATE TABLE IF NOT EXISTS exam_sessions (
     accuracy REAL,
     duration INTEGER,
     weak_words TEXT,
-    band_breakdown TEXT
+    band_breakdown TEXT,
+    updated_at TEXT NOT NULL DEFAULT '',
+    sync_status TEXT NOT NULL DEFAULT 'synced'
 );
 CREATE INDEX IF NOT EXISTS idx_es_user_started
     ON exam_sessions(user_id, started_at DESC);
@@ -130,7 +137,9 @@ CREATE TABLE IF NOT EXISTS grade_history (
     result_json TEXT NOT NULL,
     task_type TEXT DEFAULT 'task2',
     error_summary_json TEXT DEFAULT '{}',
-    graded_at TEXT NOT NULL
+    graded_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT '',
+    sync_status TEXT NOT NULL DEFAULT 'synced'
 );
 CREATE INDEX IF NOT EXISTS idx_gh_user_graded
     ON grade_history(user_id, graded_at DESC);
@@ -158,17 +167,43 @@ CREATE TABLE IF NOT EXISTS cache_meta (
     value TEXT
 );
 
--- Web 端用户表（与业务表共存于同一个 db 文件）
--- 字段含义与 MySQL 的 web_users 完全一致
+-- v3：统一用户表（CLI + Web 共享）
+-- email/password_hash 可空（CLI 用户没邮箱、没密码）
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT NOT NULL COLLATE NOCASE,
+    email TEXT COLLATE NOCASE,
+    password_hash TEXT,
+    display_name TEXT,
+    created_at TEXT NOT NULL,
+    last_login_at TEXT,
+    UNIQUE (username COLLATE NOCASE),
+    UNIQUE (email COLLATE NOCASE)
+);
+CREATE INDEX IF NOT EXISTS idx_users_username ON users(username COLLATE NOCASE);
+CREATE INDEX IF NOT EXISTS idx_users_email ON users(email COLLATE NOCASE);
+
+-- v3：web_users 兼容保留（标记 is_migrated）
 CREATE TABLE IF NOT EXISTS web_users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     email TEXT NOT NULL COLLATE NOCASE,
     password_hash TEXT NOT NULL,
     created_at TEXT,
     last_login_at TEXT,
+    is_migrated INTEGER DEFAULT 0,
+    users_id INTEGER,
     UNIQUE (email COLLATE NOCASE)
 );
 CREATE INDEX IF NOT EXISTS idx_wu_email ON web_users(email COLLATE NOCASE);
+CREATE INDEX IF NOT EXISTS idx_wu_migrated ON web_users(is_migrated, users_id);
+
+-- v3：web_users.id ↔ users.id 映射
+CREATE TABLE IF NOT EXISTS user_id_mapping (
+    web_user_id INTEGER PRIMARY KEY,
+    users_id INTEGER NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_uim_users ON user_id_mapping(users_id);
 
 -- 文章翻译记录表（保存用户翻译过的文章 + 生词分析结果）
 -- diff_words_json：ArticleWord 列表的 JSON 字符串
@@ -182,10 +217,23 @@ CREATE TABLE IF NOT EXISTS articles (
     diff_words_json TEXT DEFAULT '[]',
     translation_source TEXT DEFAULT 'llm',
     analysis_source TEXT DEFAULT 'fallback',
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT '',
+    sync_status TEXT NOT NULL DEFAULT 'synced'
 );
 CREATE INDEX IF NOT EXISTS idx_articles_user_created
     ON articles(user_id, created_at DESC);
+
+-- v3：同步元数据（单行表，记录上次同步时间和状态）
+CREATE TABLE IF NOT EXISTS sync_meta (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    last_pull_at TEXT,           -- MySQL → 本地，最近一次成功时间
+    last_push_at TEXT,           -- 本地 → MySQL，最近一次成功时间
+    last_error TEXT,
+    last_error_at TEXT
+);
+INSERT OR IGNORE INTO sync_meta (id, last_pull_at, last_push_at)
+    VALUES (1, NULL, NULL);
 """
 
 # 系统内置分类（每个用户独立一份，不使用 user_id=0 模板）
@@ -262,23 +310,44 @@ _MIGRATIONS = {
     "learning_records": [
         ("user_id", "INTEGER NOT NULL DEFAULT 1"),
         ("source", "TEXT DEFAULT 'builtin'"),
+        # v3：sync 字段
+        ("updated_at", "TEXT NOT NULL DEFAULT ''"),
+        ("sync_status", "TEXT NOT NULL DEFAULT 'synced'"),
     ],
     "personal_vocab": [
         ("user_id", "INTEGER NOT NULL DEFAULT 1"),
+        # v3：sync 字段（personal_vocab.updated_at 早就有；sync_status 新增）
+        ("sync_status", "TEXT NOT NULL DEFAULT 'synced'"),
     ],
     "vocab_categories": [
         ("user_id", "INTEGER NOT NULL DEFAULT 1"),
+        ("updated_at", "TEXT NOT NULL DEFAULT ''"),
+        ("sync_status", "TEXT NOT NULL DEFAULT 'synced'"),
     ],
     "exam_sessions": [
         ("user_id", "INTEGER NOT NULL DEFAULT 1"),
+        ("updated_at", "TEXT NOT NULL DEFAULT ''"),
+        ("sync_status", "TEXT NOT NULL DEFAULT 'synced'"),
     ],
     "grade_history": [
         ("user_id", "INTEGER NOT NULL DEFAULT 1"),
+        ("updated_at", "TEXT NOT NULL DEFAULT ''"),
+        ("sync_status", "TEXT NOT NULL DEFAULT 'synced'"),
     ],
     # error_summary_json / task_type 旧版迁移（grading_service 原逻辑）
     "grade_history_legacy": [
         ("task_type", "TEXT DEFAULT 'task2'"),
         ("error_summary_json", "TEXT DEFAULT '{}'"),
+    ],
+    # v3：web_users 加 is_migrated / users_id
+    "web_users": [
+        ("is_migrated", "INTEGER DEFAULT 0"),
+        ("users_id", "INTEGER"),
+    ],
+    # v3：articles 加 updated_at / sync_status
+    "articles": [
+        ("updated_at", "TEXT NOT NULL DEFAULT ''"),
+        ("sync_status", "TEXT NOT NULL DEFAULT 'synced'"),
     ],
 }
 
@@ -548,8 +617,9 @@ class SQLitePersonalVocabRepository:
             cur = self._conn.execute(
                 """INSERT INTO personal_vocab
                    (user_id, word, phonetic, meaning, pos, band, topic,
-                    example, example_cn, note, source, created_at, updated_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    example, example_cn, note, source, created_at,
+                    updated_at, sync_status)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending_upload')""",
                 (
                     user_id, pw.word, pw.phonetic, pw.meaning, pw.pos,
                     pw.band, pw.topic, pw.example, pw.example_cn,
@@ -573,6 +643,7 @@ class SQLitePersonalVocabRepository:
 
         now = datetime.now().isoformat(timespec="seconds")
         updates["updated_at"] = now
+        updates["sync_status"] = "pending_upload"
 
         set_clause = ", ".join(f"{k} = ?" for k in updates)
         values = list(updates.values()) + [user_id, word_name]
@@ -1574,7 +1645,8 @@ class SQLiteRepositoryContainer:
         self.user = SQLiteUserRepository(self._conn)
 
         if cache_path is None:
-            cache_path = get_app_dir() / "vocab_cache.db"
+            # v3：vocab_cache 与业务共用同一个 db 文件（避免维护多份 cache 拷贝）
+            cache_path = self._db_path
         self.vocab_cache = SQLiteVocabCacheRepository(cache_path)
 
     def close(self) -> None:

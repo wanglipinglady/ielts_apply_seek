@@ -24,10 +24,11 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "general": {
         "daily_count": 50,
         "default_band": 7,
-        # W4 阶段：数据源模式
-        # - "local":  本地 SQLite（默认，向后兼容）
-        # - "online": 远端 MySQL（推荐生产用）
-        "mode": "local",
+        # v3：默认 online（远程 MySQL）。
+        # 启动时尝试连接 MySQL；不通则降级到本地 SQLite（ielts_buddy.db）。
+        # - "local":  本地 SQLite（强制，不连 MySQL）
+        # - "online": 远端 MySQL（默认；连不上时自动降级）
+        "mode": "online",
     },
     "database": {
         # W4 阶段：MySQL 连接信息
@@ -56,7 +57,17 @@ def get_config_path() -> Path:
 
 
 def get_db_path() -> Path:
-    return get_app_dir() / "data.db"
+    """v3：CLI 与 Web 共用同一个 SQLite 文件 ``ielts_buddy.db``。
+
+    老 ``data.db`` / ``web_data.db`` 保留作 fallback 缓存（旧路径仍可访问）。
+    优先级：
+      1. 环境变量 ``IELTS_BUDDY_SQLITE_PATH``
+      2. ``~/.ielts-buddy/ielts_buddy.db``（v3 默认）
+    """
+    p = os.environ.get("IELTS_BUDDY_SQLITE_PATH", "").strip()
+    if p:
+        return Path(p).expanduser()
+    return get_app_dir() / "ielts_buddy.db"
 
 
 # =============================================================
