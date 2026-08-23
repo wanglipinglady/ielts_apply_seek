@@ -25,7 +25,8 @@ IELTS Apply Seek（ielts-apply-seek）是一款面向程序员的 **雅思备考
 | **服务层** | 19 个业务服务（词汇/复习/统计/邮件/写作/口语/sync 等） | `src/ielts_buddy/services/` | implemented |
 | **数据层** | SQLite + MySQL 双实现 + Factory | `src/ielts_buddy/repositories/` | implemented |
 | **v3 迁移脚本** | **v3**：MySQL DDL 升级 + web_users → users 合并 | `scripts/migrate_v3_*.py` | implemented |
-| **测试套件** | 642+ 个测试用例，含 v3 同步集成测试 | `tests/` | implemented |
+| **口语对练系统** | **v3.7 P1**：录音上传 + Whisper 转写 + LLM 评分 + 错词回收闭环，7 天自动清理 | `services/speaking_practice_service.py` + `web/whisper_service.py` + `web/speaking_grade_service.py` + `web/routers/speaking_practice.py` | implemented |
+| **测试套件** | 700+ 个测试用例，含 v3.7 P1 口语对练 58 个 | `tests/` | implemented |
 
 ## v3 架构亮点
 

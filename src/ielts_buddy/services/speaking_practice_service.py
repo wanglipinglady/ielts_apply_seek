@@ -415,6 +415,58 @@ class SpeakingPracticeService:
 
 
 # =============================================================
+# 模块级入口:跨用户清理(供 web 启动期 lifespan 调用)
+# =============================================================
+
+
+def purge_all_expired_audio(
+    container: Any,
+    retention_days: int = 7,
+) -> dict[str, int]:
+    """跨所有用户的过期录音清理入口。
+
+    Args:
+        container: 业务容器(拿到 .speaking_practice)
+        retention_days: 保留天数(默认 7)
+
+    Returns:
+        {"files_deleted", "records_audio_nulled", "users_touched"}
+    """
+    sp_repo = container.speaking_practice
+    try:
+        expired = sp_repo.list_expired_audio_paths(retention_days)
+    except Exception as exc:
+        logger.warning("[speaking] list_expired_audio_paths failed: %s", exc)
+        return {"files_deleted": 0, "records_audio_nulled": 0,
+                "users_touched": 0}
+
+    files_deleted = 0
+    records_nulled = 0
+    users_touched: set[int] = set()
+
+    for user_id, session_id, audio_path in expired:
+        users_touched.add(user_id)
+        if audio_path:
+            p = Path(audio_path)
+            if p.exists():
+                try:
+                    p.unlink()
+                    files_deleted += 1
+                except Exception:
+                    pass
+        try:
+            if sp_repo.set_audio_null(user_id, session_id):
+                records_nulled += 1
+        except Exception:
+            pass
+
+    return {
+        "files_deleted": files_deleted,
+        "records_audio_nulled": records_nulled,
+        "users_touched": len(users_touched),
+    }
+
+# =============================================================
 # Helpers
 # =============================================================
 
@@ -477,4 +529,5 @@ __all__ = [
     "SubmitResult",
     "get_audio_root",
     "get_user_audio_dir",
+    "purge_all_expired_audio",
 ]

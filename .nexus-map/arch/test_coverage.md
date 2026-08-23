@@ -113,3 +113,52 @@ README.md 声明：
 > ![Tests](https://img.shields.io/badge/Tests-637%20passed-brightgreen)
 
 **警告**: 此声明可能为上游项目 IELTS Buddy 的测试数量，本项目可能未完全继承。
+
+---
+
+## v3.6+ Web 测试套件(更新)
+
+> 自 v3.6 起新增 `tests/test_web/` 目录，覆盖 FastAPI 端到端
+
+### Web API 测试文件
+
+| 测试文件 | 用例数 | 覆盖范围 |
+|---|---|---|
+| `test_app_boot.py` | - | web 启动 + lifespan |
+| `test_auth_api.py` | - | 注册/登录/刷新 token |
+| `test_auth_repository.py` | - | web_users repo |
+| `test_auth_security.py` | - | JWT 加解密 |
+| `test_auth_service.py` | - | 认证业务层 |
+| `test_calendar_api.py` | - | 学习日历 |
+| `test_grade_api.py` | - | 写作 AI 评分 |
+| `test_listening_api.py` | - | 听力训练 |
+| `test_mistakes_api.py` | - | 错词本 |
+| `test_pomodoro_api.py` | - | 番茄钟 |
+| `test_speak_api.py` | - | 口语话题 |
+| `test_stats_api.py` | - | 统计 |
+| `test_study_api.py` | - | 学习(随机+复习) |
+| `test_typing_api.py` | - | 打字 |
+| `test_write_api.py` | - | 写作辅助 |
+
+### v3.7 P1 口语对练新增测试
+
+| 测试文件 | 用例数 | 覆盖 |
+|---|---|---|
+| `test_repositories/test_speaking_practice_repo.py` | 19 | 9 repo 方法 + 7 天清理 + record_speaking_error |
+| `test_repositories/test_repository_protocols.py` | +N | SpeakingPracticeRepository Protocol 一致性 |
+| `test_web/test_speaking_practice_api.py` | 21 | 6 端点 e2e + IDOR + 422 校验 + 错词回收 |
+| `test_web/test_speaking_grade_service.py` | 14 | mock fallback / 真 LLM / retry-once / JSON 容错 |
+| `test_services/test_speaking_practice_service.py` | 4 | purge 跨用户清理 |
+
+**v3.7 P1 新增 58 个测试,全部 PASS。**
+
+### 已知 Pre-existing 失败
+
+> 以下失败与本次工作无关,均为环境/mock 引起的存量问题:
+
+- `tomllib` ImportError(Python 3.10 才有)
+- `day_num` template UndefinedError(邮件模板)
+- `MySQLRepositoryContainer has no attribute _conn`(无 MySQL 环境)
+- LLM 评分 mock 与新 grading prompt 不匹配
+
+**`tests/test_web/ + tests/test_repositories/` 516 个测试,514 PASS,2 pre-existing study_api failures。**

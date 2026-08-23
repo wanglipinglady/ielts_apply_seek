@@ -836,6 +836,24 @@ class MySQLSpeakingPracticeRepository:
             )
             return result.rowcount > 0
 
+    def list_expired_audio_paths(
+        self,
+        retention_days: int,
+    ) -> list[tuple[int, str, str]]:
+        """返回所有 retention_days 天前的录音记录 (user_id, session_id, audio_path)。"""
+        cutoff = datetime.now() - timedelta(days=retention_days)
+        with self._engine.connect() as conn:
+            rows = conn.execute(
+                select(
+                    t_speaking_practice_records.c.user_id,
+                    t_speaking_practice_records.c.session_id,
+                    t_speaking_practice_records.c.audio_path,
+                )
+                .where(t_speaking_practice_records.c.audio_path.isnot(None),
+                       t_speaking_practice_records.c.created_at < cutoff)
+            ).fetchall()
+        return [(int(r.user_id), r.session_id, r.audio_path) for r in rows]
+
     def delete_old_records_keeping_audio_path(
         self,
         cutoff_days: int,

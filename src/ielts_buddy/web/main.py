@@ -107,6 +107,29 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
             interval_seconds=interval,
         )
 
+    # v3.7 P1：启动期清理过期录音(7 天前)。失败也无所谓,
+    #   用户的当前请求不受影响。日志里能看到清理数量。
+    try:
+        from ielts_buddy.services.speaking_practice_service import (
+            purge_all_expired_audio,
+        )
+        result = purge_all_expired_audio(
+            container=app.state.container,
+            retention_days=web_config.SPEAKING_AUDIO_RETENTION_DAYS,
+        )
+        if result["files_deleted"] or result["records_audio_nulled"]:
+            import logging as _logging
+            _logging.getLogger(__name__).info(
+                "[speaking] startup cleanup: %s",
+                result,
+            )
+    except Exception as _exc:
+        # 启动期清理失败不阻塞 web,记 warning 即可
+        import logging as _logging
+        _logging.getLogger(__name__).warning(
+            "[speaking] startup cleanup failed: %s", _exc
+        )
+
     try:
         yield
     finally:

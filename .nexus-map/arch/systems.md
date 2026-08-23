@@ -100,7 +100,8 @@
 | `plan_service.py` | 学习计划管理 |
 | `email_service.py` | 邮件发送 |
 | `writing_service.py` | 写作辅助 |
-| `speaking_service.py` | 口语练习 |
+| `speaking_service.py` | 口语话题浏览 / 抽题(只读) |
+| **`speaking_practice_service.py`** | **v3.7 P1**:口语对练全链路(抽题 → 落盘 → 转写 → 评分 → 错词回收) |
 | `listening_service.py` | 听力资源 |
 | `grading_service.py` | AI 写作批改 |
 | `deploy_service.py` | GitHub Pages 部署 |
@@ -111,6 +112,29 @@
 | `personal_vocab_service.py` | 个人词库管理 |
 | `sync_service.py` | 数据同步 |
 | `course_service.py` | 课程内容管理 |
+
+---
+
+### 5.1 口语对练系统 (speaking-practice) — v3.7 P1 新增
+
+| 属性 | 值 |
+|------|-----|
+| **职责** | 录音上传 + Whisper 转写 + LLM 评分 + 错词回收闭环;7 天自动清理 |
+| **代码路径** | `src/ielts_buddy/services/speaking_practice.py` + `src/ielts_buddy/web/whisper_service.py` + `src/ielts_buddy/web/speaking_grade_service.py` + `src/ielts_buddy/web/routers/speaking_practice.py` + `src/ielts_buddy/web/templates/pages/speak_practice.html` |
+| **状态** | implemented(2026-08-23) |
+
+**关键组件**:
+- `SpeakingPracticeService`:业务层,绑定 user_id 做隔离,submit 全链路管线
+- `WhisperService`:pywhispercpp 包装,Apple Silicon + Core ML 自动检测,fake fallback
+- `SpeakingGradeService`:走 `LLMService` 单例,retry-once + JSON 围栏/think 块容错 + 0.5 精度归一
+- `purge_all_expired_audio`:web 启动期跨用户清理过期录音
+- 数据表 `speaking_practice_records`(SQLite + MySQL 双实现)
+- Protocol `SpeakingPracticeRepository`(9 方法)
+- 6 个 API 端点(详见 `phase-8-speaking-practice.md` §5)
+
+**依赖新增**:
+- `pywhispercpp`(Apple Silicon + Core ML 加速)
+- `ffmpeg`(webm → wav 转码,`scripts/setup_whisper.sh` 一键安装)
 
 ---
 

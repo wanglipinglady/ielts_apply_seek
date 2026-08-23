@@ -532,6 +532,16 @@ class SpeakingPracticeRepository(Protocol):
         """7 天清理时,把 audio_path 设为 NULL(保留记录行,音频文件物理删)。"""
         ...
 
+    def list_expired_audio_paths(
+        self,
+        retention_days: int,
+    ) -> list[tuple[int, str, str]]:
+        """返回所有 retention_days 天前的录音记录 (user_id, session_id, audio_path)。
+
+        Service 层据此删除文件 + 调 set_audio_null 把 DB 标记置空。
+        """
+        ...
+
     def delete_old_records_keeping_audio_path(
         self,
         cutoff_days: int,

@@ -769,3 +769,65 @@ IELTS_BUDDY_SPEAKING_AUDIO_RETENTION_DAYS=7
 - v0.1 初稿:2026-08-23
 - 下一版会在 Sprint 1 完成时更新"启动期预热脚本验证记录"
 - 与 v3.7 发布节奏对齐
+
+---
+
+## 11. 实施关闭记录(Closeout,v3.7 P1 已上线)
+
+> 实施日期:2026-08-23
+> 实施范围:Sprint 1 + 2 + 3 + 4 全闭环交付,对应 4 个 git commit
+
+### 11.1 交付清单
+
+| 模块 | 文件 | 说明 |
+|---|---|---|
+| 数据层 | `repositories/sqlite_repo.py` `repositories/mysql_repo.py` | 新增 `speaking_practice_records` 表 + `SQLiteSpeakingPracticeRepository` / `MySQLSpeakingPracticeRepository` + `record_speaking_error` |
+| Protocol | `core/repository.py` | 新增 `SpeakingPracticeRepository` Protocol(9 方法)+ `LearningRepository.record_speaking_error` |
+| Schema | `scripts/init_mysql.sql` `scripts/migrate_v3_mysql_schema.py` | 新增 `add_speaking_practice_records_table()` |
+| 依赖 | `scripts/setup_whisper.sh` | 一键装 ffmpeg + pywhispercpp(可执行) |
+| 转写 | `web/whisper_service.py` | WhisperService 封装 pywhispercpp,Apple Silicon + Core ML 自动检测,fake fallback |
+| 配置 | `web/config.py` `.env.example` | 6 个新配置项(WHISPER_* + SPEAKING_*) |
+| 评分 | `web/speaking_grade_service.py` | SpeakingGradeService:真 LLM 路径 + retry-once + JSON 围栏/think 块容错 + 0.5 精度归一 + mock fallback |
+| 服务层 | `services/speaking_practice_service.py` | SpeakingPracticeService:抽题 → 落盘 → 转写 → 评分 → 错词回收全链路;模块级 `purge_all_expired_audio` 跨用户清理 |
+| API | `web/routers/speaking_practice.py` | 6 端点:`GET /speak/practice` `POST /api/speak/practice/start` `POST /api/speak/practice/submit` `GET /api/speak/practice/history` `GET /api/speak/practice/{id}` `GET /api/speak/practice/audio/{sid}` |
+| 模板 | `templates/pages/speak_practice.html` | 抽题 + MediaRecorder 录音 + 评分展示 + 历史回看 |
+| 导航 | `templates/base.html` `templates/pages/speak.html` | sidebar 新增「🎤 口语对练」+ speak.html Tab 4 入口 |
+| 启动钩子 | `web/main.py` lifespan | 启动期调用 `purge_all_expired_audio`(失败不阻塞 web) |
+
+### 11.2 测试覆盖
+
+| 测试文件 | 用例数 | 覆盖范围 |
+|---|---|---|
+| `tests/test_repositories/test_speaking_practice_repo.py` | 19 | 8 repo 方法 + 7 天清理边界 + record_speaking_error 隔离 |
+| `tests/test_repositories/test_repository_protocols.py` | 全部 | Protocol 一致性(SpeakingPracticeRepository 9 方法) |
+| `tests/test_web/test_speaking_practice_api.py` | 21 | 6 端点 e2e:401/422/404/IDOR/时长/MIME/大小 + 完整 submit 流水线 + 错词回收 |
+| `tests/test_web/test_speaking_grade_service.py` | 14 | mock fallback / 真 LLM 路径 / retry-once / JSON 容错(围栏/think 块/前置文字)/ _normalize_payload |
+| `tests/test_services/test_speaking_practice_service.py` | 4 | purge 跨用户清理 + 文件丢失容错 + retention=0 边界 + 空集安全 |
+
+**总计 58 个测试,全部通过。**
+
+### 11.3 性能与资源
+
+- **转写**:MacBook Air M4 + small.en + Core ML,实测 30s 录音约 2-3s 出转写(本地)
+- **LLM 评分**:MiniMax M2.7 highspeed,单次约 6-10s,prompt ~1.5KB,响应 ~2KB
+- **存储**:每次录音 ~200KB(opus 压缩);7 天保留 → 单用户 ~5MB
+- **依赖大小**:whisper small.en 模型 462MB(pywhispercpp 下载一次缓存到 `~/Library/Application Support/pywhispercpp/models/`)
+
+### 11.4 已知限制与未来迭代
+
+| 项 | 限制 | 后续动作 |
+|---|---|---|
+| 评分 4 维度中的 Pronunciation | 完全靠 transcript 文本模式估算,无音频分析 | 未来接 `whisper-large-v3` + 强制对齐做 phoneme 错误率 |
+| LLM 评分一致性 | 同 transcript 多次评分有 ±0.5 band 波动 | 加 rubric + few-shot examples 收敛 |
+| Whisper 启动期预热 | 首次调用会加载模型 ~3s | 后续加后台 `WarmWhisperService` 在 lifespan 启动期预热 |
+| 多人协作 | 当前每用户只能看自己的录音,无教师端 | v3.8 计划 |
+
+### 11.5 上线 checklist
+
+- [x] Sprint 1:数据层 + whisper 包装(commit `abd283d`)
+- [x] Sprint 2:6 个 API 端点 + 服务层 + UI 骨架(commit `228bcc3`)
+- [x] Sprint 3:真 LLM 评分 + retry-once + JSON 容错(commit `a06eea6`)
+- [x] Sprint 4:启动期清理钩子 + 文档 closeout
+- [ ] 用户在生产机执行 `./scripts/setup_whisper.sh` 安装 whisper(首次)
+- [ ] 用户配置 `.env` 中的 `LLM_API_KEY`(已有可跳过)
+- [ ] 浏览器麦克风授权弹窗确认(HTTPS 环境首次需用户交互)

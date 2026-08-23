@@ -950,6 +950,26 @@ class SQLiteSpeakingPracticeRepository:
         self._conn.commit()
         return cur.rowcount > 0
 
+    def list_expired_audio_paths(
+        self,
+        retention_days: int,
+    ) -> list[tuple[int, str, str]]:
+        """返回所有 retention_days 天前的录音记录 (user_id, session_id, audio_path)。
+
+        Service 层据此删除文件 + 调 set_audio_null 把 DB 标记置空。
+        """
+        cutoff = (datetime.now() - timedelta(days=retention_days)).isoformat(
+            timespec="seconds"
+        )
+        rows = self._conn.execute(
+            "SELECT user_id, session_id, audio_path "
+            "FROM speaking_practice_records "
+            "WHERE audio_path IS NOT NULL AND created_at < ?",
+            (cutoff,),
+        ).fetchall()
+        return [(int(r["user_id"]), r["session_id"], r["audio_path"])
+                for r in rows]
+
     def delete_old_records_keeping_audio_path(
         self,
         cutoff_days: int,
