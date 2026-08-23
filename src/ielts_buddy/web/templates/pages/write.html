@@ -1,0 +1,787 @@
+{% extends "base.html" %}
+
+{% block page_title %}写作辅助{% endblock %}
+
+{% block content %}
+<section class="write-page">
+  <h2>✍ 写作辅助</h2>
+  <p class="lede">
+    4 个 tab 集中展示写作素材：<strong>话题</strong>按分类浏览题库；
+    <strong>句型</strong>汇总 introduction / body / conclusion / transition 模板；
+    <strong>同义词</strong>支持按常用词查替换；<strong>词汇</strong>按话题关键词拉出高分词。
+    数据源：内置 JSON（只读、零 LLM、零副作用）。
+  </p>
+
+  <div class="write-tabs" role="tablist">
+    <button class="tab active" data-tab="topics" role="tab" aria-selected="true">
+      📚 话题
+    </button>
+    <button class="tab" data-tab="templates" role="tab" aria-selected="false">
+      📝 句型
+    </button>
+    <button class="tab" data-tab="synonyms" role="tab" aria-selected="false">
+      🔁 同义词
+    </button>
+    <button class="tab" data-tab="vocab" role="tab" aria-selected="false">
+      💡 词汇
+    </button>
+  </div>
+
+  {# ============ 话题 tab ============ #}
+  <div class="tab-panel is-open" data-panel="topics">
+    <div class="panel-toolbar">
+      <label>分类筛选：</label>
+      <select id="topic-category-select">
+        <option value="">全部</option>
+        <!-- JS 注入分类选项 -->
+      </select>
+      <span class="toolbar-hint" id="topic-count">加载中...</span>
+    </div>
+    <div class="topic-list" id="topic-list">
+      <div class="loading-hint">加载中...</div>
+    </div>
+  </div>
+
+  {# ============ 句型 tab ============ #}
+  <div class="tab-panel" data-panel="templates">
+    <div class="panel-toolbar">
+      <label>类型筛选：</label>
+      <select id="template-type-select">
+        <option value="">全部</option>
+        <!-- JS 注入模板类型选项 -->
+      </select>
+      <span class="toolbar-hint" id="template-count">加载中...</span>
+    </div>
+    <div class="template-list" id="template-list">
+      <div class="loading-hint">加载中...</div>
+    </div>
+  </div>
+
+  {# ============ 同义词 tab ============ #}
+  <div class="tab-panel" data-panel="synonyms">
+    <div class="panel-toolbar">
+      <label>查询常用词：</label>
+      <input type="text" id="synonym-input"
+             placeholder="比如 important / good / many..."
+             maxlength="64" />
+      <button class="btn-secondary" id="synonym-search-btn">查询</button>
+      <button class="btn-secondary" id="synonym-clear-btn">清空</button>
+      <span class="toolbar-hint" id="synonym-count">加载中...</span>
+    </div>
+    <div class="synonym-list" id="synonym-list">
+      <div class="loading-hint">加载中...</div>
+    </div>
+  </div>
+
+  {# ============ 词汇 tab ============ #}
+  <div class="tab-panel" data-panel="vocab">
+    <div class="panel-toolbar">
+      <label>输入话题关键词：</label>
+      <input type="text" id="vocab-input"
+             placeholder="比如 education / climate / health..."
+             maxlength="128" />
+      <button class="btn-primary" id="vocab-search-btn">查询词汇</button>
+      <span class="toolbar-hint" id="vocab-hint">按话题模糊匹配</span>
+    </div>
+    <div class="vocab-result" id="vocab-result">
+      <div class="loading-hint">输入话题关键词,点「查询词汇」或按 Enter</div>
+    </div>
+  </div>
+</section>
+
+<script>
+(function() {
+    'use strict';
+
+    // ========== 元素 ==========
+    const $ = (id) => document.getElementById(id);
+    const tabs = document.querySelectorAll('.write-tabs .tab');
+    const panels = document.querySelectorAll('.tab-panel');
+
+    // 话题
+    const topicCategorySelect = $('topic-category-select');
+    const topicList = $('topic-list');
+    const topicCount = $('topic-count');
+
+    // 句型
+    const templateTypeSelect = $('template-type-select');
+    const templateList = $('template-list');
+    const templateCount = $('template-count');
+
+    // 同义词
+    const synonymInput = $('synonym-input');
+    const synonymSearchBtn = $('synonym-search-btn');
+    const synonymClearBtn = $('synonym-clear-btn');
+    const synonymList = $('synonym-list');
+    const synonymCount = $('synonym-count');
+
+    // 词汇
+    const vocabInput = $('vocab-input');
+    const vocabSearchBtn = $('vocab-search-btn');
+    const vocabResult = $('vocab-result');
+
+    // ========== tab 切换 ==========
+    tabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            const target = tab.dataset.tab;
+            tabs.forEach(t => {
+                t.classList.remove('active');
+                t.setAttribute('aria-selected', 'false');
+            });
+            tab.classList.add('active');
+            tab.setAttribute('aria-selected', 'true');
+
+            panels.forEach(p => {
+                // 用 class 切换:避免 hidden 属性 + display:block 的特异性冲突
+                if (p.dataset.panel === target) {
+                    p.classList.add('is-open');
+                } else {
+                    p.classList.remove('is-open');
+                }
+            });
+        });
+    });
+
+    // ========== 工具 ==========
+    function escapeHtml(s) {
+        return String(s == null ? '' : s)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    async function fetchJson(url) {
+        const resp = await fetch(url, { credentials: 'same-origin' });
+        if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            throw new Error(err.detail || `HTTP ${resp.status}`);
+        }
+        return resp.json();
+    }
+
+    // ========== 话题 tab ==========
+    async function loadCategories() {
+        try {
+            const cats = await fetchJson('/api/write/categories');
+            // 注入分类选项
+            cats.forEach(c => {
+                const opt = document.createElement('option');
+                opt.value = c;
+                opt.textContent = c;
+                topicCategorySelect.appendChild(opt);
+            });
+        } catch (e) {
+            topicCount.textContent = '分类加载失败';
+        }
+    }
+
+    async function loadTopics(category) {
+        topicList.innerHTML = '<div class="loading-hint">加载中...</div>';
+        const url = category
+            ? `/api/write/topics?category=${encodeURIComponent(category)}`
+            : '/api/write/topics';
+        try {
+            const topics = await fetchJson(url);
+            topicCount.textContent = `共 ${topics.length} 个话题`;
+            if (!topics.length) {
+                topicList.innerHTML = '<div class="empty-state">该分类暂无话题</div>';
+                return;
+            }
+            topicList.innerHTML = topics.map(t => `
+                <div class="topic-card">
+                    <div class="topic-header">
+                        <span class="topic-name">${escapeHtml(t.topic)}</span>
+                        <span class="tag">${escapeHtml(t.category)}</span>
+                    </div>
+                    <div class="topic-question">${escapeHtml(t.question)}</div>
+                    <div class="topic-meta">
+                        <div class="meta-key">关键词</div>
+                        <div class="meta-val">
+                            ${t.keywords.map(k => `<span class="chip">${escapeHtml(k)}</span>`).join('')}
+                        </div>
+                    </div>
+                    <div class="topic-meta">
+                        <div class="meta-key">Band 7+ 词汇</div>
+                        <div class="meta-val">
+                            ${t.band7_vocab.map(k => `<span class="chip accent">${escapeHtml(k)}</span>`).join('')}
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        } catch (e) {
+            topicList.innerHTML = `<div class="empty-state">加载失败：${escapeHtml(e.message)}</div>`;
+            topicCount.textContent = '加载失败';
+        }
+    }
+
+    topicCategorySelect.addEventListener('change', () => {
+        loadTopics(topicCategorySelect.value);
+    });
+
+    // ========== 句型 tab ==========
+    async function loadTemplateTypes() {
+        try {
+            const types = await fetchJson('/api/write/template-types');
+            types.forEach(t => {
+                const opt = document.createElement('option');
+                opt.value = t;
+                opt.textContent = t;
+                templateTypeSelect.appendChild(opt);
+            });
+        } catch (e) {
+            templateCount.textContent = '类型加载失败';
+        }
+    }
+
+    async function loadTemplates(type) {
+        templateList.innerHTML = '<div class="loading-hint">加载中...</div>';
+        const url = type
+            ? `/api/write/templates?type=${encodeURIComponent(type)}`
+            : '/api/write/templates';
+        try {
+            const tpls = await fetchJson(url);
+            templateCount.textContent = `共 ${tpls.length} 个句型`;
+            if (!tpls.length) {
+                templateList.innerHTML = '<div class="empty-state">该类型暂无句型</div>';
+                return;
+            }
+            templateList.innerHTML = tpls.map(t => `
+                <div class="template-card">
+                    <div class="template-header">
+                        <span class="tag">${escapeHtml(t.type)}</span>
+                    </div>
+                    <div class="template-en">${escapeHtml(t.template)}</div>
+                    <div class="template-zh">${escapeHtml(t.translation)}</div>
+                    <div class="template-example">
+                        <span class="meta-key">示例</span>
+                        <span class="meta-val">${escapeHtml(t.example)}</span>
+                    </div>
+                </div>
+            `).join('');
+        } catch (e) {
+            templateList.innerHTML = `<div class="empty-state">加载失败：${escapeHtml(e.message)}</div>`;
+            templateCount.textContent = '加载失败';
+        }
+    }
+
+    templateTypeSelect.addEventListener('change', () => {
+        loadTemplates(templateTypeSelect.value);
+    });
+
+    // ========== 同义词 tab ==========
+    let synonymTimer = null;
+    async function loadSynonyms(word) {
+        synonymList.innerHTML = '<div class="loading-hint">加载中...</div>';
+        const url = word
+            ? `/api/write/synonyms?word=${encodeURIComponent(word)}`
+            : '/api/write/synonyms';
+        try {
+            const rows = await fetchJson(url);
+            synonymCount.textContent = `共 ${rows.length} 条`;
+            if (!rows.length) {
+                synonymList.innerHTML = `<div class="empty-state">未匹配到「${escapeHtml(word)}」的同义词</div>`;
+                return;
+            }
+            synonymList.innerHTML = rows.map(r => `
+                <div class="synonym-card">
+                    <div class="synonym-header">
+                        <span class="synonym-common">${escapeHtml(r.common)}</span>
+                        <span class="arrow">→</span>
+                        <span class="synonym-list-inline">
+                            ${r.synonyms.map(s => `<span class="chip">${escapeHtml(s)}</span>`).join('')}
+                        </span>
+                    </div>
+                    <div class="synonym-context">${escapeHtml(r.context)}</div>
+                </div>
+            `).join('');
+        } catch (e) {
+            synonymList.innerHTML = `<div class="empty-state">加载失败：${escapeHtml(e.message)}</div>`;
+            synonymCount.textContent = '加载失败';
+        }
+    }
+
+    synonymInput.addEventListener('input', () => {
+        // 防抖 300ms,避免每个按键都发请求
+        if (synonymTimer) clearTimeout(synonymTimer);
+        synonymTimer = setTimeout(() => {
+            loadSynonyms(synonymInput.value.trim());
+        }, 300);
+    });
+
+    synonymSearchBtn.addEventListener('click', () => {
+        if (synonymTimer) clearTimeout(synonymTimer);
+        loadSynonyms(synonymInput.value.trim());
+    });
+
+    synonymClearBtn.addEventListener('click', () => {
+        synonymInput.value = '';
+        if (synonymTimer) clearTimeout(synonymTimer);
+        loadSynonyms('');
+    });
+
+    // ========== 词汇 tab ==========
+    async function searchVocab(topic) {
+        if (!topic) {
+            vocabResult.innerHTML = '<div class="loading-hint">请输入话题关键词</div>';
+            return;
+        }
+        vocabResult.innerHTML = '<div class="loading-hint">查询中...</div>';
+        try {
+            const data = await fetchJson(`/api/write/vocab?topic=${encodeURIComponent(topic)}`);
+            if (!data) {
+                vocabResult.innerHTML = `<div class="empty-state">未找到与「${escapeHtml(topic)}」匹配的话题</div>`;
+                return;
+            }
+            vocabResult.innerHTML = `
+                <div class="vocab-card">
+                    <div class="vocab-header">
+                        <span class="vocab-topic">${escapeHtml(data.topic)}</span>
+                        <span class="tag">${escapeHtml(data.category)}</span>
+                    </div>
+                    <div class="vocab-question">${escapeHtml(data.question)}</div>
+                    <div class="vocab-section">
+                        <div class="meta-key">关键词</div>
+                        <div class="meta-val">
+                            ${data.keywords.map(k => `<span class="chip">${escapeHtml(k)}</span>`).join('')}
+                        </div>
+                    </div>
+                    <div class="vocab-section">
+                        <div class="meta-key">Band 7+ 高分词汇</div>
+                        <div class="meta-val">
+                            ${data.band7_vocab.map(k => `<span class="chip accent">${escapeHtml(k)}</span>`).join('')}
+                        </div>
+                    </div>
+                </div>
+            `;
+        } catch (e) {
+            vocabResult.innerHTML = `<div class="empty-state">查询失败：${escapeHtml(e.message)}</div>`;
+        }
+    }
+
+    vocabSearchBtn.addEventListener('click', () => {
+        searchVocab(vocabInput.value.trim());
+    });
+
+    vocabInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            searchVocab(vocabInput.value.trim());
+        }
+    });
+
+    // ========== 初次加载 ==========
+    loadCategories().then(() => loadTopics(''));
+    loadTemplateTypes().then(() => loadTemplates(''));
+    loadSynonyms('');
+})();
+</script>
+
+<style>
+.write-page {
+    max-width: 1100px;
+    margin: 0 auto;
+}
+
+.write-page h2 {
+    margin-bottom: 4px;
+}
+
+.write-page .lede {
+    color: var(--text-muted);
+    margin-bottom: 24px;
+}
+
+/* === tabs === */
+.write-tabs {
+    display: flex;
+    gap: 0;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    overflow: hidden;
+    margin-bottom: 0;
+}
+
+.write-tabs .tab {
+    flex: 1;
+    padding: 12px 16px;
+    background: transparent;
+    border: none;
+    font-size: 14px;
+    color: var(--text-muted);
+    cursor: pointer;
+    border-right: 1px solid var(--border-color);
+    transition: background 0.15s, color 0.15s;
+}
+
+.write-tabs .tab:last-child {
+    border-right: none;
+}
+
+.write-tabs .tab:hover {
+    background: rgba(99, 102, 241, 0.08);
+    color: var(--text-main);
+}
+
+.write-tabs .tab.active {
+    background: var(--primary-color, #6366f1);
+    color: white;
+    font-weight: 600;
+}
+
+/* === tab panels === */
+/* 关键:用 .is-open class 控制显示,避免 hidden 属性 + display:block 的特异性冲突。
+   默认 display:none;加 .is-open 才显示。*/
+.tab-panel {
+    display: none;
+    padding: 20px 0;
+}
+
+.tab-panel.is-open {
+    display: block;
+}
+
+.panel-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 16px;
+    padding: 12px 14px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+}
+
+.panel-toolbar label {
+    font-size: 13px;
+    color: var(--text-muted);
+}
+
+.panel-toolbar select,
+.panel-toolbar input {
+    padding: 6px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-primary);
+    color: var(--text-main);
+    font-size: 14px;
+}
+
+.toolbar-hint {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-left: auto;
+}
+
+/* === topic cards === */
+.topic-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+    gap: 14px;
+}
+
+.topic-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 16px;
+}
+
+.topic-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.topic-name {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-main);
+}
+
+.topic-question {
+    font-size: 13px;
+    color: var(--text-main);
+    line-height: 1.6;
+    margin-bottom: 12px;
+    padding: 10px;
+    background: var(--bg-primary);
+    border-radius: 6px;
+    border-left: 3px solid var(--primary-color, #6366f1);
+}
+
+.topic-meta {
+    margin-top: 8px;
+}
+
+.topic-meta .meta-key {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.topic-meta .meta-val {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+/* === template cards === */
+.template-list {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+}
+
+.template-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 16px;
+}
+
+.template-header {
+    margin-bottom: 10px;
+}
+
+.template-en {
+    font-size: 15px;
+    color: var(--text-main);
+    line-height: 1.6;
+    font-family: var(--font-mono, monospace);
+    margin-bottom: 8px;
+    padding: 10px;
+    background: var(--bg-primary);
+    border-radius: 6px;
+    border-left: 3px solid var(--primary-color, #6366f1);
+}
+
+.template-zh {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-bottom: 10px;
+}
+
+.template-example {
+    display: flex;
+    gap: 10px;
+    font-size: 12px;
+    padding-top: 10px;
+    border-top: 1px dashed var(--border-color);
+}
+
+.template-example .meta-key {
+    flex-shrink: 0;
+    color: var(--text-muted);
+    font-weight: 600;
+}
+
+.template-example .meta-val {
+    color: var(--text-main);
+    line-height: 1.6;
+}
+
+/* === synonym cards === */
+.synonym-list {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+}
+
+.synonym-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 14px 16px;
+}
+
+.synonym-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+}
+
+.synonym-common {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--primary-color, #6366f1);
+    font-family: var(--font-mono, monospace);
+}
+
+.synonym-list-inline {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.arrow {
+    color: var(--text-muted);
+    font-size: 14px;
+}
+
+.synonym-context {
+    font-size: 12px;
+    color: var(--text-muted);
+    line-height: 1.5;
+    padding-left: 12px;
+    border-left: 2px solid var(--border-color);
+}
+
+/* === vocab cards === */
+.vocab-result {
+    min-height: 200px;
+}
+
+.vocab-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 20px;
+}
+
+.vocab-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.vocab-topic {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--text-main);
+}
+
+.vocab-question {
+    font-size: 13px;
+    color: var(--text-main);
+    line-height: 1.6;
+    margin-bottom: 16px;
+    padding: 10px;
+    background: var(--bg-primary);
+    border-radius: 6px;
+    border-left: 3px solid var(--primary-color, #6366f1);
+}
+
+.vocab-section {
+    margin-top: 14px;
+}
+
+.vocab-section .meta-key {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.vocab-section .meta-val {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+/* === chips & tags === */
+.chip {
+    display: inline-block;
+    padding: 4px 10px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    font-size: 12px;
+    color: var(--text-main);
+    font-family: var(--font-mono, monospace);
+}
+
+.chip.accent {
+    background: linear-gradient(135deg, #fef3c7, #fde68a);
+    border-color: #fcd34d;
+    color: #92400e;
+    font-weight: 600;
+}
+
+.tag {
+    display: inline-block;
+    padding: 2px 10px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    font-size: 11px;
+    color: var(--text-muted);
+    font-family: var(--font-mono, monospace);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* === loading / empty === */
+.loading-hint,
+.empty-state {
+    color: var(--text-muted);
+    font-size: 13px;
+    padding: 32px;
+    text-align: center;
+    background: var(--bg-secondary);
+    border: 1px dashed var(--border-color);
+    border-radius: 8px;
+}
+
+.empty-state {
+    border-style: solid;
+}
+
+/* === buttons === */
+.btn-primary {
+    padding: 8px 18px;
+    background: var(--primary-color, #6366f1);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.btn-primary:hover {
+    opacity: 0.9;
+}
+
+.btn-secondary {
+    padding: 6px 14px;
+    background: var(--bg-primary);
+    color: var(--text-main);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    font-size: 13px;
+    cursor: pointer;
+}
+
+.btn-secondary:hover {
+    background: var(--bg-secondary);
+}
+
+/* === responsive === */
+@media (max-width: 700px) {
+    .write-tabs .tab {
+        padding: 10px 8px;
+        font-size: 12px;
+    }
+    .topic-list {
+        grid-template-columns: 1fr;
+    }
+    .toolbar-hint {
+        margin-left: 0;
+        width: 100%;
+    }
+}
+</style>
+{% endblock %}

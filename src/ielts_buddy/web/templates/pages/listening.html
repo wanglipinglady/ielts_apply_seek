@@ -1,0 +1,773 @@
+{% extends "base.html" %}
+
+{% block page_title %}听力{% endblock %}
+
+{% block content %}
+<section class="listening-page">
+  <h2>听力</h2>
+  <p class="lede">
+    浏览精选听力资源（播客 / 视频 / 课程 / 网站），并通过单词听写巩固词汇。
+    听写答题数据会自动写入学习记录，复用艾宾浩斯复习节奏。
+  </p>
+
+  {# === Tab 切换条 === #}
+  <div class="tab-bar" role="tablist">
+    <button class="tab-btn is-open" data-tab="resources" type="button">
+      资源浏览
+    </button>
+    <button class="tab-btn" data-tab="dictation" type="button">
+      单词听写
+    </button>
+  </div>
+
+  {# === Tab 1：资源浏览 === #}
+  <div class="tab-panel is-open" data-panel="resources">
+    <div class="filter-bar">
+      <label>类型：</label>
+      <select id="filter-type">
+        <option value="">全部</option>
+        <option value="podcast">播客</option>
+        <option value="video">视频</option>
+        <option value="course">课程</option>
+        <option value="website">网站</option>
+      </select>
+
+      <label>难度：</label>
+      <select id="filter-difficulty">
+        <option value="">全部</option>
+        <option value="beginner">初级</option>
+        <option value="intermediate">中级</option>
+        <option value="advanced">高级</option>
+      </select>
+
+      <button id="filter-apply" class="btn-primary" type="button">应用筛选</button>
+    </div>
+
+    <table class="data-table" id="resources-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>类型</th>
+          <th>难度</th>
+          <th>名称</th>
+          <th>链接</th>
+          <th>描述</th>
+          <th>话题</th>
+          <th>免费</th>
+        </tr>
+      </thead>
+      <tbody id="resources-tbody">
+        <tr><td colspan="8" class="empty-state">加载中...</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  {# === Tab 2：单词听写 === #}
+  <div class="tab-panel" data-panel="dictation">
+    <div class="dictation-controls">
+      <label>题目数：</label>
+      <select id="dictation-count">
+        <option value="5">5</option>
+        <option value="10" selected>10</option>
+        <option value="15">15</option>
+        <option value="20">20</option>
+      </select>
+
+      <label>Band：</label>
+      <select id="dictation-band">
+        <option value="">全部</option>
+        <option value="5">5</option>
+        <option value="6">6</option>
+        <option value="7">7</option>
+        <option value="8">8</option>
+        <option value="9">9</option>
+      </select>
+
+      <button id="dictation-start" class="btn-primary" type="button">
+        ▶ 开始听写
+      </button>
+      <button id="dictation-reset" class="btn-secondary" type="button" hidden>
+        ↻ 重新开始
+      </button>
+    </div>
+
+    {# === 答题区（初始隐藏；开始听写后由 JS 添加 is-open） === #}
+    <div class="dictation-stage" id="dictation-stage">
+      <div class="dictation-progress">
+        第 <span id="q-current">0</span> / <span id="q-total">0</span> 题
+        · 得分 <span id="q-score">0</span> / <span id="q-total-score">0</span>
+      </div>
+
+      <div class="dictation-question">
+        <div class="q-phonetic" id="q-phonetic">—</div>
+        <div class="q-definition" id="q-definition">点击「开始听写」开始</div>
+      </div>
+
+      <div class="dictation-input-row">
+        <input type="text" id="q-input"
+               placeholder="请输入单词拼写..."
+               autocomplete="off" autocapitalize="off" spellcheck="false"
+               disabled />
+        <button id="q-submit" class="btn-primary" type="button" disabled>
+          提交
+        </button>
+      </div>
+
+      <div class="q-feedback" id="q-feedback" hidden></div>
+
+      <div class="dictation-final" id="dictation-final" hidden>
+        <h3>🎉 听写完成</h3>
+        <div class="final-stats">
+          正确 <span id="final-correct">0</span> /
+          总数 <span id="final-total">0</span>
+          · 正确率 <span id="final-rate">0</span>%
+        </div>
+        <div class="final-actions">
+          <button id="final-restart" class="btn-primary" type="button">
+            再来一组
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+(function() {
+    'use strict';
+
+    const $ = (id) => document.getElementById(id);
+
+    // ========== Tab 切换（用 is-open 模式，避开 hidden+display:flex 特异性冲突） ==========
+    const tabBtns = document.querySelectorAll('.tab-btn');
+    const tabPanels = document.querySelectorAll('.tab-panel');
+
+    function activateTab(name) {
+        tabBtns.forEach(b => {
+            if (b.dataset.tab === name) b.classList.add('is-open');
+            else b.classList.remove('is-open');
+        });
+        tabPanels.forEach(p => {
+            if (p.dataset.panel === name) p.classList.add('is-open');
+            else p.classList.remove('is-open');
+        });
+    }
+
+    tabBtns.forEach(b => {
+        b.addEventListener('click', () => activateTab(b.dataset.tab));
+    });
+
+    // ========== 工具 ==========
+    function escapeHtml(s) {
+        return String(s == null ? '' : s)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    // ========== 资源浏览 ==========
+    const TYPE_LABELS = {
+        podcast: '播客', video: '视频', course: '课程', website: '网站',
+    };
+    const DIFFICULTY_LABELS = {
+        beginner: '初级', intermediate: '中级', advanced: '高级',
+    };
+
+    const filterType = $('filter-type');
+    const filterDifficulty = $('filter-difficulty');
+    const filterApply = $('filter-apply');
+    const resourcesTbody = $('resources-tbody');
+
+    async function loadResources() {
+        try {
+            const params = new URLSearchParams();
+            if (filterType.value) params.set('type', filterType.value);
+            if (filterDifficulty.value) params.set('difficulty', filterDifficulty.value);
+            const qs = params.toString();
+            const url = '/api/listening/resources' + (qs ? '?' + qs : '');
+            const resp = await fetch(url);
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            const rows = await resp.json();
+
+            if (!rows.length) {
+                resourcesTbody.innerHTML = '<tr><td colspan="8" class="empty-state">没有匹配的听力资源</td></tr>';
+                return;
+            }
+
+            resourcesTbody.innerHTML = rows.map(r => {
+                const typeLabel = TYPE_LABELS[r.type] || r.type;
+                const diffLabel = DIFFICULTY_LABELS[r.difficulty] || r.difficulty;
+                const topics = (r.topics || []).join(', ');
+                const freeTag = r.free
+                    ? '<span class="tag accent">免费</span>'
+                    : '<span class="tag warn">付费</span>';
+                return `
+                    <tr>
+                        <td>${r.idx}</td>
+                        <td>${escapeHtml(typeLabel)}</td>
+                        <td>${escapeHtml(diffLabel)}</td>
+                        <td><strong>${escapeHtml(r.title)}</strong></td>
+                        <td>
+                            <a href="${escapeHtml(r.url)}" target="_blank" rel="noopener">
+                                打开 ↗
+                            </a>
+                        </td>
+                        <td>${escapeHtml(r.description)}</td>
+                        <td>${escapeHtml(topics)}</td>
+                        <td>${freeTag}</td>
+                    </tr>
+                `;
+            }).join('');
+        } catch (e) {
+            resourcesTbody.innerHTML = '<tr><td colspan="8" class="empty-state">加载失败：' + escapeHtml(e.message) + '</td></tr>';
+        }
+    }
+
+    filterApply.addEventListener('click', loadResources);
+
+    // ========== 单词听写 ==========
+    const dictCount = $('dictation-count');
+    const dictBand = $('dictation-band');
+    const dictStart = $('dictation-start');
+    const dictReset = $('dictation-reset');
+    const dictStage = $('dictation-stage');
+
+    const qCurrent = $('q-current');
+    const qTotal = $('q-total');
+    const qScore = $('q-score');
+    const qTotalScore = $('q-total-score');
+    const qPhonetic = $('q-phonetic');
+    const qDefinition = $('q-definition');
+    const qInput = $('q-input');
+    const qSubmit = $('q-submit');
+    const qFeedback = $('q-feedback');
+
+    const finalWrap = $('dictation-final');
+    const finalCorrect = $('final-correct');
+    const finalTotal = $('final-total');
+    const finalRate = $('final-rate');
+    const finalRestart = $('final-restart');
+
+    const state = {
+        questions: [],     // [{word, phonetic, definition}, ...]
+        idx: 0,            // 当前题号
+        correct: 0,
+        answers: [],       // [{word, answer}, ...]
+    };
+
+    function setStageOpen(open) {
+        // 用 class is-open 切换，避免 hidden + display:flex 特异性冲突
+        dictStage.classList.toggle('is-open', !!open);
+    }
+
+    function resetQuiz() {
+        state.questions = [];
+        state.idx = 0;
+        state.correct = 0;
+        state.answers = [];
+        qPhonetic.textContent = '—';
+        qDefinition.textContent = '加载中...';
+        qCurrent.textContent = '0';
+        qTotal.textContent = '0';
+        qScore.textContent = '0';
+        qTotalScore.textContent = '0';
+        qInput.value = '';
+        qInput.disabled = true;
+        qSubmit.disabled = true;
+        qFeedback.hidden = true;
+        qFeedback.className = 'q-feedback';
+        qFeedback.textContent = '';
+        finalWrap.hidden = true;
+        finalWrap.classList.remove('is-open');
+        dictStart.hidden = false;
+        dictReset.hidden = true;
+        setStageOpen(false);
+    }
+
+    async function startQuiz() {
+        try {
+            dictStart.disabled = true;
+            dictStart.textContent = '出题中...';
+
+            const params = new URLSearchParams();
+            params.set('count', dictCount.value);
+            if (dictBand.value) params.set('band', dictBand.value);
+
+            const resp = await fetch('/api/listening/dictation?' + params.toString());
+            if (!resp.ok) {
+                const err = await resp.json().catch(() => ({}));
+                throw new Error(err.detail || 'HTTP ' + resp.status);
+            }
+            const data = await resp.json();
+
+            if (!data.questions || !data.questions.length) {
+                alert('暂无可生成的听写题，请换个 band 或减少题目数');
+                dictStart.disabled = false;
+                dictStart.textContent = '▶ 开始听写';
+                return;
+            }
+
+            state.questions = data.questions;
+            state.idx = 0;
+            state.correct = 0;
+            state.answers = [];
+
+            dictStart.hidden = true;
+            dictReset.hidden = false;
+            setStageOpen(true);
+
+            qTotal.textContent = data.questions.length;
+            qTotalScore.textContent = data.questions.length;
+
+            showQuestion();
+        } catch (e) {
+            alert('出题失败：' + e.message);
+            dictStart.disabled = false;
+            dictStart.textContent = '▶ 开始听写';
+        }
+    }
+
+    function showQuestion() {
+        const q = state.questions[state.idx];
+        qCurrent.textContent = state.idx + 1;
+        qScore.textContent = state.correct;
+        qPhonetic.textContent = q.phonetic || '—';
+        qDefinition.textContent = q.definition || '（无释义）';
+        qInput.value = '';
+        qInput.disabled = false;
+        qSubmit.disabled = false;
+        qFeedback.hidden = true;
+        qFeedback.className = 'q-feedback';
+        qFeedback.textContent = '';
+        qInput.focus();
+    }
+
+    async function submitAnswer() {
+        const q = state.questions[state.idx];
+        const userAnswer = qInput.value.trim();
+        if (!userAnswer) {
+            qInput.focus();
+            return;
+        }
+        const isCorrect = userAnswer.toLowerCase() === q.word.toLowerCase();
+        state.answers.push({ word: q.word, answer: userAnswer });
+        if (isCorrect) state.correct += 1;
+
+        // 反馈
+        qFeedback.hidden = false;
+        qFeedback.classList.add('is-open');
+        if (isCorrect) {
+            qFeedback.classList.add('correct');
+            qFeedback.textContent = '✓ 正确！';
+        } else {
+            qFeedback.classList.add('wrong');
+            qFeedback.textContent = '✗ 错误  正确拼写：' + q.word;
+        }
+
+        qInput.disabled = true;
+        qSubmit.disabled = true;
+
+        state.idx += 1;
+        if (state.idx >= state.questions.length) {
+            // 最后一题 → 先显示反馈再 finalize
+            await finishQuiz();
+        } else {
+            setTimeout(showQuestion, 700);
+        }
+    }
+
+    async function finishQuiz() {
+        const total = state.questions.length;
+        // 提交到后端落库
+        try {
+            const resp = await fetch('/api/listening/record', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    answers: state.answers.map(a => ({
+                        word: a.word,
+                        answer: a.answer,
+                    })),
+                }),
+            });
+            if (!resp.ok) {
+                const err = await resp.json().catch(() => ({}));
+                throw new Error(err.detail || 'HTTP ' + resp.status);
+            }
+            const data = await resp.json();
+            // 用后端真实落库结果覆盖前端 correct
+            state.correct = data.correct;
+        } catch (e) {
+            qFeedback.classList.remove('correct', 'wrong');
+            qFeedback.classList.add('wrong');
+            qFeedback.textContent = '保存失败：' + e.message + '（前端统计仅供参考）';
+        }
+
+        finalCorrect.textContent = state.correct;
+        finalTotal.textContent = total;
+        finalRate.textContent = total > 0
+            ? Math.round((state.correct / total) * 100)
+            : 0;
+        finalWrap.hidden = false;
+        finalWrap.classList.add('is-open');
+
+        // 收尾
+        qInput.disabled = true;
+        qSubmit.disabled = true;
+        dictReset.hidden = false;
+    }
+
+    dictStart.addEventListener('click', startQuiz);
+    dictReset.addEventListener('click', () => {
+        resetQuiz();
+        activateTab('dictation');
+    });
+    finalRestart.addEventListener('click', () => {
+        resetQuiz();
+        startQuiz();
+    });
+    qSubmit.addEventListener('click', submitAnswer);
+    qInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            submitAnswer();
+        }
+    });
+
+    // 初次加载资源
+    resetQuiz();
+    loadResources();
+})();
+</script>
+
+<style>
+.listening-page {
+    max-width: 1100px;
+    margin: 0 auto;
+}
+
+.listening-page h2 {
+    margin-bottom: 4px;
+}
+
+.listening-page .lede {
+    color: var(--text-muted);
+    margin-bottom: 24px;
+}
+
+/* Tab 切换条 */
+.tab-bar {
+    display: flex;
+    gap: 4px;
+    border-bottom: 1px solid var(--border-color);
+    margin-bottom: 16px;
+}
+
+.tab-btn {
+    padding: 10px 20px;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 14px;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+}
+
+.tab-btn:hover {
+    color: var(--text-main);
+}
+
+.tab-btn.is-open {
+    color: var(--text-main);
+    border-bottom-color: var(--primary-color, #6366f1);
+    font-weight: 600;
+}
+
+/* Tab 面板：用 is-open class 切换显示，避免 hidden+display:flex 特异性冲突 */
+.tab-panel {
+    display: none;
+    padding: 16px 0;
+}
+.tab-panel.is-open {
+    display: block;
+}
+
+/* 资源筛选条 */
+.filter-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 16px;
+    padding: 14px;
+    background: var(--bg-secondary);
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+}
+
+.filter-bar label {
+    font-size: 13px;
+    color: var(--text-muted);
+}
+
+.filter-bar select {
+    padding: 6px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-primary);
+    font-size: 14px;
+    color: var(--text-main);
+}
+
+/* 表格 */
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+}
+
+.data-table th,
+.data-table td {
+    padding: 10px 12px;
+    text-align: left;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.data-table th {
+    color: var(--text-muted);
+    font-weight: 500;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    background: var(--bg-secondary);
+}
+
+.data-table td a {
+    color: var(--primary-color, #6366f1);
+    text-decoration: none;
+}
+
+.data-table td a:hover {
+    text-decoration: underline;
+}
+
+.data-table .empty-state {
+    text-align: center;
+    color: var(--text-muted);
+    padding: 24px;
+}
+
+.tag {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 10px;
+    font-size: 12px;
+    background: var(--bg-secondary);
+    color: var(--text-muted);
+    border: 1px solid var(--border-color);
+}
+
+.tag.accent {
+    background: #d1fae5;
+    color: #065f46;
+    border-color: #6ee7b7;
+}
+
+.tag.warn {
+    background: #fef3c7;
+    color: #92400e;
+    border-color: #fcd34d;
+}
+
+/* 听写控制条 */
+.dictation-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 16px;
+    padding: 14px;
+    background: var(--bg-secondary);
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+}
+
+.dictation-controls label {
+    font-size: 13px;
+    color: var(--text-muted);
+}
+
+.dictation-controls select {
+    padding: 6px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-primary);
+    font-size: 14px;
+    color: var(--text-main);
+}
+
+/* 听写舞台：默认无 is-open → display:none */
+.dictation-stage {
+    display: none;
+    padding: 24px;
+    background: var(--bg-secondary);
+    border-radius: 12px;
+    border: 1px solid var(--border-color);
+    margin-top: 12px;
+}
+.dictation-stage.is-open {
+    display: block;
+}
+
+.dictation-progress {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.dictation-progress span {
+    color: var(--text-main);
+    font-weight: 600;
+    font-family: var(--font-mono, monospace);
+}
+
+.dictation-question {
+    text-align: center;
+    padding: 24px 0;
+    margin-bottom: 16px;
+    border-bottom: 1px dashed var(--border-color);
+}
+
+.q-phonetic {
+    font-family: var(--font-mono, monospace);
+    font-size: 22px;
+    color: var(--text-main);
+    margin-bottom: 12px;
+}
+
+.q-definition {
+    font-size: 15px;
+    color: var(--text-muted);
+}
+
+.dictation-input-row {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+.dictation-input-row input {
+    flex: 1;
+    padding: 12px 14px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-primary);
+    color: var(--text-main);
+    font-size: 15px;
+    font-family: var(--font-mono, monospace);
+}
+
+.dictation-input-row input:disabled {
+    opacity: 0.5;
+}
+
+.q-feedback {
+    padding: 10px 14px;
+    border-radius: 6px;
+    font-size: 14px;
+    text-align: center;
+    font-weight: 500;
+}
+
+.q-feedback.correct {
+    background: #d1fae5;
+    color: #065f46;
+    border: 1px solid #6ee7b7;
+}
+
+.q-feedback.wrong {
+    background: #fee2e2;
+    color: #991b1b;
+    border: 1px solid #fca5a5;
+}
+
+.dictation-final {
+    margin-top: 24px;
+    text-align: center;
+    padding: 20px;
+    background: var(--bg-primary);
+    border-radius: 10px;
+    border: 1px solid var(--border-color);
+}
+
+.dictation-final h3 {
+    margin: 0 0 12px;
+    color: var(--text-main);
+}
+
+.final-stats {
+    font-size: 16px;
+    color: var(--text-muted);
+    margin-bottom: 16px;
+}
+
+.final-stats span {
+    color: var(--text-main);
+    font-weight: 700;
+    font-family: var(--font-mono, monospace);
+}
+
+.final-actions {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+}
+
+/* 按钮 */
+.btn-primary {
+    padding: 10px 20px;
+    background: var(--primary-color, #6366f1);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.btn-primary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.btn-secondary {
+    padding: 10px 20px;
+    background: var(--bg-primary);
+    color: var(--text-main);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    font-size: 14px;
+    cursor: pointer;
+}
+
+.btn-secondary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+@media (max-width: 800px) {
+    .filter-bar, .dictation-controls {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    .data-table {
+        font-size: 12px;
+    }
+}
+</style>
+{% endblock %}

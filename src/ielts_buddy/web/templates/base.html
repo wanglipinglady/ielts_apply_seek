@@ -75,6 +75,20 @@
         </a>
       </div>
 
+      {# 辅助训练导航组 #}
+      <div class="nav-group">
+        <div class="nav-group-title">辅助训练</div>
+        <a href="/write" class="nav-item {% if request.url.path == '/write' %}active{% endif %}">
+          <span class="icon">✎</span> 写作辅助
+        </a>
+        <a href="/listen" class="nav-item {% if request.url.path == '/listen' %}active{% endif %}">
+          <span class="icon">🎧</span> 听力训练
+        </a>
+        <a href="/speak" class="nav-item {% if request.url.path == '/speak' %}active{% endif %}">
+          <span class="icon">🗣</span> 口语话题
+        </a>
+      </div>
+
       {# 用户信息 #}
       <div class="sidebar-user">
         {% if current_user %}

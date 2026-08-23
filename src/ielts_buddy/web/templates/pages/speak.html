@@ -1,0 +1,837 @@
+{% extends "base.html" %}
+
+{% block page_title %}口语练习{% endblock %}
+
+{% block content %}
+<section class="speak-page">
+  <h2>🗣 口语练习</h2>
+  <p class="lede">
+    浏览雅思口语话题库、按 Part 随机抽题练习、查询话题关键词汇。
+    内置 {{ part_labels|length }} 个 Part（Part 1 日常话题 / Part 2 个人陈述 / Part 3 深入讨论），
+    话题数据来自 CLI 内置 JSON。
+  </p>
+
+  {# === Tab 切换按钮 === #}
+  <div class="speak-tabs" role="tablist">
+    <button class="speak-tab active" data-tab="topics" role="tab">📚 话题列表</button>
+    <button class="speak-tab" data-tab="practice" role="tab">🎯 抽题练习</button>
+    <button class="speak-tab" data-tab="vocab" role="tab">📖 话题词汇</button>
+  </div>
+
+  {# ============================================================ #}
+  {# === Tab 1: 话题列表 === #}
+  {# ============================================================ #}
+  <div class="tab-panel is-open" id="panel-topics" role="tabpanel">
+    <div class="panel-toolbar">
+      <label>筛选 Part：</label>
+      <div class="part-filter" id="part-filter">
+        <button class="part-chip active" data-part="">全部</button>
+        <button class="part-chip" data-part="1">Part 1</button>
+        <button class="part-chip" data-part="2">Part 2</button>
+        <button class="part-chip" data-part="3">Part 3</button>
+      </div>
+      <button class="btn-secondary" id="reload-topics-btn">↻ 刷新</button>
+    </div>
+
+    <div class="topic-summary" id="topic-summary">加载中...</div>
+
+    <div class="topic-list" id="topic-list">
+      <div class="loading-hint">加载中...</div>
+    </div>
+  </div>
+
+  {# ============================================================ #}
+  {# === Tab 2: 抽题练习 === #}
+  {# ============================================================ #}
+  <div class="tab-panel" id="panel-practice" role="tabpanel">
+    <div class="practice-toolbar">
+      <label>选择 Part：</label>
+      <select id="practice-part-select">
+        <option value="">全部（任意 Part）</option>
+        <option value="1">Part 1（日常话题）</option>
+        <option value="2">Part 2（个人陈述）</option>
+        <option value="3">Part 3（深入讨论）</option>
+      </select>
+      <button class="btn-primary" id="practice-draw-btn">🎲 抽题</button>
+    </div>
+
+    <div class="practice-result" id="practice-result">
+      <div class="practice-empty">点击「抽题」开始一次口语练习。</div>
+    </div>
+
+    <p class="practice-hint">
+      💡 本页面与 CLI 的 <code>ib speak practice</code> 行为一致：
+      随机抽题后展示问题 + 关键词汇 + 参考范文 + 答题技巧。
+      不录音、不评分、不陪练——这些是 P1 大工程，本次不做。
+    </p>
+  </div>
+
+  {# ============================================================ #}
+  {# === Tab 3: 话题词汇 === #}
+  {# ============================================================ #}
+  <div class="tab-panel" id="panel-vocab" role="tabpanel">
+    <div class="vocab-toolbar">
+      <label for="vocab-input">话题关键词：</label>
+      <input type="text"
+             id="vocab-input"
+             class="vocab-input"
+             placeholder="如 hometown / education / work"
+             autocomplete="off"
+             spellcheck="false" />
+      <button class="btn-primary" id="vocab-search-btn">🔍 查询</button>
+      <span class="vocab-hint">支持模糊匹配（不区分大小写）</span>
+    </div>
+
+    <div class="vocab-result" id="vocab-result">
+      <div class="practice-empty">输入话题关键词（如 hometown），查询词汇卡。</div>
+    </div>
+  </div>
+</section>
+
+<script>
+(function() {
+    'use strict';
+
+    // ========== 元素 ==========
+    const $ = (id) => document.getElementById(id);
+    const tabButtons = document.querySelectorAll('.speak-tab');
+    const panels = {
+        topics: $('panel-topics'),
+        practice: $('panel-practice'),
+        vocab: $('panel-vocab'),
+    };
+
+    // Topics
+    const partChips = document.querySelectorAll('#part-filter .part-chip');
+    const topicSummary = $('topic-summary');
+    const topicList = $('topic-list');
+    const reloadTopicsBtn = $('reload-topics-btn');
+
+    // Practice
+    const practicePartSelect = $('practice-part-select');
+    const practiceDrawBtn = $('practice-draw-btn');
+    const practiceResult = $('practice-result');
+
+    // Vocab
+    const vocabInput = $('vocab-input');
+    const vocabSearchBtn = $('vocab-search-btn');
+    const vocabResult = $('vocab-result');
+
+    // ========== 工具 ==========
+    function escapeHtml(s) {
+        return String(s)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    // ========== Tab 切换 ==========
+    // 用 class is-open 模式（hidden 属性 + display:flex 的特异性冲突
+    // 在 pomodoro 页面已有教训：作者样式 [hidden]{display:none} 会被
+    // tab-panel{display:...} 覆盖 → 初始就显示。这里统一用 is-open。
+    tabButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const target = btn.dataset.tab;
+            tabButtons.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            Object.entries(panels).forEach(([key, el]) => {
+                if (key === target) {
+                    el.classList.add('is-open');
+                } else {
+                    el.classList.remove('is-open');
+                }
+            });
+        });
+    });
+
+    // ========== Tab 1: 话题列表 ==========
+    let currentPartFilter = '';
+
+    async function loadTopics(part) {
+        topicList.innerHTML = '<div class="loading-hint">加载中...</div>';
+        topicSummary.textContent = '加载中...';
+        try {
+            const url = part ? `/api/speak/topics?part=${part}` : '/api/speak/topics';
+            const resp = await fetch(url);
+            if (!resp.ok) {
+                const err = await resp.json().catch(() => ({}));
+                throw new Error(err.detail || `HTTP ${resp.status}`);
+            }
+            const topics = await resp.json();
+            renderTopics(topics, part);
+        } catch (e) {
+            topicList.innerHTML = `<div class="loading-hint">加载失败：${escapeHtml(e.message)}</div>`;
+            topicSummary.textContent = '加载失败';
+        }
+    }
+
+    function renderTopics(topics, part) {
+        const partLabel = part ? `Part ${part}` : '全部';
+        topicSummary.textContent = `${partLabel} 话题（共 ${topics.length} 个）`;
+
+        if (!topics.length) {
+            topicList.innerHTML = '<div class="practice-empty">暂无话题</div>';
+            return;
+        }
+
+        const html = topics.map(t => {
+            const vocabPreview = (t.vocab || []).slice(0, 4)
+                .map(v => `<span class="vocab-chip">${escapeHtml(v)}</span>`)
+                .join(' ');
+            const vocabMore = (t.vocab || []).length > 4
+                ? `<span class="vocab-more">+${t.vocab.length - 4}</span>`
+                : '';
+            const firstQuestion = (t.questions && t.questions[0]) || '';
+            return `
+                <div class="topic-card">
+                    <div class="topic-card-head">
+                        <span class="topic-id">#${t.topic_id}</span>
+                        <span class="part-badge part-${t.part}">Part ${t.part}</span>
+                        <span class="topic-name">${escapeHtml(t.topic)}</span>
+                    </div>
+                    <div class="topic-question">
+                        <span class="q-label">题目：</span>${escapeHtml(firstQuestion)}
+                    </div>
+                    <div class="topic-vocab-preview">
+                        <span class="vocab-label">关键词：</span>${vocabPreview}${vocabMore}
+                    </div>
+                </div>
+            `;
+        }).join('');
+        topicList.innerHTML = html;
+    }
+
+    partChips.forEach(chip => {
+        chip.addEventListener('click', () => {
+            partChips.forEach(c => c.classList.remove('active'));
+            chip.classList.add('active');
+            currentPartFilter = chip.dataset.part || '';
+            loadTopics(currentPartFilter || null);
+        });
+    });
+
+    reloadTopicsBtn.addEventListener('click', () => {
+        loadTopics(currentPartFilter || null);
+    });
+
+    // ========== Tab 2: 抽题练习 ==========
+    async function drawPractice() {
+        const part = practicePartSelect.value;
+        practiceResult.innerHTML = '<div class="loading-hint">抽题中...</div>';
+        try {
+            const url = part ? `/api/speak/random?part=${part}` : '/api/speak/random';
+            const resp = await fetch(url);
+            if (!resp.ok) {
+                const err = await resp.json().catch(() => ({}));
+                throw new Error(err.detail || `HTTP ${resp.status}`);
+            }
+            const t = await resp.json();
+            renderPractice(t);
+        } catch (e) {
+            practiceResult.innerHTML = `<div class="practice-empty">抽题失败：${escapeHtml(e.message)}</div>`;
+        }
+    }
+
+    function renderPractice(t) {
+        const questionsHtml = (t.questions || [])
+            .map((q, i) => `<li>${escapeHtml(q)}</li>`)
+            .join('');
+        const vocabHtml = (t.vocab || [])
+            .map(v => `<span class="vocab-chip">${escapeHtml(v)}</span>`)
+            .join(' ');
+
+        practiceResult.innerHTML = `
+            <div class="practice-card">
+                <div class="practice-card-head">
+                    <span class="part-badge part-${t.part}">${escapeHtml(t.part_label)}</span>
+                    <h3 class="practice-topic">${escapeHtml(t.topic)}</h3>
+                </div>
+
+                <section class="practice-section">
+                    <h4 class="practice-section-title">📋 题目</h4>
+                    <ol class="practice-questions">${questionsHtml}</ol>
+                </section>
+
+                <section class="practice-section">
+                    <h4 class="practice-section-title">🔑 关键词汇</h4>
+                    <div class="practice-vocab">${vocabHtml}</div>
+                </section>
+
+                <section class="practice-section practice-section-answer">
+                    <h4 class="practice-section-title">📝 参考范文</h4>
+                    <p class="practice-sample">${escapeHtml(t.sample_answer)}</p>
+                </section>
+
+                <section class="practice-section practice-section-tips">
+                    <h4 class="practice-section-title">💡 答题技巧</h4>
+                    <p class="practice-tips">${escapeHtml(t.tips)}</p>
+                </section>
+
+                <div class="practice-actions">
+                    <button class="btn-primary" id="practice-draw-again">🎲 再抽一道</button>
+                </div>
+            </div>
+        `;
+        const drawAgain = $('practice-draw-again');
+        if (drawAgain) drawAgain.addEventListener('click', drawPractice);
+    }
+
+    practiceDrawBtn.addEventListener('click', drawPractice);
+
+    // ========== Tab 3: 话题词汇 ==========
+    async function searchVocab() {
+        const topic = vocabInput.value.trim();
+        if (!topic) {
+            vocabResult.innerHTML = '<div class="practice-empty">请先输入话题关键词。</div>';
+            return;
+        }
+        vocabResult.innerHTML = '<div class="loading-hint">查询中...</div>';
+        try {
+            const resp = await fetch(`/api/speak/vocab?topic=${encodeURIComponent(topic)}`);
+            if (!resp.ok) {
+                const err = await resp.json().catch(() => ({}));
+                throw new Error(err.detail || `HTTP ${resp.status}`);
+            }
+            const card = await resp.json();
+            renderVocabCard(card, topic);
+        } catch (e) {
+            vocabResult.innerHTML = `<div class="practice-empty">查询失败：${escapeHtml(e.message)}</div>`;
+        }
+    }
+
+    function renderVocabCard(card, query) {
+        const questionsHtml = (card.questions || [])
+            .map(q => `<li>${escapeHtml(q)}</li>`)
+            .join('');
+        const vocabHtml = (card.vocab || [])
+            .map(v => `<span class="vocab-chip">${escapeHtml(v)}</span>`)
+            .join(' ');
+
+        vocabResult.innerHTML = `
+            <div class="vocab-card">
+                <div class="vocab-card-head">
+                    <span class="part-badge part-${card.part}">${escapeHtml(card.part_label)}</span>
+                    <h3 class="vocab-topic">${escapeHtml(card.topic)}</h3>
+                    <span class="vocab-query">匹配关键词：<code>${escapeHtml(query)}</code></span>
+                </div>
+
+                <section class="vocab-section">
+                    <h4 class="vocab-section-title">📋 相关问题</h4>
+                    <ul class="vocab-questions">${questionsHtml}</ul>
+                </section>
+
+                <section class="vocab-section">
+                    <h4 class="vocab-section-title">🔑 关键词汇</h4>
+                    <div class="vocab-list">${vocabHtml}</div>
+                </section>
+            </div>
+        `;
+    }
+
+    vocabSearchBtn.addEventListener('click', searchVocab);
+    vocabInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            searchVocab();
+        }
+    });
+
+    // ========== 初次加载 ==========
+    loadTopics(null);
+})();
+</script>
+
+<style>
+.speak-page {
+    max-width: 1100px;
+    margin: 0 auto;
+}
+
+.speak-page h2 {
+    margin-bottom: 4px;
+}
+
+.speak-page .lede {
+    color: var(--text-muted);
+    margin-bottom: 20px;
+}
+
+/* === Tab 切换 === */
+.speak-tabs {
+    display: flex;
+    gap: 6px;
+    border-bottom: 1px solid var(--border-color);
+    margin-bottom: 24px;
+}
+
+.speak-tab {
+    padding: 10px 18px;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    font-size: 14px;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-weight: 500;
+    transition: color 0.15s, border-color 0.15s;
+}
+
+.speak-tab:hover {
+    color: var(--text-main);
+}
+
+.speak-tab.active {
+    color: var(--primary-color);
+    border-bottom-color: var(--primary-color);
+}
+
+/* === Tab Panel（关键：is-open 模式，避开 hidden + display 特异性冲突） === */
+.tab-panel {
+    display: none;
+}
+.tab-panel.is-open {
+    display: block;
+}
+
+/* === 通用按钮（复用 base 风格） === */
+.speak-page .btn-primary {
+    padding: 8px 16px;
+    background: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+}
+.speak-page .btn-primary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+.speak-page .btn-secondary {
+    padding: 8px 14px;
+    background: var(--bg-primary);
+    color: var(--text-main);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    font-size: 13px;
+    cursor: pointer;
+}
+
+/* === Tab 1: 话题列表 === */
+.panel-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+}
+
+.panel-toolbar label {
+    font-size: 13px;
+    color: var(--text-muted);
+}
+
+.part-filter {
+    display: inline-flex;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.part-chip {
+    padding: 6px 14px;
+    background: transparent;
+    border: none;
+    border-right: 1px solid var(--border-color);
+    font-size: 13px;
+    color: var(--text-muted);
+    cursor: pointer;
+}
+
+.part-chip:last-child {
+    border-right: none;
+}
+
+.part-chip:hover {
+    background: rgba(15, 118, 110, 0.05);
+    color: var(--text-main);
+}
+
+.part-chip.active {
+    background: var(--primary-color);
+    color: white;
+}
+
+.topic-summary {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-bottom: 12px;
+    padding: 8px 12px;
+    background: var(--bg-primary);
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+}
+
+.topic-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 12px;
+}
+
+.topic-card {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 14px;
+    transition: box-shadow 0.15s, border-color 0.15s;
+}
+
+.topic-card:hover {
+    border-color: var(--primary-color);
+    box-shadow: 0 2px 8px rgba(15, 118, 110, 0.08);
+}
+
+.topic-card-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+}
+
+.topic-id {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text-soft);
+}
+
+.part-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.part-badge.part-1 {
+    background: #dbeafe;
+    color: #1e40af;
+}
+.part-badge.part-2 {
+    background: #fef3c7;
+    color: #92400e;
+}
+.part-badge.part-3 {
+    background: #ede9fe;
+    color: #5b21b6;
+}
+
+.topic-name {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-main);
+}
+
+.topic-question {
+    font-size: 13px;
+    color: var(--text-main);
+    line-height: 1.5;
+    margin-bottom: 8px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+}
+
+.topic-question .q-label {
+    color: var(--text-muted);
+    font-weight: 500;
+}
+
+.topic-vocab-preview {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.vocab-label {
+    color: var(--text-muted);
+    margin-right: 4px;
+}
+
+.vocab-chip {
+    display: inline-block;
+    padding: 2px 8px;
+    margin: 2px 2px;
+    background: rgba(15, 118, 110, 0.08);
+    color: var(--primary-color);
+    border-radius: 4px;
+    font-size: 12px;
+}
+
+.vocab-more {
+    font-size: 11px;
+    color: var(--text-soft);
+    margin-left: 4px;
+}
+
+/* === Tab 2: 抽题练习 === */
+.practice-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 16px;
+    padding: 12px 14px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+}
+
+.practice-toolbar label {
+    font-size: 13px;
+    color: var(--text-muted);
+}
+
+.practice-toolbar select {
+    padding: 6px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-primary);
+    font-size: 14px;
+}
+
+.practice-result {
+    margin-bottom: 12px;
+}
+
+.practice-empty,
+.loading-hint {
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 13px;
+    padding: 32px 16px;
+    background: var(--bg-primary);
+    border: 1px dashed var(--border-color);
+    border-radius: 8px;
+}
+
+.practice-card {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 20px 24px;
+}
+
+.practice-card-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.practice-topic {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--text-main);
+}
+
+.practice-section {
+    margin-bottom: 18px;
+}
+
+.practice-section-title {
+    margin: 0 0 8px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-main);
+}
+
+.practice-questions {
+    margin: 0;
+    padding-left: 22px;
+    color: var(--text-main);
+    line-height: 1.7;
+}
+
+.practice-questions li {
+    margin-bottom: 4px;
+}
+
+.practice-vocab {
+    line-height: 1.8;
+}
+
+.practice-section-answer {
+    background: rgba(15, 118, 110, 0.04);
+    border-left: 3px solid var(--primary-color);
+    padding: 12px 14px;
+    border-radius: 4px;
+}
+
+.practice-sample {
+    margin: 0;
+    font-style: italic;
+    color: var(--text-main);
+    line-height: 1.6;
+}
+
+.practice-section-tips {
+    background: rgba(245, 158, 11, 0.06);
+    border-left: 3px solid #f59e0b;
+    padding: 12px 14px;
+    border-radius: 4px;
+}
+
+.practice-tips {
+    margin: 0;
+    color: var(--text-main);
+    line-height: 1.6;
+}
+
+.practice-actions {
+    margin-top: 12px;
+    display: flex;
+    justify-content: flex-end;
+}
+
+.practice-hint {
+    margin-top: 16px;
+    padding: 10px 14px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    font-size: 12px;
+    color: var(--text-muted);
+    line-height: 1.6;
+}
+
+.practice-hint code {
+    background: rgba(15, 118, 110, 0.08);
+    color: var(--primary-color);
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+}
+
+/* === Tab 3: 话题词汇 === */
+.vocab-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 16px;
+    padding: 12px 14px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    flex-wrap: wrap;
+}
+
+.vocab-toolbar label {
+    font-size: 13px;
+    color: var(--text-muted);
+}
+
+.vocab-input {
+    flex: 1;
+    min-width: 200px;
+    padding: 8px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    font-size: 14px;
+    background: var(--bg-primary);
+}
+
+.vocab-input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+}
+
+.vocab-hint {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.vocab-card {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 20px 24px;
+}
+
+.vocab-card-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--border-color);
+    flex-wrap: wrap;
+}
+
+.vocab-topic {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-main);
+}
+
+.vocab-query {
+    margin-left: auto;
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.vocab-query code {
+    background: rgba(15, 118, 110, 0.08);
+    color: var(--primary-color);
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-family: var(--font-mono);
+}
+
+.vocab-section {
+    margin-bottom: 16px;
+}
+
+.vocab-section-title {
+    margin: 0 0 8px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-main);
+}
+
+.vocab-questions {
+    margin: 0;
+    padding-left: 22px;
+    color: var(--text-main);
+    line-height: 1.7;
+}
+
+.vocab-list {
+    line-height: 1.8;
+}
+
+@media (max-width: 800px) {
+    .topic-list {
+        grid-template-columns: 1fr;
+    }
+    .practice-card,
+    .vocab-card {
+        padding: 16px;
+    }
+    .practice-card-head,
+    .vocab-card-head {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+}
+</style>
+{% endblock %}

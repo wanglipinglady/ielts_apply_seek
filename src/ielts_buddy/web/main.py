@@ -45,6 +45,9 @@ from ielts_buddy.web.routers import articles as articles_routes
 from ielts_buddy.web.routers import typing as typing_routes
 from ielts_buddy.web.routers import pomodoro as pomodoro_routes
 from ielts_buddy.web.routers import calendar as calendar_routes
+from ielts_buddy.web.routers import write as write_routes
+from ielts_buddy.web.routers import listening as listening_routes
+from ielts_buddy.web.routers import speak as speak_routes
 
 # 模板目录 = 本文件所在目录/templates
 WEB_DIR = Path(__file__).resolve().parent
@@ -310,6 +313,14 @@ def create_app() -> FastAPI:
     app.include_router(pomodoro_routes.api_router)
     app.include_router(calendar_routes.router)
     app.include_router(calendar_routes.api_router)
+
+    # 阶段 7：写作辅助 / 听力 / 口语（v3.6+：纯只读 CLI service 复用 web）
+    app.include_router(write_routes.router)
+    app.include_router(write_routes.api_router)
+    app.include_router(listening_routes.router)
+    app.include_router(listening_routes.api_router)
+    app.include_router(speak_routes.router)
+    app.include_router(speak_routes.api_router)
 
     return app
 
