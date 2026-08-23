@@ -289,8 +289,12 @@ class SyncWorker:
         include_id = spec.get("include_id", False)
 
         # 1. 拿本地 pending 行
+        #    v3.6 修复：include_id=True 时把 id 列也选出来，确保 conflict_key 中的 "id" 有值
+        push_select_cols = list(cols)
+        if include_id and "id" not in push_select_cols:
+            push_select_cols.append("id")
         cur = sqlite_conn.execute(
-            f"SELECT {', '.join(cols)} FROM {table} "
+            f"SELECT {', '.join(push_select_cols)} FROM {table} "
             f"WHERE sync_status='pending_upload'"
         )
         rows = cur.fetchall()
@@ -302,7 +306,7 @@ class SyncWorker:
 
         with mysql_engine.begin() as conn:
             for row in rows:
-                row_dict = dict(zip(cols, row))
+                row_dict = dict(zip(push_select_cols, row))
 
                 # 2. 查 MySQL 端对应行（按 conflict_key）
                 # 用 :key 命名占位符 + dict，避免 SQLAlchemy list 绑定报错
@@ -408,7 +412,12 @@ class SyncWorker:
 
         # include_id=True 时用 id 列；否则按 conflict_key 列查 SQLite 本地行
         # SQLite 本地表必须有 UNIQUE (conflict_key...) 才能用 INSERT ON CONFLICT
-        select_cols_sql = ", ".join(f"`{c}`" for c in cols)
+        # v3.6 修复：若 conflict_key 含 "id" 但 cols 不含 "id" → SELECT 需要把 id 列也带出
+        # （否则后面 row_dict["id"] 会 KeyError）。注意：INSERT 时仍按 include_id 决定要不要写 id。
+        select_cols = list(cols)
+        if include_id and "id" not in select_cols:
+            select_cols.append("id")
+        select_cols_sql = ", ".join(f"`{c}`" for c in select_cols)
 
         # MySQL 端拉（updated_at > last_pull_at 的所有行）
         if last_pull_at:
@@ -466,7 +475,9 @@ class SyncWorker:
         use_on_conflict = conflict_target is not None
 
         for row in rows:
-            row_dict = dict(zip(cols, row))
+            # v3.6 修复：用 select_cols（可能包含 id）映射,确保 conflict_key 中的
+            # "id" 也能命中 row_dict。INSERT 部分仍按 include_id 决定是否写 id。
+            row_dict = dict(zip(select_cols, row))
             where = " AND ".join(f"`{k}`=?" for k in conflict_key)
             where_args = [row_dict[k] for k in conflict_key]
 
@@ -484,26 +495,32 @@ class SyncWorker:
                     continue
 
             # 准备 INSERT 参数（按 conflict_target 唯一索引做 UPSERT）
+            #
+            # v3.6 修复：include_id=True 的表（grade_history / articles），
+            # ON CONFLICT 目标是 [id]，INSERT 必须把 id 列也写入,否则 SQLite
+            # 会自增分配新 id,UPSERT 永远命中不了 → 无限重复插入。
             if use_on_conflict:
+                insert_cols_list = select_cols
                 insert_sql = (
                     f"INSERT INTO {table} "
-                    f"({', '.join(f'`{c}`' for c in cols)}, sync_status) "
-                    f"VALUES ({', '.join('?' for _ in cols)}, 'synced') "
+                    f"({', '.join(f'`{c}`' for c in insert_cols_list)}, sync_status) "
+                    f"VALUES ({', '.join('?' for _ in insert_cols_list)}, 'synced') "
                     f"ON CONFLICT ({', '.join(conflict_target)}) DO UPDATE SET "
                     + ", ".join(
-                        f"`{c}`=excluded.`{c}`" for c in cols
+                        f"`{c}`=excluded.`{c}`" for c in insert_cols_list
                     )
                     + ", sync_status='synced'"
                 )
-                args = [row_dict[c] for c in cols]  # sync_status 已用字面量 'synced'
+                args = [row_dict[c] for c in insert_cols_list]  # sync_status 已用字面量 'synced'
             else:
                 # vocab_category_words 这类：fallback 到 INSERT OR REPLACE
+                insert_cols_list = select_cols
                 insert_sql = (
                     f"INSERT OR REPLACE INTO {table} "
-                    f"({', '.join(f'`{c}`' for c in cols)}, sync_status) "
-                    f"VALUES ({', '.join('?' for _ in cols)}, 'synced')"
+                    f"({', '.join(f'`{c}`' for c in insert_cols_list)}, sync_status) "
+                    f"VALUES ({', '.join('?' for _ in insert_cols_list)}, 'synced')"
                 )
-                args = [row_dict[c] for c in cols]
+                args = [row_dict[c] for c in insert_cols_list]
 
             sqlite_conn.execute(insert_sql, args)
             pulled += 1
