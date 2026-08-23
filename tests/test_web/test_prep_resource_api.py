@@ -256,6 +256,45 @@ class TestResourcesList:
         scores = [item["recommend_score"] for item in data["items"]]
         assert scores == sorted(scores, reverse=True)
 
+    def test_list_sort_by_publish_date_returns_iso_string(self, fresh_db) -> None:
+        """新增:发布排序应使用 MySQL/SQLite 通用语法,返回 publish_date 为 ISO 字符串。
+        修复前 MySQL 报 'NULLS LAST' 语法错;修复后 publish_date 字段为 date 对象时
+        _row_to_item 需归一化为 'YYYY-MM-DD' 字符串,否则 Pydantic 校验失败 500。"""
+        client, app, token = fresh_db
+        _seed_resources(app.state.container)
+        r = client.get(
+            "/api/resources/list?sort_by=publish_date",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert r.status_code == 200, r.text
+        data = r.json()
+        # 排序: 2024-03-10 > 2024-01-15 > 2023-08-20 > 2023-06-01
+        titles = [it["title"] for it in data["items"]]
+        assert titles.index("刘洪波阅读真经 9-15-3 方法") < titles.index("王陆语料库精听")
+        assert titles.index("王陆语料库精听") < titles.index("非 featured 的写作资料")
+        assert titles.index("非 featured 的写作资料") < titles.index("Simon 口语 Part 1 套路")
+        # publish_date 字段必须为 ISO 字符串(不是 datetime.date 对象)
+        for item in data["items"]:
+            assert isinstance(item["publish_date"], str)
+            # 形如 2024-03-10
+            assert len(item["publish_date"]) == 10
+            assert item["publish_date"][4] == "-"
+
+    def test_featured_returns_iso_string(self, fresh_db) -> None:
+        """新增:featured 路径上的 publish_date 也需归一化,避免 500。"""
+        client, app, token = fresh_db
+        _seed_resources(app.state.container)
+        r = client.get(
+            "/api/resources/featured",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert r.status_code == 200, r.text
+        data = r.json()
+        for skill_key in ("listening", "reading", "speaking", "writing"):
+            item = data.get(skill_key)
+            if item is not None:
+                assert isinstance(item["publish_date"], str)
+
     def test_list_pagination(self, fresh_db) -> None:
         client, app, token = fresh_db
         _seed_resources(app.state.container)

@@ -2576,7 +2576,8 @@ class MySQLPrepResourceRepository:
         order_map = {
             "recommend_score": "recommend_score DESC, sort_order ASC",
             "sort_order": "sort_order ASC, recommend_score DESC",
-            "publish_date": "publish_date DESC NULLS LAST, recommend_score DESC",
+            # MySQL 8 不支持 NULLS LAST 语法,用 IS NULL 表达式等价
+            "publish_date": "publish_date IS NULL, publish_date DESC, recommend_score DESC",
         }
         order = order_map.get(sort_by, order_map["recommend_score"])
         sql = (

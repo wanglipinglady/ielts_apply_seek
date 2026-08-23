@@ -91,6 +91,15 @@ def _get_service(request: Request) -> PrepResourceService:
 
 def _row_to_item(row: dict) -> ResourceItem:
     """DB row → Pydantic model(统一字段过滤)。"""
+    # publish_date:MySQL DATE 列返 datetime.date,SQLite TEXT 返 str,
+    # 统一成 "YYYY-MM-DD" 字符串,避免 Pydantic 校验失败。
+    raw_date = row.get("publish_date")
+    publish_date_str: Optional[str] = None
+    if raw_date is not None and raw_date != "":
+        if hasattr(raw_date, "isoformat"):
+            publish_date_str = raw_date.isoformat()
+        else:
+            publish_date_str = str(raw_date)
     return ResourceItem(
         id=int(row["id"]),
         title=row.get("title") or "",
@@ -104,7 +113,7 @@ def _row_to_item(row: dict) -> ResourceItem:
         level=row.get("level") or "5-6",
         method_summary=row.get("method_summary") or "",
         source_status=row.get("source_status") or "verified_repost",
-        publish_date=row.get("publish_date") or None,
+        publish_date=publish_date_str,
         duration_sec=int(row.get("duration_sec") or 0),
         outdated_risk=row.get("outdated_risk") or "low",
         format_compatible=row.get("format_compatible") or "computer",
