@@ -50,6 +50,7 @@ from ielts_buddy.web.routers import listening as listening_routes
 from ielts_buddy.web.routers import speak as speak_routes
 from ielts_buddy.web.routers import mistakes as mistakes_routes
 from ielts_buddy.web.routers import speaking_practice as speaking_practice_routes
+from ielts_buddy.web.routers import listening_practice as listening_practice_routes
 
 # 模板目录 = 本文件所在目录/templates
 WEB_DIR = Path(__file__).resolve().parent
@@ -354,6 +355,10 @@ def create_app() -> FastAPI:
     # v3.7 P1：口语对练（录音 + whisper 转写 + LLM 评分 + 错词回收）
     app.include_router(speaking_practice_routes.router)
     app.include_router(speaking_practice_routes.api_router)
+
+    # v3.7 P2：真·听力题库（LLM 出题 + TTS 合成 + 单题模式）
+    app.include_router(listening_practice_routes.router)
+    app.include_router(listening_practice_routes.api_router)
 
     return app
 
