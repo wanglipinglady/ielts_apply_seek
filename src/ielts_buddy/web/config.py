@@ -207,6 +207,21 @@ SPEAKING_MAX_DURATION_SEC: Final[int] = int(
     os.environ.get("IELTS_BUDDY_SPEAKING_MAX_DURATION_SEC", "120").strip() or "120"
 )
 
+# v3.7 P2 真·听力题库配置
+TTS_VOICE: Final[str] = os.environ.get("IELTS_BUDDY_TTS_VOICE", "male-en-1").strip()
+TTS_MODEL: Final[str] = os.environ.get("IELTS_BUDDY_TTS_MODEL", "speech-01").strip()
+# 听力音频保留天数(默认 30;启动期同步清理)
+LISTENING_AUDIO_RETENTION_DAYS: Final[int] = int(
+    os.environ.get("IELTS_BUDDY_LISTENING_AUDIO_RETENTION_DAYS", "30").strip() or "30"
+)
+# 启动期是否自动种子题库(默认 True;False 用于测试)
+LISTENING_AUTO_SEED: Final[bool] = _env_bool("IELTS_BUDDY_LISTENING_AUTO_SEED", True)
+# 启动期每个 Section 种子套数(默认 10/8/7/5 = 30 套)
+LISTENING_SEED_S1: Final[int] = int(os.environ.get("IELTS_BUDDY_LISTENING_SEED_S1", "10").strip() or "10")
+LISTENING_SEED_S2: Final[int] = int(os.environ.get("IELTS_BUDDY_LISTENING_SEED_S2", "8").strip() or "8")
+LISTENING_SEED_S3: Final[int] = int(os.environ.get("IELTS_BUDDY_LISTENING_SEED_S3", "7").strip() or "7")
+LISTENING_SEED_S4: Final[int] = int(os.environ.get("IELTS_BUDDY_LISTENING_SEED_S4", "5").strip() or "5")
+
 
 __all__ = [
     "WEB_HOST",
@@ -229,4 +244,13 @@ __all__ = [
     "WHISPER_THREADS",
     "SPEAKING_AUDIO_RETENTION_DAYS",
     "SPEAKING_MAX_DURATION_SEC",
+    # v3.7 P2
+    "TTS_VOICE",
+    "TTS_MODEL",
+    "LISTENING_AUDIO_RETENTION_DAYS",
+    "LISTENING_AUTO_SEED",
+    "LISTENING_SEED_S1",
+    "LISTENING_SEED_S2",
+    "LISTENING_SEED_S3",
+    "LISTENING_SEED_S4",
 ]

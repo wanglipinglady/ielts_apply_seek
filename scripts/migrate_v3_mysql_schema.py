@@ -24,6 +24,7 @@
   │ articles         │ 表不存在                │ 新建                     │
   │ typing_history   │ 表不存在（v3.6 新增）     │ 新建                     │
   │ focus_sessions   │ 表不存在（v3.6 新增）     │ 新建                     │
+  │ listening_questions/listening_attempts│ 表不存在(v3.7 P2 新增)│ 新建│
   └──────────────────┴────────────────────────┴──────────────────────────┘
 
 注意：
@@ -154,6 +155,11 @@ def audit(cur) -> dict[str, Any]:
     # speaking_practice_records 必须存在（v3.7 P1 口语对练加入 SYNC_TABLES）
     if not has_table(cur, "speaking_practice_records"):
         report["tables_missing"].append("speaking_practice_records")
+    # listening_questions / listening_attempts（v3.7 P2 真·听力题库）
+    if not has_table(cur, "listening_questions"):
+        report["tables_missing"].append("listening_questions")
+    if not has_table(cur, "listening_attempts"):
+        report["tables_missing"].append("listening_attempts")
 
     # 各表的必填列
     expected_columns = {
@@ -330,6 +336,72 @@ def add_speaking_practice_records_table(cur) -> None:
         """
     )
     print("  ✓ speaking_practice_records 已创建")
+
+
+def add_listening_questions_table(cur) -> None:
+    """v3.7 P2 新增:真·听力题库题库表。
+
+    跨用户共享,不需要 SYNC_TABLES。
+    """
+    print("== 创建 listening_questions 表 ==")
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS listening_questions (
+            id                    BIGINT          NOT NULL AUTO_INCREMENT,
+            section               TINYINT         NOT NULL,
+            set_id                INT             NOT NULL,
+            qid                   INT             NOT NULL,
+            scenario              VARCHAR(128)    NOT NULL DEFAULT '',
+            question_type         VARCHAR(32)     NOT NULL,
+            stem                  TEXT            NOT NULL,
+            options_json          MEDIUMTEXT      NULL,
+            answer                VARCHAR(256)    NOT NULL,
+            explanation           MEDIUMTEXT      NOT NULL,
+            transcript            MEDIUMTEXT      NOT NULL,
+            audio_path            VARCHAR(512)    NULL,
+            audio_generated_at    DATETIME        NULL,
+            created_at            DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at            DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP
+                                                  ON UPDATE CURRENT_TIMESTAMP,
+            sync_status           VARCHAR(16)     NOT NULL DEFAULT 'synced',
+            PRIMARY KEY (id),
+            UNIQUE KEY uk_lq_section_set_qid (section, set_id, qid),
+            KEY idx_lq_section_set (section, set_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+          COMMENT='真·听力题库题库（v3.7 P2）'
+        """
+    )
+    print("  ✓ listening_questions 已创建")
+
+
+def add_listening_attempts_table(cur) -> None:
+    """v3.7 P2 新增:真·听力答题记录表。
+
+    纳入 SYNC_TABLES(每个用户有独立答题记录)。
+    """
+    print("== 创建 listening_attempts 表 ==")
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS listening_attempts (
+            id                    BIGINT          NOT NULL AUTO_INCREMENT,
+            user_id               BIGINT          NOT NULL,
+            question_id           BIGINT          NOT NULL,
+            user_answer           VARCHAR(256)    NOT NULL,
+            is_correct            TINYINT(1)      NOT NULL DEFAULT 0,
+            duration_sec          DECIMAL(8,2)    NOT NULL DEFAULT 0,
+            played_count          INT             NOT NULL DEFAULT 1,
+            created_at            DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at            DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP
+                                                  ON UPDATE CURRENT_TIMESTAMP,
+            sync_status           VARCHAR(16)     NOT NULL DEFAULT 'synced',
+            PRIMARY KEY (id),
+            KEY idx_la_user_created (user_id, created_at),
+            KEY idx_la_user_q (user_id, question_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+          COMMENT='真·听力答题记录（v3.7 P2）'
+        """
+    )
+    print("  ✓ listening_attempts 已创建")
 
 
 def upgrade_personal_vocab(cur) -> None:
@@ -587,6 +659,10 @@ def main() -> int:
             add_focus_sessions_table(cur)
         if "speaking_practice_records" in report["tables_missing"]:
             add_speaking_practice_records_table(cur)
+        if "listening_questions" in report["tables_missing"]:
+            add_listening_questions_table(cur)
+        if "listening_attempts" in report["tables_missing"]:
+            add_listening_attempts_table(cur)
         if "personal_vocab" in report["columns_missing"]:
             upgrade_personal_vocab(cur)
         if "learning_records" in report["columns_missing"]:

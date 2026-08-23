@@ -216,6 +216,48 @@ t_speaking_practice_records = Table(
     Index("idx_spr_user_part", "user_id", "part"),
 )
 
+
+# v3.7 P2 真·听力题库:题库表
+t_listening_questions = Table(
+    "listening_questions", metadata,
+    Column("id", BigInteger, primary_key=True, autoincrement=True),
+    Column("section", SmallInteger, nullable=False),
+    Column("set_id", Integer, nullable=False),
+    Column("qid", Integer, nullable=False),
+    Column("scenario", String(128), nullable=False, server_default=text("''")),
+    Column("question_type", String(32), nullable=False),
+    Column("stem", Text, nullable=False),
+    Column("options_json", Text, nullable=True),
+    Column("answer", String(256), nullable=False),
+    Column("explanation", Text, nullable=False, server_default=text("''")),
+    Column("transcript", Text, nullable=False, server_default=text("''")),
+    Column("audio_path", String(512), nullable=True),
+    Column("audio_generated_at", DateTime, nullable=True),
+    Column("created_at", DateTime, nullable=False, server_default=text("CURRENT_TIMESTAMP")),
+    Column("updated_at", DateTime, nullable=False, server_default=text("CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP")),
+    Column("sync_status", String(16), nullable=False, server_default=text("'synced'")),
+    UniqueConstraint("section", "set_id", "qid", name="uk_lq_section_set_qid"),
+    Index("idx_lq_section_set", "section", "set_id"),
+)
+
+
+# v3.7 P2 真·听力题库:答题记录表
+t_listening_attempts = Table(
+    "listening_attempts", metadata,
+    Column("id", BigInteger, primary_key=True, autoincrement=True),
+    Column("user_id", BigInteger, nullable=False),
+    Column("question_id", BigInteger, nullable=False),
+    Column("user_answer", String(256), nullable=False),
+    Column("is_correct", Boolean, nullable=False, server_default=text("0")),
+    Column("duration_sec", Numeric(8, 2), nullable=False, server_default=text("0")),
+    Column("played_count", Integer, nullable=False, server_default=text("1")),
+    Column("created_at", DateTime, nullable=False, server_default=text("CURRENT_TIMESTAMP")),
+    Column("updated_at", DateTime, nullable=False, server_default=text("CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP")),
+    Column("sync_status", String(16), nullable=False, server_default=text("'synced'")),
+    Index("idx_la_user_created", "user_id", "created_at"),
+    Index("idx_la_user_q", "user_id", "question_id"),
+)
+
 t_vocab_cache = Table(
     "vocab_cache", metadata,
     Column("word", String(128), primary_key=True),
@@ -866,6 +908,299 @@ class MySQLSpeakingPracticeRepository:
                        t_speaking_practice_records.c.created_at < cutoff)
             )
             return result.rowcount
+
+
+# =============================================================
+# 1b. MySQLListeningPracticeRepository (v3.7 P2 新增)
+# =============================================================
+
+
+class MySQLListeningPracticeRepository:
+    """MySQL 实现的 ListeningPracticeRepository。"""
+
+    def __init__(self, engine: Engine) -> None:
+        self._engine = engine
+
+    # ---- 题库 ----
+    def seed_question(
+        self,
+        section: int,
+        set_id: int,
+        qid: int,
+        scenario: str,
+        question_type: str,
+        stem: str,
+        options: Optional[list[str]],
+        answer: str,
+        explanation: str,
+        transcript: str,
+        audio_path: Optional[str] = None,
+        audio_generated_at: Optional[str] = None,
+    ) -> int:
+        opts_json = json.dumps(options, ensure_ascii=False) if options else None
+        gen_at = (
+            datetime.fromisoformat(audio_generated_at)
+            if audio_generated_at else None
+        )
+        with self._engine.begin() as conn:
+            try:
+                result = conn.execute(
+                    insert(t_listening_questions).values(
+                        section=section, set_id=set_id, qid=qid,
+                        scenario=scenario, question_type=question_type,
+                        stem=stem, options_json=opts_json, answer=answer,
+                        explanation=explanation, transcript=transcript,
+                        audio_path=audio_path, audio_generated_at=gen_at,
+                    )
+                )
+                return int(result.inserted_primary_key[0])
+            except IntegrityError:
+                # upsert
+                conn.execute(
+                    update(t_listening_questions)
+                    .where(t_listening_questions.c.section == section,
+                           t_listening_questions.c.set_id == set_id,
+                           t_listening_questions.c.qid == qid)
+                    .values(
+                        scenario=scenario, question_type=question_type,
+                        stem=stem, options_json=opts_json, answer=answer,
+                        explanation=explanation, transcript=transcript,
+                    )
+                )
+                row = conn.execute(
+                    select(t_listening_questions.c.id)
+                    .where(t_listening_questions.c.section == section,
+                           t_listening_questions.c.set_id == set_id,
+                           t_listening_questions.c.qid == qid)
+                ).fetchone()
+                return int(row.id) if row else -1
+
+    def get_question(self, question_id: int) -> Optional[dict]:
+        with self._engine.connect() as conn:
+            row = conn.execute(
+                select(t_listening_questions)
+                .where(t_listening_questions.c.id == question_id)
+            ).fetchone()
+        if row is None:
+            return None
+        d = dict(row._mapping)
+        if d.get("options_json"):
+            try:
+                d["options"] = json.loads(d["options_json"])
+            except Exception:
+                d["options"] = []
+        else:
+            d["options"] = None
+        return d
+
+    def list_sections_with_counts(self) -> list[dict]:
+        with self._engine.connect() as conn:
+            rows = conn.execute(
+                text(
+                    "SELECT section, "
+                    "COUNT(DISTINCT set_id) AS total_sets, "
+                    "COUNT(*) AS total_questions "
+                    "FROM listening_questions "
+                    "GROUP BY section ORDER BY section"
+                )
+            ).fetchall()
+        return [
+            {
+                "section": int(r.section),
+                "total_sets": int(r.total_sets),
+                "total_questions": int(r.total_questions),
+            }
+            for r in rows
+        ]
+
+    def list_sets_by_section(self, section: int) -> list[dict]:
+        with self._engine.connect() as conn:
+            rows = conn.execute(
+                text(
+                    "SELECT set_id, scenario, COUNT(*) AS question_count, "
+                    "MIN(stem) AS first_stem "
+                    "FROM listening_questions "
+                    "WHERE section = :section "
+                    "GROUP BY set_id, scenario ORDER BY set_id"
+                ),
+                {"section": section},
+            ).fetchall()
+        return [
+            {
+                "set_id": int(r.set_id),
+                "section": section,
+                "scenario": r.scenario or "",
+                "question_count": int(r.question_count),
+                "first_stem": r.first_stem or "",
+            }
+            for r in rows
+        ]
+
+    def list_questions_by_set(
+        self, section: int, set_id: int
+    ) -> list[dict]:
+        with self._engine.connect() as conn:
+            rows = conn.execute(
+                select(t_listening_questions)
+                .where(t_listening_questions.c.section == section,
+                       t_listening_questions.c.set_id == set_id)
+                .order_by(t_listening_questions.c.qid)
+            ).fetchall()
+        items = []
+        for row in rows:
+            d = dict(row._mapping)
+            if d.get("options_json"):
+                try:
+                    d["options"] = json.loads(d["options_json"])
+                except Exception:
+                    d["options"] = []
+            else:
+                d["options"] = None
+            items.append(d)
+        return items
+
+    def set_audio_path(
+        self,
+        question_id: int,
+        audio_path: Optional[str],
+        audio_generated_at: Optional[str],
+    ) -> None:
+        gen_at = (
+            datetime.fromisoformat(audio_generated_at)
+            if audio_generated_at else None
+        )
+        with self._engine.begin() as conn:
+            conn.execute(
+                update(t_listening_questions)
+                .where(t_listening_questions.c.id == question_id)
+                .values(audio_path=audio_path, audio_generated_at=gen_at)
+            )
+
+    def count_questions(self) -> int:
+        with self._engine.connect() as conn:
+            row = conn.execute(
+                text("SELECT COUNT(*) AS c FROM listening_questions")
+            ).fetchone()
+        return int(row.c)
+
+    # ---- 答题记录 ----
+    def record_attempt(
+        self,
+        user_id: int,
+        question_id: int,
+        user_answer: str,
+        is_correct: bool,
+        duration_sec: float = 0.0,
+        played_count: int = 1,
+    ) -> int:
+        with self._engine.begin() as conn:
+            result = conn.execute(
+                insert(t_listening_attempts).values(
+                    user_id=user_id, question_id=question_id,
+                    user_answer=user_answer, is_correct=bool(is_correct),
+                    duration_sec=duration_sec, played_count=played_count,
+                )
+            )
+            return int(result.inserted_primary_key[0])
+
+    def list_user_attempts(
+        self,
+        user_id: int,
+        page: int = 1,
+        size: int = 20,
+        section: Optional[int] = None,
+    ) -> tuple[list[dict], int]:
+        where_parts = ["a.user_id = :uid"]
+        params: dict[str, Any] = {
+            "uid": user_id, "limit": size, "offset": (page - 1) * size,
+        }
+        if section is not None:
+            where_parts.append("q.section = :section")
+            params["section"] = section
+        where = " AND ".join(where_parts)
+        with self._engine.connect() as conn:
+            total_row = conn.execute(
+                text(
+                    f"SELECT COUNT(*) AS c FROM listening_attempts a "
+                    f"LEFT JOIN listening_questions q ON a.question_id = q.id "
+                    f"WHERE {where}"
+                ),
+                params,
+            ).fetchone()
+            total = int(total_row.c)
+            rows = conn.execute(
+                text(
+                    f"SELECT a.*, q.section, q.set_id, q.qid, q.scenario, "
+                    f"q.stem, q.transcript, q.answer AS correct_answer, q.audio_path "
+                    f"FROM listening_attempts a "
+                    f"LEFT JOIN listening_questions q ON a.question_id = q.id "
+                    f"WHERE {where} "
+                    f"ORDER BY a.created_at DESC, a.id DESC "
+                    f"LIMIT :limit OFFSET :offset"
+                ),
+                params,
+            ).fetchall()
+        return [dict(r._mapping) for r in rows], total
+
+    def get_user_stats(self, user_id: int) -> dict:
+        with self._engine.connect() as conn:
+            total_row = conn.execute(
+                text(
+                    "SELECT COUNT(*) AS total_attempts, "
+                    "COALESCE(SUM(is_correct), 0) AS correct_count "
+                    "FROM listening_attempts WHERE user_id = :uid"
+                ),
+                {"uid": user_id},
+            ).fetchone()
+            by_section_rows = conn.execute(
+                text(
+                    "SELECT q.section, COUNT(*) AS attempts, "
+                    "COALESCE(SUM(a.is_correct), 0) AS correct "
+                    "FROM listening_attempts a "
+                    "LEFT JOIN listening_questions q ON a.question_id = q.id "
+                    "WHERE a.user_id = :uid AND q.section IS NOT NULL "
+                    "GROUP BY q.section ORDER BY q.section"
+                ),
+                {"uid": user_id},
+            ).fetchall()
+
+        total = int(total_row.total_attempts)
+        correct = int(total_row.correct_count)
+        by_section = {
+            int(r.section): {
+                "attempts": int(r.attempts),
+                "correct": int(r.correct),
+                "accuracy": (
+                    round(int(r.correct) / int(r.attempts) * 100, 1)
+                    if int(r.attempts) > 0 else 0.0
+                ),
+            }
+            for r in by_section_rows
+        }
+        return {
+            "total_attempts": total,
+            "correct_count": correct,
+            "accuracy": round(correct / total * 100, 1) if total > 0 else 0.0,
+            "by_section": by_section,
+        }
+
+    # ---- 清理 ----
+    def list_expired_audio_paths(
+        self,
+        retention_days: int,
+    ) -> list[tuple[int, str]]:
+        cutoff = datetime.now() - timedelta(days=retention_days)
+        with self._engine.connect() as conn:
+            rows = conn.execute(
+                select(
+                    t_listening_questions.c.id,
+                    t_listening_questions.c.audio_path,
+                )
+                .where(t_listening_questions.c.audio_path.isnot(None),
+                       t_listening_questions.c.audio_generated_at.isnot(None),
+                       t_listening_questions.c.audio_generated_at < cutoff)
+            ).fetchall()
+        return [(int(r.id), r.audio_path) for r in rows]
 
 
 # =============================================================
@@ -2070,6 +2405,8 @@ class MySQLRepositoryContainer:
         self.vocab_cache = MySQLVocabCacheRepository(self._engine)
         # v3.7 P1 口语对练历史仓储
         self.speaking_practice = MySQLSpeakingPracticeRepository(self._engine)
+        # v3.7 P2 真·听力题库仓储
+        self.listening_practice = MySQLListeningPracticeRepository(self._engine)
 
     def close(self) -> None:
         self._engine.dispose()
@@ -2094,12 +2431,14 @@ __all__ = [
     "MySQLVocabCacheRepository",
     "MySQLUserRepository",
     "MySQLSpeakingPracticeRepository",
+    "MySQLListeningPracticeRepository",
     "MySQLRepositoryContainer",
     "create_mysql_repositories",
     "REVIEW_INTERVALS",
     "DEFAULT_MYSQL_HOST",
     "DEFAULT_MYSQL_PORT",
     "DEFAULT_MYSQL_USER",
+    "DEFAULT_MYSQL_PASSWORD",
     "DEFAULT_MYSQL_DATABASE",
     "DEFAULT_MYSQL_CHARSET",
 ]

@@ -2,6 +2,13 @@
 
 W2 阶段提供 SQLite 实现，W3 阶段提供 MySQL 实现。
 上层代码（Services）通过 ``RepositoryContainer`` 接口注入。
+
+SQLite 端：
+- learning_records / personal_vocab / vocab_cache / users / cache_meta
+- exam_sessions / grade_history / typing_history
+- focus_sessions (v3.6 番茄钟)
+- articles / sync_meta / speaking_practice_records (v3.7 P1 口语对练)
+- listening_questions / listening_attempts (v3.7 P2 真·听力题库)
 """
 from ielts_buddy.repositories.sqlite_repo import (
     REVIEW_INTERVALS,
@@ -10,6 +17,7 @@ from ielts_buddy.repositories.sqlite_repo import (
     SQLiteFocusSessionRepository,
     SQLiteGradeRepository,
     SQLiteLearningRepository,
+    SQLiteListeningPracticeRepository,
     SQLitePersonalVocabRepository,
     SQLiteRepositoryContainer,
     SQLiteSpeakingPracticeRepository,
@@ -26,6 +34,7 @@ try:
         MySQLFocusSessionRepository,
         MySQLGradeRepository,
         MySQLLearningRepository,
+        MySQLListeningPracticeRepository,
         MySQLPersonalVocabRepository,
         MySQLRepositoryContainer,
         MySQLSpeakingPracticeRepository,
@@ -48,6 +57,7 @@ __all__ = [
     "SQLiteVocabCacheRepository",
     "SQLiteUserRepository",
     "SQLiteSpeakingPracticeRepository",
+    "SQLiteListeningPracticeRepository",
     "SQLiteRepositoryContainer",
     "create_sqlite_repositories",
     "REVIEW_INTERVALS",
@@ -64,6 +74,7 @@ if _MYSQL_AVAILABLE:
         "MySQLVocabCacheRepository",
         "MySQLUserRepository",
         "MySQLSpeakingPracticeRepository",
+        "MySQLListeningPracticeRepository",
         "MySQLRepositoryContainer",
         "create_mysql_repositories",
     ]

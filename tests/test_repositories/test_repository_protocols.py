@@ -249,11 +249,11 @@ class TestRepositoryContainerProtocol:
 
     REQUIRED_REPO_ATTRS = {
         "learning", "personal_vocab", "exam", "grade", "vocab_cache", "user",
-        "speaking_practice",
+        "speaking_practice", "listening_practice",
     }
 
     def test_required_repo_attrs_in_annotations(self):
-        """6 个 Repository 属性应在 __annotations__ 中声明。"""
+        """8 个 Repository 属性应在 __annotations__ 中声明。"""
         annotations = getattr(r.RepositoryContainer, "__annotations__", {})
         missing = self.REQUIRED_REPO_ATTRS - set(annotations.keys())
         assert not missing, f"RepositoryContainer __annotations__ 缺失: {missing}"
@@ -265,7 +265,7 @@ class TestRepositoryContainerProtocol:
         )
 
     def test_all_required_present(self):
-        """6 个 Repository + close 全部到位。"""
+        """8 个 Repository + close 全部到位。"""
         annotations = set(getattr(r.RepositoryContainer, "__annotations__", {}).keys())
         assert annotations == self.REQUIRED_REPO_ATTRS, (
             f"RepositoryContainer 属性集合不对: 实际 {annotations}"
@@ -373,11 +373,11 @@ class TestProtocolConsistency:
             )
 
     def test_protocol_module_exports(self):
-        """__all__ 应包含 7 个 Protocol + 工具函数 + Container。"""
+        """__all__ 应包含 8 个 Protocol + 工具函数 + Container。"""
         expected = {
             "LearningRepository", "PersonalVocabRepository", "ExamRepository",
             "GradeRepository", "VocabCacheRepository", "UserRepository",
-            "SpeakingPracticeRepository",
+            "SpeakingPracticeRepository", "ListeningPracticeRepository",
             "RepositoryContainer", "assert_repository_implements_protocol",
         }
         actual = set(r.__all__)

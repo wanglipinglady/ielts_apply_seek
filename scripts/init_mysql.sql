@@ -262,6 +262,56 @@ CREATE TABLE IF NOT EXISTS speaking_practice_records (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='口语对练历史（v3.7 P1）';
 
 -- =============================================================
+-- 8.8 listening_questions（真·听力题库题库;v3.7 P2 新增）
+-- PRD: docs/web-mvp/plans/phase-9-listening-practice.md §6
+-- 题库由 LLM 出题 + TTS 合成音频,跨用户共享,不进 SYNC_TABLES。
+-- audio_path 30 天清理后会被置 NULL(物理文件删除,下次访问会重新合成)
+-- =============================================================
+CREATE TABLE IF NOT EXISTS listening_questions (
+    id                    BIGINT          NOT NULL AUTO_INCREMENT,
+    section               TINYINT         NOT NULL,
+    set_id                INT             NOT NULL,
+    qid                   INT             NOT NULL,
+    scenario              VARCHAR(128)    NOT NULL DEFAULT '',
+    question_type         VARCHAR(32)     NOT NULL,
+    stem                  TEXT            NOT NULL,
+    options_json          MEDIUMTEXT      NULL,
+    answer                VARCHAR(256)    NOT NULL,
+    explanation           MEDIUMTEXT      NOT NULL,
+    transcript            MEDIUMTEXT      NOT NULL,
+    audio_path            VARCHAR(512)    NULL,
+    audio_generated_at    DATETIME        NULL,
+    created_at            DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at            DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP
+                                              ON UPDATE CURRENT_TIMESTAMP,
+    sync_status           VARCHAR(16)     NOT NULL DEFAULT 'synced',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_lq_section_set_qid (section, set_id, qid),
+    KEY idx_lq_section_set (section, set_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='真·听力题库题库（v3.7 P2）';
+
+-- =============================================================
+-- 8.9 listening_attempts（真·听力答题记录;v3.7 P2 新增,纳入 SYNC_TABLES）
+-- PRD: docs/web-mvp/plans/phase-9-listening-practice.md §6
+-- =============================================================
+CREATE TABLE IF NOT EXISTS listening_attempts (
+    id                    BIGINT          NOT NULL AUTO_INCREMENT,
+    user_id               BIGINT          NOT NULL,
+    question_id           BIGINT          NOT NULL,
+    user_answer           VARCHAR(256)    NOT NULL,
+    is_correct            TINYINT(1)      NOT NULL DEFAULT 0,
+    duration_sec          DECIMAL(8,2)    NOT NULL DEFAULT 0,
+    played_count          INT             NOT NULL DEFAULT 1,
+    created_at            DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at            DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP
+                                              ON UPDATE CURRENT_TIMESTAMP,
+    sync_status           VARCHAR(16)     NOT NULL DEFAULT 'synced',
+    PRIMARY KEY (id),
+    KEY idx_la_user_created (user_id, created_at),
+    KEY idx_la_user_q (user_id, question_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='真·听力答题记录（v3.7 P2）';
+
+-- =============================================================
 -- 9. cache_meta（缓存元数据）
 -- =============================================================
 CREATE TABLE IF NOT EXISTS cache_meta (
@@ -290,10 +340,12 @@ INSERT IGNORE INTO cache_meta (key_name, value) VALUES
 -- =============================================================
 -- 12. SYNC_TABLES 同步列表自检（仅作为文档注释）
 -- =============================================================
--- 共 11 张业务表:
+-- 共 12 张业务表:
 --   users / learning_records / personal_vocab / vocab_categories
 --   vocab_category_words / exam_sessions / grade_history
 --   typing_history / focus_sessions / articles / speaking_practice_records
+--   listening_attempts
+-- 注：listening_questions 不进 SYNC_TABLES（跨用户共享题库,不需要同步）
 -- 详见 docs/online_local_技术详解.md §3.2 SYNC_TABLES
 
 SET FOREIGN_KEY_CHECKS = 1;

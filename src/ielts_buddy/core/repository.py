@@ -552,13 +552,111 @@ class SpeakingPracticeRepository(Protocol):
 
 
 # =============================================================
-# 8. RepositoryContainer — 7 个 Repository 的容器
+# 8. ListeningPracticeRepository — 真·听力题库(v3.7 P2 新增)
+# =============================================================
+
+
+@runtime_checkable
+class ListeningPracticeRepository(Protocol):
+    """真·听力题库仓储协议。
+
+    SQLite / MySQL 实现各有同名类,签名完全一致。
+    """
+
+    # ---- 题库 ----
+    def seed_question(
+        self,
+        section: int,
+        set_id: int,
+        qid: int,
+        scenario: str,
+        question_type: str,
+        stem: str,
+        options: Optional[list[str]],
+        answer: str,
+        explanation: str,
+        transcript: str,
+        audio_path: Optional[str] = None,
+        audio_generated_at: Optional[str] = None,
+    ) -> int:
+        """插入或更新一道题(UNIQUE(section, set_id, qid) 兜底 upsert)。"""
+        ...
+
+    def get_question(self, question_id: int) -> Optional[dict]:
+        """单题详情(含 options 已 parse)。"""
+        ...
+
+    def list_sections_with_counts(self) -> list[dict]:
+        """返回 [{section, total_sets, total_questions}]。"""
+        ...
+
+    def list_sets_by_section(self, section: int) -> list[dict]:
+        """返回该 Section 下每套的元信息。"""
+        ...
+
+    def list_questions_by_set(
+        self, section: int, set_id: int
+    ) -> list[dict]:
+        """按 qid 排序返回该套所有题。"""
+        ...
+
+    def set_audio_path(
+        self,
+        question_id: int,
+        audio_path: Optional[str],
+        audio_generated_at: Optional[str],
+    ) -> None:
+        """TTS 合成后回填 audio_path + audio_generated_at。"""
+        ...
+
+    def count_questions(self) -> int:
+        """总题数(用于启动期判断是否需要种子)。"""
+        ...
+
+    # ---- 答题记录 ----
+    def record_attempt(
+        self,
+        user_id: int,
+        question_id: int,
+        user_answer: str,
+        is_correct: bool,
+        duration_sec: float = 0.0,
+        played_count: int = 1,
+    ) -> int:
+        """记录一次答题;返回 attempt id。"""
+        ...
+
+    def list_user_attempts(
+        self,
+        user_id: int,
+        page: int = 1,
+        size: int = 20,
+        section: Optional[int] = None,
+    ) -> tuple[list[dict], int]:
+        """返回 (items, total)。section 过滤会 JOIN listening_questions。"""
+        ...
+
+    def get_user_stats(self, user_id: int) -> dict:
+        """返回 {total_attempts, correct_count, accuracy, by_section}。"""
+        ...
+
+    # ---- 清理 ----
+    def list_expired_audio_paths(
+        self,
+        retention_days: int,
+    ) -> list[tuple[int, str]]:
+        """返回所有 retention_days 天前生成的音频 (question_id, audio_path)。"""
+        ...
+
+
+# =============================================================
+# 9. RepositoryContainer — 8 个 Repository 的容器
 # =============================================================
 
 
 @runtime_checkable
 class RepositoryContainer(Protocol):
-    """7 个 Repository 的聚合。
+    """8 个 Repository 的聚合。
 
     ``db_factory.create_repositories()`` 返回此接口的实现。
     Services 接受一个 ``RepositoryContainer`` 注入。
@@ -571,6 +669,7 @@ class RepositoryContainer(Protocol):
     vocab_cache: VocabCacheRepository
     user: UserRepository
     speaking_practice: SpeakingPracticeRepository
+    listening_practice: ListeningPracticeRepository
 
     def close(self) -> None:
         """关闭所有底层连接（SQLite / MySQL 连接池）。"""
@@ -625,6 +724,7 @@ __all__ = [
     "VocabCacheRepository",
     "UserRepository",
     "SpeakingPracticeRepository",
+    "ListeningPracticeRepository",
     "RepositoryContainer",
     "assert_repository_implements_protocol",
 ]

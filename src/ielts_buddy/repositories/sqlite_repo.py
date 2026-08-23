@@ -292,6 +292,46 @@ CREATE INDEX IF NOT EXISTS idx_spr_session
     ON speaking_practice_records(session_id);
 CREATE INDEX IF NOT EXISTS idx_spr_user_part
     ON speaking_practice_records(user_id, part);
+
+-- v3.7 P2 真·听力题库(LLM 出题 + TTS 合成音频)
+CREATE TABLE IF NOT EXISTS listening_questions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    section INTEGER NOT NULL,            -- 1 / 2 / 3 / 4
+    set_id INTEGER NOT NULL,             -- 套号 1-based
+    qid INTEGER NOT NULL,                -- 套内题号 1-based
+    scenario TEXT NOT NULL DEFAULT '',
+    question_type TEXT NOT NULL,         -- multiple_choice / form_completion / matching
+    stem TEXT NOT NULL,
+    options_json TEXT,                   -- JSON 数组,填空题为 NULL
+    answer TEXT NOT NULL,
+    explanation TEXT NOT NULL DEFAULT '',
+    transcript TEXT NOT NULL DEFAULT '',
+    audio_path TEXT,                     -- 相对 ~/.ielts-buddy/listening/
+    audio_generated_at TEXT,             -- ISO 时间戳
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT '',
+    sync_status TEXT NOT NULL DEFAULT 'synced',
+    UNIQUE(section, set_id, qid)
+);
+CREATE INDEX IF NOT EXISTS idx_lq_section_set
+    ON listening_questions(section, set_id);
+
+CREATE TABLE IF NOT EXISTS listening_attempts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    question_id INTEGER NOT NULL,
+    user_answer TEXT NOT NULL,
+    is_correct INTEGER NOT NULL DEFAULT 0,
+    duration_sec REAL DEFAULT 0,
+    played_count INTEGER DEFAULT 1,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT '',
+    sync_status TEXT NOT NULL DEFAULT 'synced'
+);
+CREATE INDEX IF NOT EXISTS idx_la_user_created
+    ON listening_attempts(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_la_user_q
+    ON listening_attempts(user_id, question_id);
 """
 
 # 系统内置分类（每个用户独立一份，不使用 user_id=0 模板）
@@ -983,6 +1023,296 @@ class SQLiteSpeakingPracticeRepository:
         )
         self._conn.commit()
         return cur.rowcount
+
+
+# =============================================================
+# 1b. SQLiteListeningPracticeRepository (v3.7 P2 新增)
+# =============================================================
+
+
+class SQLiteListeningPracticeRepository:
+    """SQLite 实现的 ListeningPracticeRepository。"""
+
+    def __init__(self, conn: sqlite3.Connection) -> None:
+        self._conn = conn
+
+    # ---- 题库 ----
+    def seed_question(
+        self,
+        section: int,
+        set_id: int,
+        qid: int,
+        scenario: str,
+        question_type: str,
+        stem: str,
+        options: Optional[list[str]],
+        answer: str,
+        explanation: str,
+        transcript: str,
+        audio_path: Optional[str] = None,
+        audio_generated_at: Optional[str] = None,
+    ) -> int:
+        """插入或更新一道题(UNIQUE(section, set_id, qid) 兜底 upsert)。"""
+        now = datetime.now().isoformat(timespec="seconds")
+        opts_json = json.dumps(options, ensure_ascii=False) if options else None
+        try:
+            cur = self._conn.execute(
+                """INSERT INTO listening_questions
+                   (section, set_id, qid, scenario, question_type, stem,
+                    options_json, answer, explanation, transcript,
+                    audio_path, audio_generated_at,
+                    created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (section, set_id, qid, scenario, question_type, stem,
+                 opts_json, answer, explanation, transcript,
+                 audio_path, audio_generated_at,
+                 now, now),
+            )
+            self._conn.commit()
+            return int(cur.lastrowid)
+        except sqlite3.IntegrityError:
+            # 已存在 → UPDATE
+            cur = self._conn.execute(
+                """UPDATE listening_questions
+                   SET scenario = ?, question_type = ?, stem = ?,
+                       options_json = ?, answer = ?, explanation = ?,
+                       transcript = ?, updated_at = ?
+                 WHERE section = ? AND set_id = ? AND qid = ?""",
+                (scenario, question_type, stem,
+                 opts_json, answer, explanation, transcript,
+                 now, section, set_id, qid),
+            )
+            self._conn.commit()
+            row = self._conn.execute(
+                "SELECT id FROM listening_questions "
+                "WHERE section=? AND set_id=? AND qid=?",
+                (section, set_id, qid),
+            ).fetchone()
+            return int(row["id"]) if row else -1
+
+    def get_question(self, question_id: int) -> Optional[dict]:
+        row = self._conn.execute(
+            "SELECT * FROM listening_questions WHERE id = ?",
+            (question_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        d = dict(row)
+        if d.get("options_json"):
+            try:
+                d["options"] = json.loads(d["options_json"])
+            except Exception:
+                d["options"] = []
+        else:
+            d["options"] = None
+        return d
+
+    def list_sections_with_counts(self) -> list[dict]:
+        """返回 [{section, total_sets, total_questions}]。"""
+        rows = self._conn.execute(
+            """SELECT section,
+                      COUNT(DISTINCT set_id) AS total_sets,
+                      COUNT(*) AS total_questions
+               FROM listening_questions
+               GROUP BY section
+               ORDER BY section"""
+        ).fetchall()
+        return [
+            {
+                "section": int(r["section"]),
+                "total_sets": int(r["total_sets"]),
+                "total_questions": int(r["total_questions"]),
+            }
+            for r in rows
+        ]
+
+    def list_sets_by_section(self, section: int) -> list[dict]:
+        """返回该 Section 下每个套的元信息(题数 + 场景)。"""
+        rows = self._conn.execute(
+            """SELECT set_id, scenario,
+                      COUNT(*) AS question_count,
+                      MIN(stem) AS first_stem
+               FROM listening_questions
+               WHERE section = ?
+               GROUP BY set_id, scenario
+               ORDER BY set_id""",
+            (section,),
+        ).fetchall()
+        return [
+            {
+                "set_id": int(r["set_id"]),
+                "section": section,
+                "scenario": r["scenario"] or "",
+                "question_count": int(r["question_count"]),
+                "first_stem": r["first_stem"] or "",
+            }
+            for r in rows
+        ]
+
+    def list_questions_by_set(self, section: int, set_id: int) -> list[dict]:
+        rows = self._conn.execute(
+            """SELECT * FROM listening_questions
+               WHERE section = ? AND set_id = ?
+               ORDER BY qid""",
+            (section, set_id),
+        ).fetchall()
+        items = []
+        for row in rows:
+            d = dict(row)
+            if d.get("options_json"):
+                try:
+                    d["options"] = json.loads(d["options_json"])
+                except Exception:
+                    d["options"] = []
+            else:
+                d["options"] = None
+            items.append(d)
+        return items
+
+    def set_audio_path(
+        self,
+        question_id: int,
+        audio_path: Optional[str],
+        audio_generated_at: Optional[str],
+    ) -> None:
+        self._conn.execute(
+            "UPDATE listening_questions "
+            "SET audio_path = ?, audio_generated_at = ?, updated_at = ? "
+            "WHERE id = ?",
+            (audio_path, audio_generated_at,
+             datetime.now().isoformat(timespec="seconds"),
+             question_id),
+        )
+        self._conn.commit()
+
+    def count_questions(self) -> int:
+        row = self._conn.execute(
+            "SELECT COUNT(*) AS c FROM listening_questions"
+        ).fetchone()
+        return int(row["c"])
+
+    # ---- 答题记录 ----
+    def record_attempt(
+        self,
+        user_id: int,
+        question_id: int,
+        user_answer: str,
+        is_correct: bool,
+        duration_sec: float = 0.0,
+        played_count: int = 1,
+    ) -> int:
+        now = datetime.now().isoformat(timespec="seconds")
+        cur = self._conn.execute(
+            """INSERT INTO listening_attempts
+               (user_id, question_id, user_answer, is_correct,
+                duration_sec, played_count, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (user_id, question_id, user_answer,
+             1 if is_correct else 0, duration_sec, played_count, now),
+        )
+        self._conn.commit()
+        return int(cur.lastrowid)
+
+    def list_user_attempts(
+        self,
+        user_id: int,
+        page: int = 1,
+        size: int = 20,
+        section: Optional[int] = None,
+    ) -> tuple[list[dict], int]:
+        """返回 (items, total)。section 过滤会 JOIN listening_questions。"""
+        where_parts = ["a.user_id = ?"]
+        params: list[Any] = [user_id]
+        if section is not None:
+            where_parts.append("q.section = ?")
+            params.append(section)
+        where = " AND ".join(where_parts)
+
+        total_row = self._conn.execute(
+            f"""SELECT COUNT(*) AS c FROM listening_attempts a
+                LEFT JOIN listening_questions q ON a.question_id = q.id
+                WHERE {where}""",
+            params,
+        ).fetchone()
+        total = int(total_row["c"])
+
+        offset = (page - 1) * size
+        rows = self._conn.execute(
+            f"""SELECT a.*, q.section, q.set_id, q.qid, q.scenario,
+                       q.stem, q.transcript, q.answer AS correct_answer,
+                       q.audio_path
+                FROM listening_attempts a
+                LEFT JOIN listening_questions q ON a.question_id = q.id
+                WHERE {where}
+                ORDER BY a.created_at DESC, a.id DESC
+                LIMIT ? OFFSET ?""",
+            params + [size, offset],
+        ).fetchall()
+        items = [dict(r) for r in rows]
+        return items, total
+
+    def get_user_stats(self, user_id: int) -> dict:
+        """返回 {total_attempts, correct_count, accuracy,
+        by_section: {1: {...}, 2: {...}, 3: {...}, 4: {...}}}。"""
+        total_row = self._conn.execute(
+            """SELECT COUNT(*) AS total_attempts,
+                      SUM(is_correct) AS correct_count
+               FROM listening_attempts WHERE user_id = ?""",
+            (user_id,),
+        ).fetchone()
+        total = int(total_row["total_attempts"] or 0)
+        correct = int(total_row["correct_count"] or 0)
+
+        by_section_rows = self._conn.execute(
+            """SELECT q.section,
+                      COUNT(*) AS attempts,
+                      SUM(a.is_correct) AS correct
+               FROM listening_attempts a
+               LEFT JOIN listening_questions q ON a.question_id = q.id
+               WHERE a.user_id = ? AND q.section IS NOT NULL
+               GROUP BY q.section
+               ORDER BY q.section""",
+            (user_id,),
+        ).fetchall()
+        by_section = {
+            int(r["section"]): {
+                "attempts": int(r["attempts"]),
+                "correct": int(r["correct"] or 0),
+                "accuracy": (
+                    round((int(r["correct"] or 0) / int(r["attempts"])) * 100, 1)
+                    if int(r["attempts"]) > 0 else 0.0
+                ),
+            }
+            for r in by_section_rows
+        }
+
+        return {
+            "total_attempts": total,
+            "correct_count": correct,
+            "accuracy": round(correct / total * 100, 1) if total > 0 else 0.0,
+            "by_section": by_section,
+        }
+
+    # ---- 清理 ----
+    def list_expired_audio_paths(
+        self,
+        retention_days: int,
+    ) -> list[tuple[int, str]]:
+        """返回所有 retention_days 天前生成的音频(question_id, audio_path)。
+
+        Service 层据此删除文件 + 调 set_audio_path 标 NULL 触发重新合成。
+        """
+        cutoff = (datetime.now() - timedelta(days=retention_days)).isoformat(
+            timespec="seconds"
+        )
+        rows = self._conn.execute(
+            "SELECT id, audio_path FROM listening_questions "
+            "WHERE audio_path IS NOT NULL "
+            "AND audio_generated_at IS NOT NULL "
+            "AND audio_generated_at < ?",
+            (cutoff,),
+        ).fetchall()
+        return [(int(r["id"]), r["audio_path"]) for r in rows]
 
 
 # =============================================================
@@ -2313,6 +2643,8 @@ class SQLiteRepositoryContainer:
         self.user = SQLiteUserRepository(self._conn)
         # v3.7 P1：口语对练历史仓储
         self.speaking_practice = SQLiteSpeakingPracticeRepository(self._conn)
+        # v3.7 P2：真·听力题库仓储
+        self.listening_practice = SQLiteListeningPracticeRepository(self._conn)
 
         if cache_path is None:
             # v3：vocab_cache 与业务共用同一个 db 文件（避免维护多份 cache 拷贝）
@@ -2348,6 +2680,7 @@ __all__ = [
     "SQLiteVocabCacheRepository",
     "SQLiteUserRepository",
     "SQLiteSpeakingPracticeRepository",
+    "SQLiteListeningPracticeRepository",
     "SQLiteRepositoryContainer",
     "create_sqlite_repositories",
     "REVIEW_INTERVALS",
