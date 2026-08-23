@@ -67,6 +67,10 @@ class FallbackContainer:
         return self._active.grade
 
     @property
+    def typing(self):
+        return self._active.typing
+
+    @property
     def user(self):
         return self._active.user
 

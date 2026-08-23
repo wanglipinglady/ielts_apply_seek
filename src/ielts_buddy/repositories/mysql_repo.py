@@ -28,6 +28,7 @@ from ielts_buddy.core.models import (
     GradeResult,
     LearningRecord,
     PersonalWord,
+    TypingRecord,
     VocabCategory,
     Word,
 )
@@ -141,6 +142,25 @@ t_grade_history = Table(
     Column("graded_at", DateTime, nullable=False, server_default=text("CURRENT_TIMESTAMP")),
     Index("idx_gh_user_graded", "user_id", "graded_at"),
     Index("idx_gh_user_task", "user_id", "task_type"),
+)
+
+t_typing_history = Table(
+    "typing_history", metadata,
+    Column("id", BigInteger, primary_key=True, autoincrement=True),
+    Column("user_id", BigInteger, nullable=False, server_default=text("1")),
+    Column("mode", String(16), nullable=False, server_default=text("'words'")),
+    Column("prompt_text", Text, nullable=False),
+    Column("typed_text", Text, nullable=True),
+    Column("duration_sec", Integer, nullable=False, server_default=text("0")),
+    Column("wpm", DECIMAL(6, 2), nullable=False, server_default=text("0")),
+    Column("accuracy", DECIMAL(5, 4), nullable=False, server_default=text("0")),
+    Column("error_count", Integer, nullable=False, server_default=text("0")),
+    Column("total_chars", Integer, nullable=False, server_default=text("0")),
+    Column("completed", Boolean, nullable=False, server_default=text("1")),
+    Column("result_json", Text, nullable=False),
+    Column("created_at", DateTime, nullable=False, server_default=text("CURRENT_TIMESTAMP")),
+    Index("idx_th_user_created", "user_id", "created_at"),
+    Index("idx_th_user_mode", "user_id", "mode"),
 )
 
 t_vocab_cache = Table(
@@ -1236,6 +1256,109 @@ class MySQLGradeRepository:
 
 
 # =============================================================
+# 4b. MySQLTypingRepository
+# =============================================================
+
+
+class MySQLTypingRepository:
+    """MySQL 实现的 TypingRepository。
+
+    持久化机考打字练习的成绩（与 SQLite 版同 schema 同接口）。
+    """
+
+    def __init__(self, engine: Engine) -> None:
+        self._engine = engine
+
+    def save_record(self, user_id: int, record: TypingRecord) -> int:
+        with self._engine.begin() as conn:
+            row = conn.execute(insert(t_typing_history).values(
+                user_id=user_id,
+                mode=record.mode,
+                prompt_text=record.prompt_text,
+                typed_text=record.typed_text,
+                duration_sec=record.duration_sec,
+                wpm=float(record.wpm),
+                accuracy=float(record.accuracy),
+                error_count=record.error_count,
+                total_chars=record.total_chars,
+                completed=1 if record.completed else 0,
+                result_json=record.model_dump_json(),
+            ))
+            return int(row.inserted_primary_key[0])
+
+    def get_history(
+        self,
+        user_id: int,
+        limit: int = 20,
+        mode: Optional[str] = None,
+    ) -> list[TypingRecord]:
+        with self._engine.connect() as conn:
+            stmt = select(t_typing_history.c.result_json).where(
+                t_typing_history.c.user_id == user_id
+            )
+            if mode:
+                stmt = stmt.where(t_typing_history.c.mode == mode)
+            stmt = stmt.order_by(t_typing_history.c.id.desc()).limit(limit)
+            rows = conn.execute(stmt).fetchall()
+        results: list[TypingRecord] = []
+        for r in rows:
+            try:
+                data = json.loads(r[0])
+                results.append(TypingRecord(**data))
+            except Exception:
+                continue
+        return results
+
+    def get_history_count(self, user_id: int, mode: Optional[str] = None) -> int:
+        with self._engine.connect() as conn:
+            stmt = select(text("COUNT(*)")).select_from(t_typing_history).where(
+                t_typing_history.c.user_id == user_id
+            )
+            if mode:
+                stmt = stmt.where(t_typing_history.c.mode == mode)
+            row = conn.execute(stmt).first()
+            if row is None or row[0] is None:
+                return 0
+            return int(row[0])
+
+    def get_average_wpm(self, user_id: int, mode: Optional[str] = None) -> float:
+        with self._engine.connect() as conn:
+            stmt = select(text("AVG(wpm)")).select_from(t_typing_history).where(
+                t_typing_history.c.user_id == user_id
+            )
+            if mode:
+                stmt = stmt.where(t_typing_history.c.mode == mode)
+            row = conn.execute(stmt).first()
+            if row is None or row[0] is None:
+                return 0.0
+            return float(row[0])
+
+    def get_average_accuracy(self, user_id: int, mode: Optional[str] = None) -> float:
+        with self._engine.connect() as conn:
+            stmt = select(text("AVG(accuracy)")).select_from(t_typing_history).where(
+                t_typing_history.c.user_id == user_id
+            )
+            if mode:
+                stmt = stmt.where(t_typing_history.c.mode == mode)
+            row = conn.execute(stmt).first()
+            if row is None or row[0] is None:
+                return 0.0
+            return float(row[0])
+
+    def get_max_wpm(self, user_id: int, mode: Optional[str] = None) -> float:
+        with self._engine.connect() as conn:
+            stmt = select(text("MAX(wpm)")).select_from(t_typing_history).where(
+                t_typing_history.c.user_id == user_id
+            )
+            if mode:
+                stmt = stmt.where(t_typing_history.c.mode == mode)
+            row = conn.execute(stmt).first()
+            if row is None or row[0] is None:
+                return 0.0
+            return float(row[0])
+
+
+# =============================================================
 # 5. MySQLVocabCacheRepository
 # =============================================================
 
@@ -1413,6 +1536,7 @@ class MySQLRepositoryContainer:
         self.personal_vocab = MySQLPersonalVocabRepository(self._engine)
         self.exam = MySQLExamRepository(self._engine)
         self.grade = MySQLGradeRepository(self._engine)
+        self.typing = MySQLTypingRepository(self._engine)
         self.user = MySQLUserRepository(self._engine)
         self.vocab_cache = MySQLVocabCacheRepository(self._engine)
 

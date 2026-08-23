@@ -23,6 +23,7 @@ from ielts_buddy.core.models import (
     GradeResult,
     LearningRecord,
     PersonalWord,
+    TypingRecord,
     VocabCategory,
     Word,
 )
@@ -143,6 +144,28 @@ CREATE TABLE IF NOT EXISTS grade_history (
 );
 CREATE INDEX IF NOT EXISTS idx_gh_user_graded
     ON grade_history(user_id, graded_at DESC);
+
+CREATE TABLE IF NOT EXISTS typing_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL DEFAULT 1,
+    mode TEXT NOT NULL DEFAULT 'words',
+    prompt_text TEXT NOT NULL,
+    typed_text TEXT DEFAULT '',
+    duration_sec INTEGER NOT NULL DEFAULT 0,
+    wpm REAL NOT NULL DEFAULT 0,
+    accuracy REAL NOT NULL DEFAULT 0,
+    error_count INTEGER NOT NULL DEFAULT 0,
+    total_chars INTEGER NOT NULL DEFAULT 0,
+    completed INTEGER NOT NULL DEFAULT 1,
+    result_json TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT '',
+    sync_status TEXT NOT NULL DEFAULT 'synced'
+);
+CREATE INDEX IF NOT EXISTS idx_th_user_created
+    ON typing_history(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_th_user_mode
+    ON typing_history(user_id, mode);
 
 CREATE TABLE IF NOT EXISTS vocab_cache (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -308,6 +331,12 @@ _MIGRATIONS = {
         ("sync_status", "TEXT NOT NULL DEFAULT 'synced'"),
     ],
     "grade_history": [
+        ("user_id", "INTEGER NOT NULL DEFAULT 1"),
+        ("updated_at", "TEXT NOT NULL DEFAULT ''"),
+        ("sync_status", "TEXT NOT NULL DEFAULT 'synced'"),
+    ],
+    # v3.6：typing_history 机考打字记录
+    "typing_history": [
         ("user_id", "INTEGER NOT NULL DEFAULT 1"),
         ("updated_at", "TEXT NOT NULL DEFAULT ''"),
         ("sync_status", "TEXT NOT NULL DEFAULT 'synced'"),
@@ -1350,6 +1379,133 @@ class SQLiteGradeRepository:
 
 
 # =============================================================
+# 4.6 SQLiteTypingRepository
+# =============================================================
+
+
+class SQLiteTypingRepository:
+    """SQLite 实现的 TypingRepository。
+
+    持久化机考打字练习的成绩：
+    - save_record：插入一行（含 result_json 完整 dump）
+    - get_history：按 user_id 列最近 N 条
+    - get_history_count：user 总练习次数
+    - get_average_wpm / get_average_accuracy：聚合统计
+    - get_max_wpm：历史最佳
+    """
+
+    def __init__(self, conn: sqlite3.Connection) -> None:
+        self._conn = conn
+
+    def save_record(self, user_id: int, record: TypingRecord) -> int:
+        cur = self._conn.execute(
+            """INSERT INTO typing_history
+               (user_id, mode, prompt_text, typed_text, duration_sec,
+                wpm, accuracy, error_count, total_chars, completed,
+                result_json, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                user_id,
+                record.mode,
+                record.prompt_text,
+                record.typed_text,
+                record.duration_sec,
+                float(record.wpm),
+                float(record.accuracy),
+                record.error_count,
+                record.total_chars,
+                1 if record.completed else 0,
+                record.model_dump_json(),
+                record.created_at
+                or datetime.now().isoformat(timespec="seconds"),
+            ),
+        )
+        self._conn.commit()
+        return cur.lastrowid or 0
+
+    def get_history(
+        self,
+        user_id: int,
+        limit: int = 20,
+        mode: Optional[str] = None,
+    ) -> list[TypingRecord]:
+        if mode:
+            rows = self._conn.execute(
+                """SELECT result_json FROM typing_history
+                   WHERE user_id = ? AND mode = ?
+                   ORDER BY id DESC LIMIT ?""",
+                (user_id, mode, limit),
+            ).fetchall()
+        else:
+            rows = self._conn.execute(
+                """SELECT result_json FROM typing_history
+                   WHERE user_id = ?
+                   ORDER BY id DESC LIMIT ?""",
+                (user_id, limit),
+            ).fetchall()
+        results: list[TypingRecord] = []
+        for row in rows:
+            try:
+                data = json.loads(row["result_json"])
+                results.append(TypingRecord(**data))
+            except (json.JSONDecodeError, Exception):
+                continue
+        return results
+
+    def get_history_count(self, user_id: int, mode: Optional[str] = None) -> int:
+        if mode:
+            row = self._conn.execute(
+                "SELECT COUNT(*) AS cnt FROM typing_history WHERE user_id = ? AND mode = ?",
+                (user_id, mode),
+            ).fetchone()
+        else:
+            row = self._conn.execute(
+                "SELECT COUNT(*) AS cnt FROM typing_history WHERE user_id = ?",
+                (user_id,),
+            ).fetchone()
+        return int(row["cnt"] or 0)
+
+    def get_average_wpm(self, user_id: int, mode: Optional[str] = None) -> float:
+        if mode:
+            row = self._conn.execute(
+                "SELECT AVG(wpm) AS avg_wpm FROM typing_history WHERE user_id = ? AND mode = ?",
+                (user_id, mode),
+            ).fetchone()
+        else:
+            row = self._conn.execute(
+                "SELECT AVG(wpm) AS avg_wpm FROM typing_history WHERE user_id = ?",
+                (user_id,),
+            ).fetchone()
+        return float(row["avg_wpm"] or 0.0)
+
+    def get_average_accuracy(self, user_id: int, mode: Optional[str] = None) -> float:
+        if mode:
+            row = self._conn.execute(
+                "SELECT AVG(accuracy) AS avg_acc FROM typing_history WHERE user_id = ? AND mode = ?",
+                (user_id, mode),
+            ).fetchone()
+        else:
+            row = self._conn.execute(
+                "SELECT AVG(accuracy) AS avg_acc FROM typing_history WHERE user_id = ?",
+                (user_id,),
+            ).fetchone()
+        return float(row["avg_acc"] or 0.0)
+
+    def get_max_wpm(self, user_id: int, mode: Optional[str] = None) -> float:
+        if mode:
+            row = self._conn.execute(
+                "SELECT MAX(wpm) AS max_wpm FROM typing_history WHERE user_id = ? AND mode = ?",
+                (user_id, mode),
+            ).fetchone()
+        else:
+            row = self._conn.execute(
+                "SELECT MAX(wpm) AS max_wpm FROM typing_history WHERE user_id = ?",
+                (user_id,),
+            ).fetchone()
+        return float(row["max_wpm"] or 0.0)
+
+
+# =============================================================
 # 4.5 SQLiteArticleRepository
 # =============================================================
 
@@ -1614,6 +1770,7 @@ class SQLiteRepositoryContainer:
         self.personal_vocab = SQLitePersonalVocabRepository(self._conn)
         self.exam = SQLiteExamRepository(self._conn)
         self.grade = SQLiteGradeRepository(self._conn)
+        self.typing = SQLiteTypingRepository(self._conn)
         self.article = SQLiteArticleRepository(self._conn)
         self.user = SQLiteUserRepository(self._conn)
 

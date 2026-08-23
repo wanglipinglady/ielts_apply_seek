@@ -277,3 +277,30 @@ class Article(BaseModel):
     translation_source: str = "llm"  # llm / mock / error
     analysis_source: str = "fallback"  # llm / fallback
     created_at: Optional[str] = None
+
+
+class TypingRecord(BaseModel):
+    """机考打字练习记录（一次完整会话）。
+
+    - mode: "words" / "sentences" / "passage"，与素材粒度对应
+    - prompt_text: 用户要打的原文（含空格）
+    - typed_text: 用户的实际输入（可能提前结束）
+    - duration_sec: 从开始到结束/提交的秒数
+    - wpm: 单词/分钟；按标准 5 字符 = 1 词 计算
+    - accuracy: 准确率（0-1），按字符匹配（correct_chars / total_chars）
+    - error_count: 错误字符数（typed vs prompt 对齐后不一致位置数）
+    - completed: 用户是否完成整段（False=中途放弃）
+    """
+
+    id: Optional[int] = None
+    user_id: int = 1
+    mode: str = "words"             # words / sentences / passage
+    prompt_text: str
+    typed_text: str = ""
+    duration_sec: int = Field(default=0, ge=0, le=3600)
+    wpm: float = Field(default=0.0, ge=0.0, le=300.0)
+    accuracy: float = Field(default=0.0, ge=0.0, le=1.0)
+    error_count: int = 0
+    total_chars: int = 0
+    completed: bool = True
+    created_at: Optional[str] = None

@@ -1,0 +1,739 @@
+{% extends "base.html" %}
+
+{% block page_title %}机考打字{% endblock %}
+
+{% block content %}
+<section class="typing-page">
+  <h2>⌨ 机考打字练习</h2>
+  <p class="lede">
+    12 月起 IELTS 全面机考,打字 ≥ 30 WPM 是硬门槛。每天 5-10 分钟,把词库 / 句子 / 短文练起来。
+  </p>
+
+  <div class="typing-layout">
+    {# === 左侧：练习区 === #}
+    <div class="typing-practice">
+      <div class="mode-bar">
+        <label>模式：</label>
+        <select id="mode-select">
+          <option value="words" selected>词汇（单词跟打）</option>
+          <option value="sentences">句子（例句跟打）</option>
+          <option value="passage">短文（雅思范段）</option>
+        </select>
+
+        <label class="band-label">Band：</label>
+        <select id="band-select">
+          <option value="">全部</option>
+          <option value="5">5</option>
+          <option value="6">6</option>
+          <option value="7" selected>7</option>
+          <option value="8">8</option>
+          <option value="9">9</option>
+        </select>
+
+        <label class="count-label" id="count-label">数量：</label>
+        <input type="number" id="count-input" min="1" max="200" value="20" step="1" />
+
+        <button id="start-btn" class="btn-primary">开始</button>
+        <button id="reset-btn" class="btn-secondary" disabled>重置</button>
+      </div>
+
+      <div class="typing-card" id="typing-card" data-state="idle">
+        <div class="meta-line">
+          <span class="meta-key">进度</span>
+          <span id="progress-text">-- / -- 字符</span>
+          <span class="meta-key meta-time">已用时</span>
+          <span id="timer-text">00:00</span>
+        </div>
+
+        <div class="prompt-box" id="prompt-box">
+          <span class="placeholder">↑ 选择模式，点击「开始」加载素材 ↑</span>
+        </div>
+
+        <textarea
+          id="typing-input"
+          class="typing-textarea"
+          placeholder="开始打字……"
+          autocomplete="off"
+          spellcheck="false"
+          autocapitalize="off"
+          autocorrect="off"
+          disabled
+        ></textarea>
+      </div>
+
+      <div class="typing-actions">
+        <button id="finish-btn" class="btn-primary" disabled>完成提交</button>
+        <button id="cancel-btn" class="btn-secondary" hidden>放弃提交</button>
+        <span class="result-tip" id="result-tip" hidden></span>
+      </div>
+    </div>
+
+    {# === 右侧：指标 / 历史 === #}
+    <aside class="typing-side">
+      <div class="stat-card">
+        <div class="stat-label">本次用时</div>
+        <div class="stat-value" id="side-duration">--</div>
+      </div>
+      <div class="stat-card accent">
+        <div class="stat-label">本次 WPM</div>
+        <div class="stat-value" id="side-wpm">--</div>
+      </div>
+      <div class="stat-card warn">
+        <div class="stat-label">本次准确率</div>
+        <div class="stat-value" id="side-accuracy">--</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">练习总次数</div>
+        <div class="stat-value" id="side-total">--</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">历史最佳 WPM</div>
+        <div class="stat-value" id="side-max">--</div>
+      </div>
+    </aside>
+  </div>
+
+  {# === 历史表格 === #}
+  <div class="typing-history">
+    <h3>历史成绩</h3>
+    <table class="data-table" id="history-table">
+      <thead>
+        <tr>
+          <th>时间</th>
+          <th>模式</th>
+          <th>用时</th>
+          <th>WPM</th>
+          <th>准确率</th>
+          <th>错误</th>
+          <th>状态</th>
+        </tr>
+      </thead>
+      <tbody id="history-tbody">
+        <tr><td colspan="7" class="empty-state">加载中...</td></tr>
+      </tbody>
+    </table>
+    <div class="history-actions">
+      <button class="btn-secondary" id="reload-history-btn">刷新历史</button>
+    </div>
+  </div>
+</section>
+
+<script>
+(function() {
+    'use strict';
+
+    // ========== 元素 ==========
+    const $ = (id) => document.getElementById(id);
+    const modeSelect = $('mode-select');
+    const bandSelect = $('band-select');
+    const countInput = $('count-input');
+    const countLabel = $('count-label');
+    const startBtn = $('start-btn');
+    const resetBtn = $('reset-btn');
+    const finishBtn = $('finish-btn');
+    const cancelBtn = $('cancel-btn');
+    const resultTip = $('result-tip');
+    const promptBox = $('prompt-box');
+    const typingInput = $('typing-input');
+    const timerText = $('timer-text');
+    const progressText = $('progress-text');
+    const sideDuration = $('side-duration');
+    const sideWpm = $('side-wpm');
+    const sideAccuracy = $('side-accuracy');
+    const sideTotal = $('side-total');
+    const sideMax = $('side-max');
+    const historyTbody = $('history-tbody');
+    const reloadHistoryBtn = $('reload-history-btn');
+
+    // ========== 状态 ==========
+    const state = {
+        mode: 'words',
+        promptText: '',
+        startedAt: 0,
+        timerHandle: null,
+        submitted: false,
+    };
+
+    // ========== 工具函数 ==========
+    function escapeHtml(s) {
+        return String(s)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function formatTime(seconds) {
+        const m = Math.floor(seconds / 60).toString().padStart(2, '0');
+        const s = Math.floor(seconds % 60).toString().padStart(2, '0');
+        return `${m}:${s}`;
+    }
+
+    function modeName(m) {
+        return ({words: '词汇', sentences: '句子', passage: '短文'})[m] || m;
+    }
+
+    // ========== 渲染素材 ==========
+    function renderPrompt(prompt) {
+        // 把已输入对错标色：当前位置高亮
+        const typed = typingInput.value;
+        const promptLen = prompt.length;
+        let html = '';
+        for (let i = 0; i < promptLen; i++) {
+            const ch = prompt[i];
+            const t = typed[i];
+            let cls = '';
+            if (t === undefined) cls = 'pending';          // 未输入
+            else if (t === ch) cls = 'correct';           // 已对
+            else cls = 'wrong';                            // 已错
+            if (i === typed.length) cls += ' current';     // 当前位置
+            if (ch === ' ') {
+                html += `<span class="ch ${cls}">&nbsp;</span>`;
+            } else {
+                html += `<span class="ch ${cls}">${escapeHtml(ch)}</span>`;
+            }
+        }
+        promptBox.innerHTML = html;
+    }
+
+    // ========== 指标计算 ==========
+    function computeMetrics(prompt, typed, durationSec) {
+        const totalChars = Math.max(prompt.length, 1);
+        const minLen = Math.min(prompt.length, typed.length);
+        let correctChars = 0;
+        for (let i = 0; i < minLen; i++) {
+            if (prompt[i] === typed[i]) correctChars += 1;
+        }
+        const accuracy = totalChars > 0 ? correctChars / totalChars : 0;
+        const errors = Math.max(0, totalChars - correctChars);
+        const wpm = durationSec > 0 ? (correctChars / 5.0) / (durationSec / 60.0) : 0;
+        return {
+            wpm: Math.max(0, Math.round(wpm * 100) / 100),
+            accuracy: Math.min(1, Math.max(0, Math.round(accuracy * 10000) / 10000)),
+            errorCount: errors,
+            totalChars,
+        };
+    }
+
+    // ========== Start / Reset / Submit ==========
+    async function startPractice() {
+        const mode = modeSelect.value;
+        const band = bandSelect.value || '';
+        const cnt = mode === 'words' ? Math.min(200, Math.max(1, parseInt(countInput.value) || 20))
+                  : mode === 'sentences' ? Math.min(50, Math.max(1, parseInt(countInput.value) || 5))
+                  : 0;
+        state.mode = mode;
+        state.submitted = false;
+
+        // 拉素材
+        startBtn.disabled = true;
+        startBtn.textContent = '加载中...';
+        try {
+            const url = new URL('/api/typing/material', window.location.origin);
+            url.searchParams.set('mode', mode);
+            if (band) url.searchParams.set('band', band);
+            if (mode !== 'passage') url.searchParams.set('count', String(cnt));
+            const resp = await fetch(url, { method: 'GET' });
+            if (!resp.ok) {
+                const err = await resp.json();
+                throw new Error(err.detail || `HTTP ${resp.status}`);
+            }
+            const data = await resp.json();
+            state.promptText = data.text;
+            typingInput.value = '';
+            typingInput.disabled = false;
+            typingInput.focus();
+            renderPrompt(state.promptText);
+            progressText.textContent = `0 / ${data.total_chars} 字符`;
+            sideDuration.textContent = '00:00';
+            sideWpm.textContent = '--';
+            sideAccuracy.textContent = '--';
+            resultTip.hidden = true;
+
+            // 启动计时器
+            state.startedAt = Date.now();
+            if (state.timerHandle) clearInterval(state.timerHandle);
+            state.timerHandle = setInterval(() => {
+                const elapsed = Math.floor((Date.now() - state.startedAt) / 1000);
+                timerText.textContent = formatTime(elapsed);
+                sideDuration.textContent = formatTime(elapsed);
+                const live = computeMetrics(state.promptText, typingInput.value, elapsed);
+                sideWpm.textContent = live.wpm.toFixed(1);
+                sideAccuracy.textContent = (live.accuracy * 100).toFixed(1) + '%';
+            }, 200);
+
+            // 按钮状态
+            startBtn.disabled = false;
+            startBtn.textContent = '重新开始';
+            resetBtn.disabled = false;
+            finishBtn.disabled = false;
+            cancelBtn.hidden = false;
+        } catch (e) {
+            startBtn.disabled = false;
+            startBtn.textContent = '开始';
+            alert('素材加载失败：' + e.message);
+        }
+    }
+
+    function resetPractice() {
+        if (state.timerHandle) clearInterval(state.timerHandle);
+        state.timerHandle = null;
+        state.promptText = '';
+        state.startedAt = 0;
+        state.submitted = false;
+        typingInput.value = '';
+        typingInput.disabled = true;
+        promptBox.innerHTML = '<span class="placeholder">↑ 选择模式，点击「开始」加载素材 ↑</span>';
+        progressText.textContent = '-- / -- 字符';
+        timerText.textContent = '00:00';
+        sideDuration.textContent = '--';
+        sideWpm.textContent = '--';
+        sideAccuracy.textContent = '--';
+        startBtn.textContent = '开始';
+        startBtn.disabled = false;
+        resetBtn.disabled = true;
+        finishBtn.disabled = true;
+        cancelBtn.hidden = true;
+        resultTip.hidden = true;
+    }
+
+    function showLocalResult(metrics, durationSec, completed) {
+        sideWpm.textContent = metrics.wpm.toFixed(1);
+        sideAccuracy.textContent = (metrics.accuracy * 100).toFixed(1) + '%';
+        sideDuration.textContent = formatTime(durationSec);
+        const isExcellent = metrics.wpm >= 40 && metrics.accuracy >= 0.95;
+        const isGood = metrics.wpm >= 30 && metrics.accuracy >= 0.9;
+        const tag = isExcellent ? '🎉 优秀' : isGood ? '✓ 达标' : metrics.accuracy < 0.7 ? '⚠ 需提准确率' : '💪 继续练';
+        resultTip.textContent = `${tag}  WPM=${metrics.wpm.toFixed(1)}  准确率=${(metrics.accuracy*100).toFixed(1)}%  错误=${metrics.errorCount}  ${completed ? '' : '(中途放弃)'}`;
+        resultTip.className = 'result-tip ' + (isExcellent ? 'tip-good' : isGood ? 'tip-ok' : 'tip-bad');
+        resultTip.hidden = false;
+    }
+
+    async function submitPractice(completed) {
+        if (!state.promptText) return;
+        if (state.timerHandle) clearInterval(state.timerHandle);
+
+        const typed = typingInput.value;
+        const durationSec = Math.max(1, Math.round((Date.now() - state.startedAt) / 1000));
+        const metrics = computeMetrics(state.promptText, typed, durationSec);
+        showLocalResult(metrics, durationSec, completed);
+
+        // 立即禁用,避免重复提交
+        finishBtn.disabled = true;
+        cancelBtn.hidden = true;
+        typingInput.disabled = true;
+        state.submitted = true;
+
+        try {
+            const form = new FormData();
+            form.append('mode', state.mode);
+            form.append('prompt_text', state.promptText);
+            form.append('typed_text', typed);
+            form.append('duration_sec', String(durationSec));
+            form.append('completed', completed ? 'true' : 'false');
+            const resp = await fetch('/api/typing/submit', { method: 'POST', body: form });
+            const data = await resp.json();
+            if (!resp.ok) {
+                throw new Error(data.detail || `HTTP ${resp.status}`);
+            }
+            // 服务端算的指标可能与前端略有差异,以服务端的为准
+            if (data.server_metrics) {
+                const sm = data.server_metrics;
+                sideWpm.textContent = sm.wpm.toFixed(1);
+                sideAccuracy.textContent = (sm.accuracy * 100).toFixed(1) + '%';
+                resultTip.textContent += `  [server: WPM=${sm.wpm.toFixed(1)}, 错误=${sm.error_count}]`;
+            }
+            // 刷新历史 & 统计
+            await Promise.all([loadHistory(), loadStats()]);
+        } catch (e) {
+            console.error('submit failed:', e);
+            resultTip.textContent += `  ⚠ 保存失败：${e.message}`;
+        }
+    }
+
+    // ========== 历史 / 统计 ==========
+    async function loadHistory() {
+        try {
+            const resp = await fetch('/api/typing/history?limit=20');
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            const rows = await resp.json();
+            if (!rows.length) {
+                historyTbody.innerHTML = '<tr><td colspan="7" class="empty-state">暂无练习记录</td></tr>';
+                return;
+            }
+            historyTbody.innerHTML = rows.map(r => `
+                <tr>
+                    <td>${escapeHtml((r.created_at || '').slice(0, 16))}</td>
+                    <td>${escapeHtml(modeName(r.mode))}</td>
+                    <td>${escapeHtml(formatTime(r.duration_sec))}</td>
+                    <td><strong>${(r.wpm || 0).toFixed(1)}</strong></td>
+                    <td>${((r.accuracy || 0) * 100).toFixed(1)}%</td>
+                    <td>${r.error_count || 0}</td>
+                    <td>${r.completed ? '<span class="tag accent">完成</span>' : '<span class="tag">放弃</span>'}</td>
+                </tr>
+            `).join('');
+        } catch (e) {
+            historyTbody.innerHTML = `<tr><td colspan="7" class="empty-state">加载失败：${escapeHtml(e.message)}</td></tr>`;
+        }
+    }
+
+    async function loadStats() {
+        try {
+            const resp = await fetch('/api/typing/stats');
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            const data = await resp.json();
+            sideTotal.textContent = data.total_count ?? 0;
+            sideMax.textContent = (data.max_wpm ?? 0).toFixed(1);
+        } catch (e) {
+            sideTotal.textContent = '?';
+            sideMax.textContent = '?';
+        }
+    }
+
+    // ========== 事件绑定 ==========
+    startBtn.addEventListener('click', startPractice);
+    resetBtn.addEventListener('click', resetPractice);
+    finishBtn.addEventListener('click', () => submitPractice(true));
+    cancelBtn.addEventListener('click', () => {
+        if (confirm('放弃本次练习？分数仍会保存，但 marked as "中途放弃"。')) {
+            submitPractice(false);
+        }
+    });
+    reloadHistoryBtn.addEventListener('click', () => {
+        loadHistory();
+        loadStats();
+    });
+
+    // mode 切换时调整 count 默认
+    modeSelect.addEventListener('change', () => {
+        if (modeSelect.value === 'passage') {
+            countInput.parentElement.hidden = true;   // passage 模式不需数量
+        } else {
+            countInput.parentElement.hidden = false;
+            countInput.value = modeSelect.value === 'sentences' ? 5 : 20;
+        }
+    });
+    // 初始:passage 不显示 count,但默认是 words 故直接显示
+    countInput.parentElement.hidden = false;
+
+    // 实时输入刷新 prompt 高亮
+    typingInput.addEventListener('input', () => {
+        if (!state.promptText) return;
+        renderPrompt(state.promptText);
+        progressText.textContent = `${typingInput.value.length} / ${state.promptText.length} 字符`;
+    });
+
+    // 全局快捷键:Enter 在 textarea 提交
+    typingInput.addEventListener('keydown', (ev) => {
+        if (!state.promptText || state.submitted) return;
+        if ((ev.ctrlKey || ev.metaKey) && ev.key === 'Enter') {
+            ev.preventDefault();
+            submitPractice(true);
+        }
+    });
+
+    // 初次加载
+    loadHistory();
+    loadStats();
+})();
+</script>
+
+<style>
+.typing-page {
+    max-width: 1100px;
+    margin: 0 auto;
+}
+
+.typing-page h2 {
+    margin-bottom: 4px;
+}
+
+.typing-page .lede {
+    color: var(--text-muted);
+    margin-bottom: 24px;
+}
+
+.typing-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 240px;
+    gap: 24px;
+    align-items: flex-start;
+}
+
+/* mode bar */
+.mode-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 14px;
+    padding: 14px;
+    background: var(--bg-secondary);
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+}
+
+.mode-bar label {
+    font-size: 13px;
+    color: var(--text-muted);
+}
+
+.mode-bar select,
+.mode-bar input {
+    padding: 6px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-primary);
+    font-size: 14px;
+}
+
+.mode-bar select:focus,
+.mode-bar input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+}
+
+/* typing card */
+.typing-card {
+    background: var(--bg-secondary);
+    border-radius: 12px;
+    padding: 20px;
+    border: 1px solid var(--border-color);
+}
+
+.meta-line {
+    display: flex;
+    gap: 8px;
+    align-items: baseline;
+    font-size: 13px;
+    margin-bottom: 12px;
+    color: var(--text-muted);
+}
+
+.meta-key {
+    color: var(--text-muted);
+}
+.meta-time { margin-left: 12px; }
+#timer-text {
+    font-family: var(--font-mono, monospace);
+    font-weight: 600;
+    color: var(--text-main);
+    margin-right: 6px;
+}
+#progress-text {
+    font-family: var(--font-mono, monospace);
+    color: var(--text-main);
+}
+
+/* prompt box */
+.prompt-box {
+    padding: 18px 16px;
+    background: var(--bg-primary);
+    border-radius: 8px;
+    font-family: var(--font-mono, 'Menlo', 'Consolas', monospace);
+    font-size: 18px;
+    line-height: 1.9;
+    letter-spacing: 0.5px;
+    word-break: break-word;
+    min-height: 130px;
+    margin-bottom: 14px;
+    border: 1px dashed transparent;
+}
+
+.typing-card[data-state="running"] .prompt-box {
+    border-color: var(--primary-light, #e0e7ff);
+}
+
+.prompt-box .placeholder {
+    color: var(--text-muted);
+    font-style: italic;
+    font-size: 14px;
+}
+
+.prompt-box .ch {
+    display: inline-block;
+    min-width: 9px;
+    padding: 1px 0;
+    border-radius: 2px;
+    transition: background 0.05s;
+}
+
+.prompt-box .ch.pending { color: var(--text-muted); }
+.prompt-box .ch.correct { color: #065f46; background: #d1fae5; }
+.prompt-box .ch.wrong {
+    color: #fff;
+    background: #ef4444;
+    text-decoration: line-through;
+}
+.prompt-box .ch.current {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 1px;
+}
+
+/* input */
+.typing-textarea {
+    width: 100%;
+    min-height: 90px;
+    padding: 14px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    font-family: var(--font-mono, 'Menlo', 'Consolas', monospace);
+    font-size: 16px;
+    line-height: 1.7;
+    resize: vertical;
+    background: var(--bg-primary);
+}
+
+.typing-textarea:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+}
+
+.typing-textarea:disabled {
+    background: var(--bg-secondary);
+    cursor: not-allowed;
+    opacity: 0.7;
+}
+
+.typing-actions {
+    margin-top: 14px;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.btn-primary {
+    padding: 10px 20px;
+    background: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+}
+.btn-primary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.btn-secondary {
+    padding: 10px 20px;
+    background: var(--bg-secondary);
+    color: var(--text-main);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    font-size: 14px;
+    cursor: pointer;
+}
+.btn-secondary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.result-tip {
+    font-size: 14px;
+    margin-left: 8px;
+    padding: 4px 10px;
+    border-radius: 12px;
+}
+.result-tip.tip-good { color: #065f46; background: #d1fae5; }
+.result-tip.tip-ok   { color: #1e40af; background: #dbeafe; }
+.result-tip.tip-bad  { color: #92400e; background: #fef3c7; }
+
+/* side stats */
+.typing-side {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.stat-card {
+    background: var(--bg-secondary);
+    border-radius: 8px;
+    padding: 14px 16px;
+    border: 1px solid var(--border-color);
+}
+.stat-card.accent { background: linear-gradient(135deg, #e0e7ff, #c7d2fe); }
+.stat-card.warn   { background: linear-gradient(135deg, #fef3c7, #fed7aa); }
+.stat-card .stat-label { font-size: 12px; color: var(--text-muted); margin-bottom: 4px; }
+.stat-card .stat-value {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--text-main);
+    font-family: var(--font-mono, monospace);
+}
+
+/* history */
+.typing-history {
+    margin-top: 32px;
+}
+.typing-history h3 {
+    font-size: 16px;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.history-actions {
+    margin-top: 12px;
+    display: flex;
+    gap: 10px;
+}
+
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+}
+.data-table th,
+.data-table td {
+    padding: 10px 12px;
+    text-align: left;
+    border-bottom: 1px solid var(--border-color);
+}
+.data-table th {
+    color: var(--text-muted);
+    font-weight: 500;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    background: var(--bg-secondary);
+}
+.data-table .empty-state {
+    text-align: center;
+    color: var(--text-muted);
+    padding: 24px;
+}
+
+.tag {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 10px;
+    font-size: 12px;
+    background: var(--bg-secondary);
+    color: var(--text-muted);
+    border: 1px solid var(--border-color);
+}
+.tag.accent {
+    background: #dbeafe;
+    color: #1e40af;
+    border-color: #93c5fd;
+}
+
+@media (max-width: 800px) {
+    .typing-layout {
+        grid-template-columns: 1fr;
+    }
+    .typing-side {
+        flex-direction: row;
+        flex-wrap: wrap;
+    }
+    .typing-side .stat-card {
+        flex: 1 1 100px;
+    }
+}
+</style>
+{% endblock %}
