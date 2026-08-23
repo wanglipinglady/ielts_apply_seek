@@ -25,6 +25,7 @@ from sqlalchemy.exc import IntegrityError
 from ielts_buddy.core.models import (
     ExamReport,
     ExamSession,
+    FocusSession,
     GradeResult,
     LearningRecord,
     PersonalWord,
@@ -161,6 +162,26 @@ t_typing_history = Table(
     Column("created_at", DateTime, nullable=False, server_default=text("CURRENT_TIMESTAMP")),
     Index("idx_th_user_created", "user_id", "created_at"),
     Index("idx_th_user_mode", "user_id", "mode"),
+)
+
+# v3.6 番茄钟专注会话表
+t_focus_sessions = Table(
+    "focus_sessions", metadata,
+    Column("id", BigInteger, primary_key=True, autoincrement=True),
+    Column("user_id", BigInteger, nullable=False, server_default=text("1")),
+    Column("activity", String(32), nullable=False, server_default=text("'other'")),
+    Column("planned_sec", Integer, nullable=False, server_default=text("1500")),
+    Column("duration_sec", Integer, nullable=False, server_default=text("0")),
+    Column("interrupted", Boolean, nullable=False, server_default=text("0")),
+    Column("note", Text, nullable=True),
+    Column("started_at", DateTime, nullable=False, server_default=text("CURRENT_TIMESTAMP")),
+    Column("ended_at", DateTime, nullable=True),
+    Column("created_at", DateTime, nullable=False, server_default=text("CURRENT_TIMESTAMP")),
+    Column("updated_at", DateTime, nullable=False,
+           server_default=text("CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP")),
+    Column("sync_status", String(16), nullable=False, server_default=text("'synced'")),
+    Index("idx_fs_user_started", "user_id", "started_at"),
+    Index("idx_fs_user_activity", "user_id", "activity"),
 )
 
 t_vocab_cache = Table(
@@ -1359,6 +1380,138 @@ class MySQLTypingRepository:
 
 
 # =============================================================
+# 4b. MySQLFocusSessionRepository (v3.6 番茄钟)
+# =============================================================
+
+
+class MySQLFocusSessionRepository:
+    """MySQL 实现的 FocusSession 仓库（v3.6 番茄钟新增）。
+
+    与 SQLite 版同 schema 同接口；push 路径由 SyncWorker 调用 complete_session
+    之前的 save_record 不需要 —— push 阶段 SyncWorker 直接走 SQL 写 MySQL，
+    本仓库主要供 service 层直接使用与 pull 后的回读。
+    """
+
+    VALID_ACTIVITIES = ("vocab", "writing", "exam", "typing", "reading", "other")
+
+    def __init__(self, engine: Engine) -> None:
+        self._engine = engine
+
+    @classmethod
+    def _normalize_activity(cls, activity: str) -> str:
+        return activity if activity in cls.VALID_ACTIVITIES else "other"
+
+    def start_session(self, user_id: int, session: FocusSession) -> int:
+        """INSERT 一行,duration_sec=0,interrupted=0。"""
+        from datetime import datetime as _dt
+        now = session.started_at or _dt.now().isoformat(timespec="seconds")
+        with self._engine.begin() as conn:
+            row = conn.execute(insert(t_focus_sessions).values(
+                user_id=user_id,
+                activity=self._normalize_activity(session.activity),
+                planned_sec=int(session.planned_sec),
+                duration_sec=0,
+                interrupted=False,
+                note=session.note or "",
+                started_at=now,
+                ended_at=None,
+                created_at=now,
+                sync_status="synced",
+            ))
+            return int(row.inserted_primary_key[0])
+
+    def complete_session(
+        self,
+        user_id: int,
+        session_id: int,
+        duration_sec: int,
+        interrupted: bool,
+        note: Optional[str],
+    ) -> bool:
+        """UPDATE 实际专注时长 + 结束标记。"""
+        from datetime import datetime as _dt
+        now = _dt.now().isoformat(timespec="seconds")
+        with self._engine.begin() as conn:
+            result = conn.execute(
+                update(t_focus_sessions)
+                .where(t_focus_sessions.c.id == session_id)
+                .where(t_focus_sessions.c.user_id == user_id)
+                .values(
+                    duration_sec=max(0, int(duration_sec)),
+                    interrupted=bool(interrupted),
+                    note=note or "",
+                    ended_at=now,
+                    updated_at=now,
+                    sync_status="synced",
+                )
+            )
+            return result.rowcount > 0
+
+    def get_history(
+        self, user_id: int, limit: int = 20
+    ) -> list[FocusSession]:
+        """按 started_at DESC 取最近 N 条。"""
+        with self._engine.connect() as conn:
+            rows = conn.execute(
+                select(t_focus_sessions).where(
+                    t_focus_sessions.c.user_id == user_id
+                ).order_by(t_focus_sessions.c.started_at.desc()).limit(limit)
+            ).fetchall()
+        results: list[FocusSession] = []
+        for r in rows:
+            results.append(FocusSession(
+                id=int(r.id),
+                user_id=int(r.user_id),
+                activity=r.activity or "other",
+                planned_sec=int(r.planned_sec or 0),
+                duration_sec=int(r.duration_sec or 0),
+                interrupted=bool(r.interrupted),
+                note=r.note or "",
+                started_at=str(r.started_at) if r.started_at else "",
+                ended_at=str(r.ended_at) if r.ended_at else "",
+                created_at=str(r.created_at) if r.created_at else "",
+            ))
+        return results
+
+    def get_today_summary(self, user_id: int) -> dict[str, Any]:
+        """今日累计: 番茄数 + 总专注秒数 + 完成数 + 放弃数。"""
+        from datetime import datetime as _dt
+        today = _dt.now().date().isoformat()
+        with self._engine.connect() as conn:
+            row = conn.execute(
+                text(
+                    "SELECT COUNT(*) AS total, "
+                    "       COALESCE(SUM(duration_sec), 0) AS total_sec, "
+                    "       SUM(CASE WHEN interrupted = 0 "
+                    "                     AND duration_sec >= planned_sec * 0.8 "
+                    "                THEN 1 ELSE 0 END) AS completed, "
+                    "       SUM(CASE WHEN interrupted = 1 THEN 1 ELSE 0 END) AS abandoned "
+                    "FROM focus_sessions "
+                    "WHERE user_id = :uid "
+                    "  AND DATE(started_at) = :today"
+                ),
+                {"uid": user_id, "today": today},
+            ).first()
+        return {
+            "date": today,
+            "total": int(row[0] or 0) if row else 0,
+            "total_sec": int(row[1] or 0) if row else 0,
+            "completed": int(row[2] or 0) if row else 0,
+            "abandoned": int(row[3] or 0) if row else 0,
+        }
+
+    def get_total_count(self, user_id: int) -> int:
+        """用户累计番茄数。"""
+        with self._engine.connect() as conn:
+            row = conn.execute(
+                select(text("COUNT(*)")).select_from(t_focus_sessions).where(
+                    t_focus_sessions.c.user_id == user_id
+                )
+            ).first()
+        return int(row[0]) if row and row[0] is not None else 0
+
+
+# =============================================================
 # 5. MySQLVocabCacheRepository
 # =============================================================
 
@@ -1537,6 +1690,7 @@ class MySQLRepositoryContainer:
         self.exam = MySQLExamRepository(self._engine)
         self.grade = MySQLGradeRepository(self._engine)
         self.typing = MySQLTypingRepository(self._engine)
+        self.focus_sessions = MySQLFocusSessionRepository(self._engine)
         self.user = MySQLUserRepository(self._engine)
         self.vocab_cache = MySQLVocabCacheRepository(self._engine)
 

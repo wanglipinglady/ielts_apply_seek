@@ -1,0 +1,889 @@
+{% extends "base.html" %}
+
+{% block page_title %}番茄钟{% endblock %}
+
+{% block content %}
+<section class="pomodoro-page">
+  <h2>🍅 番茄钟</h2>
+  <p class="lede">
+    25 分钟专注 + 5 分钟休息。每完成一个番茄，自动写入学习时长,
+    跨设备同步（手机、家里电脑、公司电脑都能看见今天的番茄）。
+  </p>
+
+  <div class="pomodoro-layout">
+    {# === 左侧：计时区 === #}
+    <div class="timer-area">
+      <div class="mode-bar">
+        <label>专注类型：</label>
+        <select id="activity-select">
+          <option value="vocab">📚 背单词</option>
+          <option value="writing">✍ 写作</option>
+          <option value="exam">📝 模考</option>
+          <option value="typing">⌨ 打字</option>
+          <option value="reading">📖 阅读</option>
+          <option value="other">🌐 其它</option>
+        </select>
+
+        <label>时长：</label>
+        <select id="duration-preset">
+          <option value="1500" selected>25 min（标准）</option>
+          <option value="300">5 min（短休）</option>
+          <option value="900">15 min（长休）</option>
+          <option value="600">10 min</option>
+          <option value="1800">30 min</option>
+          <option value="custom">自定义…</option>
+        </select>
+        <input type="number" id="duration-custom" min="1" max="120"
+               placeholder="分钟" hidden style="width: 80px;" />
+
+        <button id="start-btn" class="btn-primary">▶ 开始</button>
+        <button id="pause-btn" class="btn-secondary" disabled>⏸ 暂停</button>
+        <button id="finish-btn" class="btn-primary" disabled>✓ 完成</button>
+        <button id="cancel-btn" class="btn-secondary" hidden>✕ 放弃</button>
+      </div>
+
+      <div class="timer-card" id="timer-card" data-state="idle">
+        <div class="timer-ring">
+          <svg viewBox="0 0 220 220" class="ring-svg">
+            <circle class="ring-bg" cx="110" cy="110" r="100" />
+            <circle class="ring-fg" id="ring-fg" cx="110" cy="110" r="100" />
+          </svg>
+          <div class="timer-text-wrap">
+            <div class="timer-big" id="timer-text">25:00</div>
+            <div class="timer-state" id="timer-state">点击「开始」启动番茄钟</div>
+          </div>
+        </div>
+
+        <div class="timer-meta">
+          <div class="meta-row">
+            <span class="meta-key">活动</span>
+            <span id="meta-activity">背单词</span>
+          </div>
+          <div class="meta-row">
+            <span class="meta-key">会话 ID</span>
+            <span id="meta-session">—</span>
+          </div>
+          <div class="meta-row">
+            <span class="meta-key">开始时间</span>
+            <span id="meta-started">—</span>
+          </div>
+        </div>
+      </div>
+
+      {# 完成备注弹窗（隐藏） #}
+      <div class="note-dialog" id="note-dialog" hidden>
+        <div class="note-card">
+          <h3>🎉 完成本次专注</h3>
+          <label class="note-label">备注（可选）</label>
+          <textarea id="note-input" placeholder="比如：背完 chapter 5 / 写了一篇 Task 2 / 完成了 3 套真题..."
+                    maxlength="500"></textarea>
+          <div class="note-actions">
+            <button class="btn-secondary" id="note-cancel">取消</button>
+            <button class="btn-primary" id="note-save">保存本次专注</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {# === 右侧：今日 / 累计 统计 === #}
+    <aside class="pomodoro-side">
+      <div class="stat-card accent">
+        <div class="stat-label">今日番茄数</div>
+        <div class="stat-value" id="side-tomato">0</div>
+        <div class="stat-sub" id="side-tomato-sub">还没开始</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">今日专注时长</div>
+        <div class="stat-value" id="side-duration">0 min</div>
+        <div class="stat-sub">目标 ≥ 4 个番茄 (100 min)</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">完成 / 放弃</div>
+        <div class="stat-value" id="side-completed">0 / 0</div>
+        <div class="stat-sub">完成率越高，自律越稳</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">累计番茄</div>
+        <div class="stat-value" id="side-total">0</div>
+        <div class="stat-sub">历史总专注次数</div>
+      </div>
+    </aside>
+  </div>
+
+  {# === 历史表格 === #}
+  <div class="pomodoro-history">
+    <h3>历史专注</h3>
+    <table class="data-table" id="history-table">
+      <thead>
+        <tr>
+          <th>开始时间</th>
+          <th>活动</th>
+          <th>计划</th>
+          <th>实际</th>
+          <th>完成度</th>
+          <th>备注</th>
+        </tr>
+      </thead>
+      <tbody id="history-tbody">
+        <tr><td colspan="6" class="empty-state">加载中...</td></tr>
+      </tbody>
+    </table>
+    <div class="history-actions">
+      <button class="btn-secondary" id="reload-history-btn">刷新历史</button>
+    </div>
+  </div>
+</section>
+
+<script>
+(function() {
+    'use strict';
+
+    // ========== 元素 ==========
+    const $ = (id) => document.getElementById(id);
+    const activitySelect = $('activity-select');
+    const durationPreset = $('duration-preset');
+    const durationCustom = $('duration-custom');
+    const startBtn = $('start-btn');
+    const pauseBtn = $('pause-btn');
+    const finishBtn = $('finish-btn');
+    const cancelBtn = $('cancel-btn');
+    const timerText = $('timer-text');
+    const timerState = $('timer-state');
+    const timerCard = $('timer-card');
+    const ringFg = $('ring-fg');
+    const metaActivity = $('meta-activity');
+    const metaSession = $('meta-session');
+    const metaStarted = $('meta-started');
+    const noteDialog = $('note-dialog');
+    const noteInput = $('note-input');
+    const noteCancel = $('note-cancel');
+    const noteSave = $('note-save');
+
+    // 侧边栏
+    const sideTomato = $('side-tomato');
+    const sideTomatoSub = $('side-tomato-sub');
+    const sideDuration = $('side-duration');
+    const sideCompleted = $('side-completed');
+    const sideTotal = $('side-total');
+
+    // 历史
+    const historyTbody = $('history-tbody');
+    const reloadHistoryBtn = $('reload-history-btn');
+
+    // ========== 状态 ==========
+    const RING_CIRCUMFERENCE = 2 * Math.PI * 100;  // r=100
+    ringFg.style.strokeDasharray = String(RING_CIRCUMFERENCE);
+    ringFg.style.strokeDashoffset = '0';
+
+    const state = {
+        sessionId: null,
+        plannedSec: 1500,
+        startedAt: 0,           // Date.now() 起点
+        elapsed: 0,             // 已累计秒数（含暂停时累加）
+        paused: false,
+        pausedAt: 0,            // 当前暂停开始的时间戳
+        timerHandle: null,
+        completed: false,
+        finished: false,        // 已经 finish / cancel 提交完
+    };
+
+    const ACTIVITY_CN = {
+        vocab: '背单词', writing: '写作', exam: '模考',
+        typing: '打字', reading: '阅读', other: '其它',
+    };
+
+    // ========== 工具 ==========
+    function escapeHtml(s) {
+        return String(s)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function formatTime(seconds) {
+        const s = Math.max(0, Math.floor(seconds));
+        const m = Math.floor(s / 60).toString().padStart(2, '0');
+        const sec = (s % 60).toString().padStart(2, '0');
+        return `${m}:${sec}`;
+    }
+
+    function formatDuration(seconds) {
+        if (seconds <= 0) return '0 min';
+        const h = Math.floor(seconds / 3600);
+        const m = Math.round((seconds % 3600) / 60);
+        if (h > 0) return `${h}h ${m}m`;
+        return `${m} min`;
+    }
+
+    function formatDateTime(iso) {
+        if (!iso) return '—';
+        // 简化：直接展示前 16 字符（YYYY-MM-DDTHH:MM）
+        return iso.slice(0, 16).replace('T', ' ');
+    }
+
+    function getPlannedSec() {
+        const v = durationPreset.value;
+        if (v === 'custom') {
+            const m = Math.max(1, Math.min(120, parseInt(durationCustom.value) || 25));
+            return m * 60;
+        }
+        return parseInt(v, 10);
+    }
+
+    // ========== 进度环 ==========
+    function updateRing() {
+        const progress = Math.min(1, state.elapsed / state.plannedSec);
+        const offset = RING_CIRCUMFERENCE * (1 - progress);
+        ringFg.style.strokeDashoffset = String(offset);
+    }
+
+    // ========== 计时器 ==========
+    function tick() {
+        if (state.paused) return;
+        const now = Date.now();
+        state.elapsed = Math.floor((now - state.startedAt) / 1000);
+
+        // 倒计时显示：剩余秒数
+        const remain = Math.max(0, state.plannedSec - state.elapsed);
+        timerText.textContent = formatTime(remain);
+
+        updateRing();
+
+        if (state.elapsed >= state.plannedSec) {
+            // 自动触发完成
+            clearInterval(state.timerHandle);
+            state.timerHandle = null;
+            timerText.textContent = '00:00';
+            updateRing();
+            timerState.textContent = '🎉 时间到!点击「完成」保存';
+            timerCard.dataset.state = 'done';
+            finishBtn.disabled = false;
+            pauseBtn.disabled = true;
+            // 弹一个原生提示
+            try { ringFg.classList.add('done'); } catch(e) {}
+            notifyComplete('时间到！');
+        }
+    }
+
+    function notifyComplete(msg) {
+        // 简单用浏览器原生 Notification（如允许），否则 console.log
+        if ('Notification' in window && Notification.permission === 'granted') {
+            new Notification('番茄钟', { body: msg });
+        } else if ('Notification' in window && Notification.permission !== 'denied') {
+            Notification.requestPermission();
+        }
+    }
+
+    // ========== 启动 / 暂停 / 完成 / 放弃 ==========
+    async function startTimer() {
+        const activity = activitySelect.value;
+        const planned = getPlannedSec();
+
+        // 立刻同步活动到 UI
+        metaActivity.textContent = ACTIVITY_CN[activity] || activity;
+
+        // 调后端开 session
+        try {
+            startBtn.disabled = true;
+            startBtn.textContent = '启动中…';
+            const form = new FormData();
+            form.append('planned_sec', String(planned));
+            form.append('activity', activity);
+            const resp = await fetch('/api/pomodoro/start', { method: 'POST', body: form });
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.detail || `HTTP ${resp.status}`);
+
+            state.sessionId = data.session_id;
+            state.plannedSec = data.planned_sec || planned;
+            state.startedAt = Date.now();
+            state.elapsed = 0;
+            state.paused = false;
+            state.completed = false;
+            state.finished = false;
+
+            metaSession.textContent = String(state.sessionId);
+            metaStarted.textContent = formatDateTime(new Date().toISOString());
+
+            timerState.textContent = `专注中…`;
+            timerCard.dataset.state = 'running';
+            ringFg.classList.remove('done');
+
+            // 启动计时器
+            if (state.timerHandle) clearInterval(state.timerHandle);
+            state.timerHandle = setInterval(tick, 250);
+
+            // 按钮
+            startBtn.textContent = '▶ 已启动';
+            startBtn.disabled = true;
+            pauseBtn.disabled = false;
+            pauseBtn.textContent = '⏸ 暂停';
+            finishBtn.disabled = false;
+            cancelBtn.hidden = false;
+            // 锁定 activity / 时长（运行中不能再改）
+            activitySelect.disabled = true;
+            durationPreset.disabled = true;
+            durationCustom.disabled = true;
+        } catch (e) {
+            startBtn.disabled = false;
+            startBtn.textContent = '▶ 开始';
+            alert('启动失败：' + e.message);
+        }
+    }
+
+    function pauseTimer() {
+        if (!state.timerHandle) return;
+        if (!state.paused) {
+            // 暂停
+            clearInterval(state.timerHandle);
+            state.timerHandle = null;
+            state.pausedAt = Date.now();
+            state.paused = true;
+            pauseBtn.textContent = '▶ 继续';
+            timerState.textContent = '已暂停';
+            timerCard.dataset.state = 'paused';
+        } else {
+            // 继续：把 startedAt 往后挪 paused 时长
+            const pausedMs = Date.now() - state.pausedAt;
+            state.startedAt += pausedMs;
+            state.paused = false;
+            state.pausedAt = 0;
+            pauseBtn.textContent = '⏸ 暂停';
+            timerState.textContent = '专注中…';
+            timerCard.dataset.state = 'running';
+            state.timerHandle = setInterval(tick, 250);
+        }
+    }
+
+    function openNoteDialog(completed) {
+        state.completed = completed;
+        noteDialog.hidden = false;
+        noteInput.value = '';
+        noteInput.focus();
+    }
+
+    function closeNoteDialog() {
+        noteDialog.hidden = true;
+    }
+
+    async function submitComplete() {
+        if (!state.sessionId || state.finished) return;
+        if (state.timerHandle) { clearInterval(state.timerHandle); state.timerHandle = null; }
+        const durationSec = Math.max(0, Math.round((Date.now() - state.startedAt) / 1000));
+        try {
+            const form = new FormData();
+            form.append('duration_sec', String(durationSec));
+            form.append('interrupted', state.completed ? 'false' : 'true');
+            form.append('note', noteInput.value || '');
+            const resp = await fetch(
+                `/api/pomodoro/${state.sessionId}/complete`,
+                { method: 'POST', body: form }
+            );
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.detail || `HTTP ${resp.status}`);
+
+            closeNoteDialog();
+            state.finished = true;
+            resetUi();
+
+            await Promise.all([loadHistory(), loadToday(), loadTotal()]);
+        } catch (e) {
+            alert('保存失败：' + e.message);
+        }
+    }
+
+    function resetUi() {
+        // 计时器区复位
+        state.sessionId = null;
+        state.elapsed = 0;
+        state.paused = false;
+        state.pausedAt = 0;
+        state.startedAt = 0;
+        timerText.textContent = formatTime(state.plannedSec);
+        updateRing();
+        timerState.textContent = '点击「开始」启动番茄钟';
+        timerCard.dataset.state = 'idle';
+        ringFg.classList.remove('done');
+
+        metaSession.textContent = '—';
+        metaStarted.textContent = '—';
+
+        startBtn.textContent = '▶ 开始';
+        startBtn.disabled = false;
+        pauseBtn.disabled = true;
+        pauseBtn.textContent = '⏸ 暂停';
+        finishBtn.disabled = true;
+        cancelBtn.hidden = true;
+
+        activitySelect.disabled = false;
+        durationPreset.disabled = false;
+        durationCustom.disabled = false;
+    }
+
+    // ========== 加载 / 渲染 ==========
+    async function loadHistory() {
+        try {
+            const resp = await fetch('/api/pomodoro/history?limit=20');
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            const rows = await resp.json();
+            if (!rows.length) {
+                historyTbody.innerHTML = '<tr><td colspan="6" class="empty-state">暂无专注记录</td></tr>';
+                return;
+            }
+            historyTbody.innerHTML = rows.map(r => {
+                const ratio = r.planned_sec > 0 ? r.duration_sec / r.planned_sec : 0;
+                const pct = Math.round(Math.min(1.5, ratio) * 100);
+                let tag;
+                if (r.interrupted) tag = '<span class="tag warn">放弃</span>';
+                else if (ratio >= 0.95) tag = '<span class="tag accent">✓ 完成</span>';
+                else if (ratio >= 0.5) tag = '<span class="tag">部分</span>';
+                else tag = '<span class="tag warn">未达</span>';
+                const note = r.note ? escapeHtml(r.note).slice(0, 40) : '<span style="color:var(--text-muted)">—</span>';
+                return `
+                    <tr>
+                        <td>${formatDateTime(r.started_at)}</td>
+                        <td>${escapeHtml(r.activity_cn || r.activity)}</td>
+                        <td>${Math.round(r.planned_sec / 60)} min</td>
+                        <td><strong>${formatDuration(r.duration_sec)}</strong></td>
+                        <td>${tag} ${pct}%</td>
+                        <td title="${escapeHtml(r.note || '')}">${note}</td>
+                    </tr>
+                `;
+            }).join('');
+        } catch (e) {
+            historyTbody.innerHTML = `<tr><td colspan="6" class="empty-state">加载失败：${escapeHtml(e.message)}</td></tr>`;
+        }
+    }
+
+    async function loadToday() {
+        try {
+            const resp = await fetch('/api/pomodoro/today');
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            const d = await resp.json();
+            sideTomato.textContent = d.total;
+            sideDuration.textContent = formatDuration(d.total_sec);
+            sideCompleted.textContent = `${d.completed} / ${d.abandoned}`;
+            if (d.total === 0) {
+                sideTomatoSub.textContent = '今天还没开始,先来一个 🍅';
+            } else if (d.total < 4) {
+                sideTomatoSub.textContent = `还差 ${4 - d.total} 个到 4 个基础目标`;
+            } else {
+                sideTomatoSub.textContent = '🎉 已达成基础目标';
+            }
+        } catch (e) {
+            sideTomato.textContent = '?';
+            sideTomatoSub.textContent = '加载失败';
+        }
+    }
+
+    async function loadTotal() {
+        try {
+            // 用 history 第一页数量推断：调 limit=1 + 头一次大查询,然后用 history 总数
+            // 简单方案：再拉一次 limit=1000,数行数（MVP 不需要精确分页）
+            const resp = await fetch('/api/pomodoro/history?limit=200');
+            if (!resp.ok) return;
+            const rows = await resp.json();
+            sideTotal.textContent = rows.length < 200 ? rows.length : '200+';
+        } catch (e) {
+            sideTotal.textContent = '?';
+        }
+    }
+
+    // ========== 事件绑定 ==========
+    startBtn.addEventListener('click', startTimer);
+    pauseBtn.addEventListener('click', pauseTimer);
+    finishBtn.addEventListener('click', () => {
+        if (!state.sessionId || state.finished) return;
+        openNoteDialog(true);  // 标记 completed=true
+    });
+    cancelBtn.addEventListener('click', () => {
+        if (!state.sessionId || state.finished) return;
+        if (confirm('放弃本次专注？时长仍会保存，但标记为"放弃"。')) {
+            openNoteDialog(false);  // interrupted=true
+        }
+    });
+    noteCancel.addEventListener('click', closeNoteDialog);
+    noteSave.addEventListener('click', submitComplete);
+
+    durationPreset.addEventListener('change', () => {
+        durationCustom.hidden = durationPreset.value !== 'custom';
+        if (durationPreset.value !== 'custom') {
+            timerText.textContent = formatTime(parseInt(durationPreset.value, 10));
+            state.plannedSec = parseInt(durationPreset.value, 10);
+            updateRing();
+        }
+    });
+    durationCustom.addEventListener('input', () => {
+        const m = Math.max(1, Math.min(120, parseInt(durationCustom.value) || 25));
+        timerText.textContent = formatTime(m * 60);
+        state.plannedSec = m * 60;
+        updateRing();
+    });
+
+    reloadHistoryBtn.addEventListener('click', () => {
+        loadHistory();
+        loadToday();
+    });
+
+    // 初次加载
+    loadHistory();
+    loadToday();
+    loadTotal();
+})();
+</script>
+
+<style>
+.pomodoro-page {
+    max-width: 1100px;
+    margin: 0 auto;
+}
+
+.pomodoro-page h2 {
+    margin-bottom: 4px;
+}
+
+.pomodoro-page .lede {
+    color: var(--text-muted);
+    margin-bottom: 24px;
+}
+
+.pomodoro-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 240px;
+    gap: 24px;
+    align-items: flex-start;
+}
+
+/* mode bar */
+.mode-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 14px;
+    padding: 14px;
+    background: var(--bg-secondary);
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+}
+
+.mode-bar label {
+    font-size: 13px;
+    color: var(--text-muted);
+}
+
+.mode-bar select,
+.mode-bar input {
+    padding: 6px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-primary);
+    font-size: 14px;
+}
+
+.mode-bar select:disabled,
+.mode-bar input:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* timer card */
+.timer-card {
+    background: var(--bg-secondary);
+    border-radius: 12px;
+    padding: 32px 20px;
+    border: 1px solid var(--border-color);
+    text-align: center;
+}
+
+.timer-ring {
+    position: relative;
+    width: 240px;
+    height: 240px;
+    margin: 0 auto 16px;
+}
+
+.ring-svg {
+    width: 100%;
+    height: 100%;
+    transform: rotate(-90deg);
+}
+
+.ring-bg {
+    fill: none;
+    stroke: var(--border-color);
+    stroke-width: 10;
+}
+
+.ring-fg {
+    fill: none;
+    stroke: var(--primary-color, #6366f1);
+    stroke-width: 10;
+    stroke-linecap: round;
+    transition: stroke-dashoffset 0.25s linear, stroke 0.3s;
+}
+
+.ring-fg.done {
+    stroke: #10b981;
+}
+
+.timer-text-wrap {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+.timer-big {
+    font-size: 56px;
+    font-weight: 700;
+    font-family: var(--font-mono, monospace);
+    color: var(--text-main);
+    line-height: 1;
+}
+
+.timer-state {
+    margin-top: 12px;
+    font-size: 14px;
+    color: var(--text-muted);
+}
+
+.timer-card[data-state="running"] .ring-fg { stroke: #6366f1; }
+.timer-card[data-state="paused"] .ring-fg { stroke: #f59e0b; }
+.timer-card[data-state="done"] .ring-fg { stroke: #10b981; }
+.timer-card[data-state="done"] .timer-big { color: #10b981; }
+
+.timer-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 13px;
+    color: var(--text-muted);
+    align-items: center;
+    margin-top: 12px;
+}
+
+.meta-row {
+    display: flex;
+    gap: 10px;
+    min-width: 220px;
+    justify-content: space-between;
+}
+
+.meta-key {
+    color: var(--text-muted);
+}
+
+/* note dialog */
+.note-dialog {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+}
+
+.note-card {
+    background: var(--bg-primary);
+    border-radius: 12px;
+    padding: 24px;
+    width: min(440px, 92vw);
+    box-shadow: 0 12px 40px rgba(0,0,0,0.2);
+}
+
+.note-card h3 {
+    margin: 0 0 14px;
+    font-size: 18px;
+}
+
+.note-label {
+    display: block;
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+}
+
+.note-card textarea {
+    width: 100%;
+    min-height: 80px;
+    padding: 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-secondary);
+    color: var(--text-main);
+    font-size: 14px;
+    resize: vertical;
+    font-family: inherit;
+}
+
+.note-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 14px;
+}
+
+/* side stats */
+.pomodoro-side {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.stat-card {
+    background: var(--bg-secondary);
+    border-radius: 8px;
+    padding: 14px 16px;
+    border: 1px solid var(--border-color);
+}
+
+.stat-card.accent {
+    background: linear-gradient(135deg, #fee2e2, #fecaca);
+}
+
+.stat-card .stat-label {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+}
+
+.stat-card .stat-value {
+    font-size: 26px;
+    font-weight: 700;
+    color: var(--text-main);
+    font-family: var(--font-mono, monospace);
+}
+
+.stat-sub {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 4px;
+}
+
+/* history */
+.pomodoro-history {
+    margin-top: 32px;
+}
+
+.pomodoro-history h3 {
+    font-size: 16px;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.history-actions {
+    margin-top: 12px;
+    display: flex;
+    gap: 10px;
+}
+
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+}
+
+.data-table th,
+.data-table td {
+    padding: 10px 12px;
+    text-align: left;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.data-table th {
+    color: var(--text-muted);
+    font-weight: 500;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    background: var(--bg-secondary);
+}
+
+.data-table .empty-state {
+    text-align: center;
+    color: var(--text-muted);
+    padding: 24px;
+}
+
+.tag {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 10px;
+    font-size: 12px;
+    background: var(--bg-secondary);
+    color: var(--text-muted);
+    border: 1px solid var(--border-color);
+}
+
+.tag.accent {
+    background: #d1fae5;
+    color: #065f46;
+    border-color: #6ee7b7;
+}
+
+.tag.warn {
+    background: #fef3c7;
+    color: #92400e;
+    border-color: #fcd34d;
+}
+
+/* buttons */
+.btn-primary {
+    padding: 10px 20px;
+    background: var(--primary-color, #6366f1);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.btn-primary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.btn-secondary {
+    padding: 10px 20px;
+    background: var(--bg-secondary);
+    color: var(--text-main);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    font-size: 14px;
+    cursor: pointer;
+}
+
+.btn-secondary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+@media (max-width: 800px) {
+    .pomodoro-layout {
+        grid-template-columns: 1fr;
+    }
+    .pomodoro-side {
+        flex-direction: row;
+        flex-wrap: wrap;
+    }
+    .pomodoro-side .stat-card {
+        flex: 1 1 100px;
+    }
+    .timer-ring {
+        width: 200px;
+        height: 200px;
+    }
+    .timer-big {
+        font-size: 44px;
+    }
+}
+</style>
+{% endblock %}

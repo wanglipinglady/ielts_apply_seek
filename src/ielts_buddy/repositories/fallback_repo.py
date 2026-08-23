@@ -71,6 +71,10 @@ class FallbackContainer:
         return self._active.typing
 
     @property
+    def focus_sessions(self):
+        return self._active.focus_sessions
+
+    @property
     def user(self):
         return self._active.user
 

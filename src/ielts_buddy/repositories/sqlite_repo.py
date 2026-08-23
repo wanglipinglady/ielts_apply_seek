@@ -20,6 +20,7 @@ from ielts_buddy.core.models import (
     ArticleWord,
     ExamReport,
     ExamSession,
+    FocusSession,
     GradeResult,
     LearningRecord,
     PersonalWord,
@@ -224,6 +225,26 @@ CREATE TABLE IF NOT EXISTS articles (
 );
 CREATE INDEX IF NOT EXISTS idx_articles_user_created
     ON articles(user_id, created_at DESC);
+
+-- v3.6：focus_sessions 番茄钟专注会话记录
+CREATE TABLE IF NOT EXISTS focus_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL DEFAULT 1,
+    activity TEXT NOT NULL DEFAULT 'other',  -- vocab/writing/exam/typing/reading/other
+    planned_sec INTEGER NOT NULL DEFAULT 1500,   -- 计划时长，秒（25 min = 1500）
+    duration_sec INTEGER NOT NULL DEFAULT 0,     -- 实际专注时长（允许 < planned_sec）
+    interrupted INTEGER NOT NULL DEFAULT 0,      -- 0=正常完成, 1=中途放弃
+    note TEXT DEFAULT '',
+    started_at TEXT NOT NULL,
+    ended_at TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT '',
+    sync_status TEXT NOT NULL DEFAULT 'synced'
+);
+CREATE INDEX IF NOT EXISTS idx_fs_user_started
+    ON focus_sessions(user_id, started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_fs_user_activity
+    ON focus_sessions(user_id, activity);
 
 -- v3：同步元数据（单行表，记录上次同步时间和状态）
 CREATE TABLE IF NOT EXISTS sync_meta (
@@ -1506,6 +1527,145 @@ class SQLiteTypingRepository:
 
 
 # =============================================================
+# 4.6 SQLiteFocusSessionRepository (v3.6 番茄钟)
+# =============================================================
+
+
+class SQLiteFocusSessionRepository:
+    """SQLite 实现的 FocusSession 仓库（v3.6 番茄钟新增）。
+
+    持久化专注会话：
+    - start_session：插入一行（duration_sec 默认 0，interrupted=0）
+    - complete_session：结束时 UPDATE duration_sec / interrupted / note / ended_at
+    - get_history：按 user_id 取最近 N 条
+    - get_today_summary：今日累计（番茄数 + 总专注秒数）
+    - get_total_count：用户累计番茄数
+    """
+
+    VALID_ACTIVITIES = ("vocab", "writing", "exam", "typing", "reading", "other")
+
+    def __init__(self, conn: sqlite3.Connection) -> None:
+        self._conn = conn
+
+    @classmethod
+    def _normalize_activity(cls, activity: str) -> str:
+        return activity if activity in cls.VALID_ACTIVITIES else "other"
+
+    def start_session(self, user_id: int, session: FocusSession) -> int:
+        """开始一次专注会话：插入一行，duration_sec=0, interrupted=0。"""
+        now = datetime.now().isoformat(timespec="seconds")
+        activity = self._normalize_activity(session.activity)
+        cur = self._conn.execute(
+            """INSERT INTO focus_sessions
+               (user_id, activity, planned_sec, duration_sec, interrupted,
+                note, started_at, ended_at, created_at)
+               VALUES (?, ?, ?, 0, 0, ?, ?, '', ?)""",
+            (
+                user_id,
+                activity,
+                session.planned_sec,
+                session.note or "",
+                session.started_at or now,
+                now,
+            ),
+        )
+        self._conn.commit()
+        return cur.lastrowid or 0
+
+    def complete_session(
+        self,
+        user_id: int,
+        session_id: int,
+        duration_sec: int,
+        interrupted: bool,
+        note: Optional[str],
+    ) -> bool:
+        """结束一次会话：写入 duration_sec / interrupted / note / ended_at。
+
+        返回 True=成功更新,False=未找到对应行。
+        """
+        now = datetime.now().isoformat(timespec="seconds")
+        cur = self._conn.execute(
+            """UPDATE focus_sessions
+               SET duration_sec = ?, interrupted = ?, note = ?, ended_at = ?,
+                   updated_at = ?, sync_status = 'pending_upload'
+               WHERE id = ? AND user_id = ?""",
+            (
+                max(0, int(duration_sec)),
+                1 if interrupted else 0,
+                note or "",
+                now,
+                now,
+                session_id,
+                user_id,
+            ),
+        )
+        self._conn.commit()
+        return cur.rowcount > 0
+
+    def get_history(
+        self, user_id: int, limit: int = 20
+    ) -> list[FocusSession]:
+        """按 started_at DESC 取最近 N 条。"""
+        rows = self._conn.execute(
+            """SELECT id, user_id, activity, planned_sec, duration_sec,
+                      interrupted, note, started_at, ended_at, created_at
+               FROM focus_sessions
+               WHERE user_id = ?
+               ORDER BY started_at DESC LIMIT ?""",
+            (user_id, limit),
+        ).fetchall()
+        results: list[FocusSession] = []
+        for row in rows:
+            results.append(FocusSession(
+                id=int(row["id"]),
+                user_id=int(row["user_id"]),
+                activity=row["activity"] or "other",
+                planned_sec=int(row["planned_sec"] or 0),
+                duration_sec=int(row["duration_sec"] or 0),
+                interrupted=bool(row["interrupted"]),
+                note=row["note"] or "",
+                started_at=row["started_at"] or "",
+                ended_at=row["ended_at"] or "",
+                created_at=row["created_at"] or "",
+            ))
+        return results
+
+    def get_today_summary(self, user_id: int) -> dict[str, Any]:
+        """今日累计: 番茄数 + 总专注秒数 + 完成数 + 放弃数。
+
+        按本地日期分界（ISO 日期前缀 YYYY-MM-DD）。
+        """
+        today = datetime.now().date().isoformat()
+        row = self._conn.execute(
+            """SELECT COUNT(*) AS total,
+                      COALESCE(SUM(duration_sec), 0) AS total_sec,
+                      SUM(CASE WHEN interrupted = 0 AND duration_sec >= planned_sec * 0.8
+                               THEN 1 ELSE 0 END) AS completed,
+                      SUM(CASE WHEN interrupted = 1
+                               THEN 1 ELSE 0 END) AS abandoned
+               FROM focus_sessions
+               WHERE user_id = ? AND substr(started_at, 1, 10) = ?""",
+            (user_id, today),
+        ).fetchone()
+        return {
+            "date": today,
+            "total": int(row["total"] or 0),
+            "total_sec": int(row["total_sec"] or 0),
+            "completed": int(row["completed"] or 0),
+            "abandoned": int(row["abandoned"] or 0),
+        }
+
+    def get_total_count(self, user_id: int) -> int:
+        """用户累计番茄数（不区分今日）。"""
+        row = self._conn.execute(
+            "SELECT COUNT(*) AS cnt FROM focus_sessions WHERE user_id = ?",
+            (user_id,),
+        ).fetchone()
+        return int(row["cnt"] or 0)
+
+
+# =============================================================
 # 4.5 SQLiteArticleRepository
 # =============================================================
 
@@ -1771,6 +1931,7 @@ class SQLiteRepositoryContainer:
         self.exam = SQLiteExamRepository(self._conn)
         self.grade = SQLiteGradeRepository(self._conn)
         self.typing = SQLiteTypingRepository(self._conn)
+        self.focus_sessions = SQLiteFocusSessionRepository(self._conn)
         self.article = SQLiteArticleRepository(self._conn)
         self.user = SQLiteUserRepository(self._conn)
 

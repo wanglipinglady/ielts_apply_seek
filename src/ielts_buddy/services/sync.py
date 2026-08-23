@@ -7,7 +7,8 @@
 
 关键设计：
   - 每张业务表独立同步：personal_vocab / learning_records / vocab_categories /
-    vocab_category_words / exam_sessions / grade_history / articles / typing_history
+    vocab_category_words / exam_sessions / grade_history / articles /
+    typing_history / focus_sessions
   - sync_meta 单行表记录 last_pull_at / last_push_at / last_error
   - 写入同步状态：'synced' / 'pending_upload'
   - users 表单独处理（结构简单，按 username 拉取）
@@ -147,6 +148,24 @@ SYNC_TABLES: list[dict[str, Any]] = [
             "user_id", "mode", "prompt_text", "typed_text",
             "duration_sec", "wpm", "accuracy", "error_count",
             "total_chars", "completed", "result_json",
+            "created_at", "updated_at",
+        ],
+        "conflict_key": ["user_id", "id"],
+        "include_id": True,
+    },
+    {
+        # v3.6: focus_sessions 番茄钟专注会话
+        # 两端 schema 一致：user_id/activity/planned_sec/duration_sec/
+        # interrupted/note/started_at/ended_at/created_at/updated_at/sync_status
+        # 不计算 WPM / accuracy —— 只记"专注时长 + 活动类型"
+        # SQLite 端 PRIMARY KEY (id) → conflict_target 在 _pull_table 里取 ["id"]
+        "name": "focus_sessions",
+        "id_col": "id",
+        "user_col": "user_id",
+        "ts_col": "updated_at",
+        "cols": [
+            "user_id", "activity", "planned_sec", "duration_sec",
+            "interrupted", "note", "started_at", "ended_at",
             "created_at", "updated_at",
         ],
         "conflict_key": ["user_id", "id"],

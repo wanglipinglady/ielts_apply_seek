@@ -23,6 +23,7 @@
   │                  │                        │ +updated_at +sync_status│
   │ articles         │ 表不存在                │ 新建                     │
   │ typing_history   │ 表不存在（v3.6 新增）     │ 新建                     │
+  │ focus_sessions   │ 表不存在（v3.6 新增）     │ 新建                     │
   └──────────────────┴────────────────────────┴──────────────────────────┘
 
 注意：
@@ -146,6 +147,10 @@ def audit(cur) -> dict[str, Any]:
     if not has_table(cur, "typing_history"):
         report["tables_missing"].append("typing_history")
 
+    # focus_sessions 必须存在（v3.6 加入 SYNC_TABLES,番茄钟）
+    if not has_table(cur, "focus_sessions"):
+        report["tables_missing"].append("focus_sessions")
+
     # 各表的必填列
     expected_columns = {
         "personal_vocab": ["updated_at", "sync_status"],
@@ -241,6 +246,40 @@ def add_typing_history_table(cur) -> None:
         """
     )
     print("  ✓ typing_history 已创建")
+
+
+def add_focus_sessions_table(cur) -> None:
+    """v3.6 新增：番茄钟专注会话表。
+
+    与 typing_history 同样问题：focus_sessions 被加进 SYNC_TABLES 后，
+    生产 MySQL 没建表 → pull 直接 1146。本函数幂等建表。
+    """
+    print("== 创建 focus_sessions 表 ==")
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS focus_sessions (
+            id              BIGINT          NOT NULL AUTO_INCREMENT,
+            user_id         BIGINT          NOT NULL DEFAULT 1,
+            activity        VARCHAR(32)     NOT NULL DEFAULT 'other',
+            planned_sec     INT             NOT NULL DEFAULT 1500,
+            duration_sec    INT             NOT NULL DEFAULT 0,
+            interrupted     TINYINT(1)      NOT NULL DEFAULT 0,
+            note            MEDIUMTEXT      NULL,
+            started_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            ended_at        DATETIME        NULL,
+            created_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at      DATETIME        NOT NULL
+                                DEFAULT CURRENT_TIMESTAMP
+                                ON UPDATE CURRENT_TIMESTAMP,
+            sync_status     VARCHAR(16)     NOT NULL DEFAULT 'synced',
+            PRIMARY KEY (id),
+            KEY idx_fs_user_started (user_id, started_at),
+            KEY idx_fs_user_activity (user_id, activity)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+          COMMENT='番茄钟专注会话'
+        """
+    )
+    print("  ✓ focus_sessions 已创建")
 
 
 def upgrade_personal_vocab(cur) -> None:
@@ -494,6 +533,8 @@ def main() -> int:
             add_articles_table(cur)
         if "typing_history" in report["tables_missing"]:
             add_typing_history_table(cur)
+        if "focus_sessions" in report["tables_missing"]:
+            add_focus_sessions_table(cur)
         if "personal_vocab" in report["columns_missing"]:
             upgrade_personal_vocab(cur)
         if "learning_records" in report["columns_missing"]:

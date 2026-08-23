@@ -304,3 +304,32 @@ class TypingRecord(BaseModel):
     total_chars: int = 0
     completed: bool = True
     created_at: Optional[str] = None
+
+
+class FocusSession(BaseModel):
+    """番茄钟 / 专注会话记录（v3.6 新增）。
+
+    - activity: 专注类型标签，对齐现有功能模块
+        ``vocab`` (背单词) / ``writing`` (写作) / ``exam`` (模考)
+        ``typing`` (打字) / ``reading`` (阅读) / ``other``
+    - planned_sec: 计划时长（秒），默认 25 min = 1500
+    - duration_sec: 实际专注时长；可小于 planned_sec（中途放弃）
+    - interrupted: True = 中途放弃 / False = 正常完成
+    - note: 用户自定义备注（可选）
+
+    设计要点：
+      - 不算 WPM / accuracy（与 typing_history 区分），只记"专注时长 + 活动类型"
+      - 支持自定义时长（短休 5min / 长休 15min / 任意值），不限 25min
+      - 跨设备同步（v3.6：已加进 SYNC_TABLES，include_id=True）
+    """
+
+    id: Optional[int] = None
+    user_id: int = 1
+    activity: str = "other"          # vocab / writing / exam / typing / reading / other
+    planned_sec: int = Field(default=1500, ge=60, le=7200)   # 1min ~ 2h
+    duration_sec: int = Field(default=0, ge=0, le=7200)
+    interrupted: bool = False
+    note: Optional[str] = None
+    started_at: Optional[str] = None
+    ended_at: Optional[str] = None
+    created_at: Optional[str] = None

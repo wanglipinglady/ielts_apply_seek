@@ -7,6 +7,7 @@ from ielts_buddy.repositories.sqlite_repo import (
     REVIEW_INTERVALS,
     SQLiteArticleRepository,
     SQLiteExamRepository,
+    SQLiteFocusSessionRepository,
     SQLiteGradeRepository,
     SQLiteLearningRepository,
     SQLitePersonalVocabRepository,
@@ -21,6 +22,7 @@ from ielts_buddy.repositories.sqlite_repo import (
 try:
     from ielts_buddy.repositories.mysql_repo import (
         MySQLExamRepository,
+        MySQLFocusSessionRepository,
         MySQLGradeRepository,
         MySQLLearningRepository,
         MySQLPersonalVocabRepository,
@@ -40,6 +42,7 @@ __all__ = [
     "SQLiteExamRepository",
     "SQLiteGradeRepository",
     "SQLiteTypingRepository",
+    "SQLiteFocusSessionRepository",
     "SQLiteVocabCacheRepository",
     "SQLiteUserRepository",
     "SQLiteRepositoryContainer",
@@ -54,6 +57,7 @@ if _MYSQL_AVAILABLE:
         "MySQLExamRepository",
         "MySQLGradeRepository",
         "MySQLTypingRepository",
+        "MySQLFocusSessionRepository",
         "MySQLVocabCacheRepository",
         "MySQLUserRepository",
         "MySQLRepositoryContainer",
