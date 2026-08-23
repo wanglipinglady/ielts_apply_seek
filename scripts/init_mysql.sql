@@ -370,7 +370,8 @@ CREATE TABLE IF NOT EXISTS reading_passages (
     stem                  TEXT            NOT NULL,
     options_json          TEXT            NULL,
     answer                VARCHAR(256)    NOT NULL,
-    explanation           TEXT            NOT NULL DEFAULT '',
+    -- MySQL 限制：TEXT/BLOB/JSON 列不能有 DEFAULT 值；解释允许为空，故改为 NULL
+    explanation           TEXT            NULL,
     source_line           INT             NULL,
     created_at            DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at            DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP

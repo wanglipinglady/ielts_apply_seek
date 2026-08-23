@@ -161,6 +161,14 @@ def audit(cur) -> dict[str, Any]:
     if not has_table(cur, "listening_attempts"):
         report["tables_missing"].append("listening_attempts")
 
+    # v3.8 P3：备考资源广场 + Reading 真题题库
+    if not has_table(cur, "prep_resources"):
+        report["tables_missing"].append("prep_resources")
+    if not has_table(cur, "reading_passages"):
+        report["tables_missing"].append("reading_passages")
+    if not has_table(cur, "reading_attempts"):
+        report["tables_missing"].append("reading_attempts")
+
     # 各表的必填列
     expected_columns = {
         "personal_vocab": ["updated_at", "sync_status"],
