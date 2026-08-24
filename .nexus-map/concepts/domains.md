@@ -1,136 +1,156 @@
-# Domains — 核心领域概念说明
+# 领域概念（Domains）
 
 > generated_by: nexus-mapper v2
-> verified_at: 2026-07-16
-> provenance: file-tree + manual inspection
+> verified_at: 2026-08-23
+> provenance: AST-backed for service entry points; cross-references inferred from file naming and import direction
 
-## 核心领域概念
+本文件解释 4 大业务领域的概念模型、数据流、与服务映射。
 
-### 1. 词汇学习领域 (Vocabulary Learning)
+---
 
-**概念层级**:
-- **Word**: 单词实体，包含音标、释义、例句、搭配、同义词
-- **Band**: 雅思难度等级 (5-9)，表示单词难度
-- **Topic**: 主题分类，如 education、environment
-- **LearningRecord**: 学习记录，跟踪记忆等级和复习时间
+## Domain 1 — 词汇学习循环 (`ielts-buddy-domain-vocab-learning`)
 
-**关键规则**:
-- 词库分为精选词库 (526词) 和大词库 (4485词)
-- 记忆等级 0-6，表示艾宾浩斯遗忘曲线位置
-- 复习间隔：1天 → 2天 → 4天 → 7天 → 15天 → 30天
+**业务目标**：让用户用最小时间掌握最有价值的雅思词汇。
 
-### 2. 艾宾浩斯复习领域 (Spaced Repetition)
+**闭环流程**：
+```
+摄入 (CLI: vocab add / Web: 个人词库添加)
+  ↓
+LearningRecord (rate: again/hard/good/easy)
+  ↓
+vocab_service.schedule_review() — 间隔重复算法
+  ↓
+stats_service.mastery_score() — 掌握度
+  ↓
+report_service.generate_daily() — 日报聚合
+```
 
-**概念层级**:
-- **memory_level**: 记忆等级，0=新词，6=长期记忆
-- **next_review**: 下次复习日期
-- **due_words**: 到期需复习的单词
+**关键模型** (`core/models.py`)：
+- `Word` — 单词 + 释义 + 例句 + 标签
+- `LearningRecord` — 单次学习记录（含 ease factor, interval, next_review_at）
+- `DailySummary` — 每日聚合（new/learning/mastered）
 
-**复习算法**:
-- 答对 → 等级+1，下次复习时间延长
-- 答错 → 等级重置为0，重新开始周期
+**服务入口**：
+- `services/vocab_service.py`（25 fan-in 🔝）— 核心调度
+- `services/personal_vocab_service.py` — 个人词库（v3.x）
+- `services/stats_service.py`（10 fan-in）— 掌握度统计
 
-### 3. 写作辅助领域 (Writing Assistance)
+---
 
-**概念层级**:
-- **Topic**: 写作话题（technology、education、environment 等）
-- **Template**: 句型模板（introduction、body、conclusion）
-- **Synonym**: 同义替换词
-- **GradeResult**: AI 批改结果
+## Domain 2 — 真题模拟与评分 (`ielts-buddy-domain-exam-simulation`)
 
-**评分维度**:
-- Task Response: 任务回应
-- Coherence & Cohesion: 连贯与衔接
-- Lexical Resource: 词汇资源
-- Grammatical Range & Accuracy: 语法范围与准确性
+**业务目标**：还原 IELTS 真实考试体验，并给出可解释的分数。
 
-### 4. 口语练习领域 (Speaking Practice)
+**四技能服务**：
+| 技能 | 服务 | 配套 |
+| --- | --- | --- |
+| Listening | `listening_service.py` | `listening_tts_service.py` |
+| Reading | `exam_service.py`（共享） | — |
+| Writing | `writing_service.py` | `llm_service.py` |
+| Speaking | `speaking_service.py` | `whisper_service.py`, `speaking_grade_service.py` |
 
-**概念层级**:
-- **Part**: 口语考试部分 (1/2/3)
-- **Topic**: 口语话题
-- **Keywords**: 话题关键词汇
+**会话模型**：
+- `TestSession` — 单次考试会话（start_at, end_at, target_band）
+- `ExamSession` — 真题套题（题目集合）
+- `ExamQuestion` — 单题（按技能定义）
 
-**Part 分区**:
-- Part 1: 日常话题问答 (4-5分钟)
-- Part 2: 卡片陈述 (1分钟准备，2分钟陈述)
-- Part 3: 深入讨论 (4-5分钟)
+**LLM 评分链路**：
+```
+用户提交 (Writing/Speaking)
+  ↓
+writing_service.submit() / speaking_service.submit()
+  ↓
+llm_service.grade() — 调用 DeepSeek / OpenAI 兼容 API
+  ↓
+grading_service.parse_response() — 解析 4 维分数
+  ↓
+stats_service.update_mastery() — 反馈给学习循环
+```
 
-### 5. 模拟考试领域 (Exam Simulation)
+---
 
-**概念层级**:
-- **ExamSession**: 考试会话
-- **ExamQuestion**: 考试题目
-- **ExamReport**: 考试报告
-- **TestMode**: 测验模式 (spelling/meaning/choice/context)
+## Domain 3 — 备考资源广场 (`ielts-buddy-domain-prep-resources`) 🆕 v3.8
 
-**测验模式**:
-- en2zh: 英译中
-- zh2en: 中译英
-- mix: 混合模式
+**业务目标**：聚合高质量第三方资源 + 提供阅读真题题库，减少用户找资料的时间。
 
-### 6. 学习统计领域 (Learning Statistics)
+**两大部分**：
 
-**概念层级**:
-- **DailySummary**: 每日学习摘要
-- **StudyPlan**: 学习计划
-- **Streak**: 连续学习天数
+### 3a. 资源广场（`prep_resource_service.py`）
+**数据源**：管理员录入或脚本导入的外部资源（剑桥真题 PDF、YouTube 频道、Podcast RSS 等）。
 
-**统计指标**:
-- new_words: 今日新学单词数
-- reviewed_words: 今日复习单词数
-- test_accuracy: 测验正确率
-- study_minutes: 学习时长
+**核心字段**：
+- `title`, `source_type` (book / video / podcast / website)
+- `skill` (listening / reading / writing / speaking)
+- `band_range` (4-6, 6-7, 7+)
+- `recommend_score`, `publish_date`
+- `url`, `description`
 
-### 7. 个人词库领域 (Personal Vocabulary)
+**前端入口**：`/resources` 页面，含筛选（skill / source_type / band）与排序（最新 / 最推荐）。
 
-**概念层级**:
-- **PersonalWord**: 个人词库单词
-- **VocabCategory**: 词库分类
-- **Source**: 来源 (manual/quiz_mistake/grading/import)
+### 3b. 阅读真题题库（`reading_practice_service.py` + `reading_question_generator.py`）
+**数据源**：`scripts/seed_listening_questions.py` 类似的 seed 脚本（具体文件名待确认）。
 
-**特殊分类**:
-- mistakes: 错题本
-- starred: 收藏
-- difficult: 难点
+**题型**：填空、判断、匹配、heading 匹配等 IELTS Reading 经典题型。
 
-### 8. 知识卡片领域 (Knowledge Cards)
+**答题闭环**：
+```
+浏览题目 (GET /reading/practice)
+  ↓
+开始会话 (POST /reading/sessions)
+  ↓
+提交答案 (POST /reading/sessions/{id}/submit)
+  ↓
+自动评分 (reading_practice_service.grade())
+  ↓
+统计反馈 (stats_service.update_reading_mastery())
+```
 
-**概念层级**:
-- **Course**: 课程
-- **Content**: 课程内容
-- **SentenceCard**: 句子知识卡片
+### 3c. 听力练习（`listening_practice_service.py`）🆕 v3.8
+与 3b 类似，音频驱动的听力训练，与 `listening_question_generator.py` 配对使用。
 
-**卡片格式**:
-- 中文句子 + 关键词提取
-- 英文翻译
-- 知识点标注
+**v3.8 架构特点**：仅依赖 Persistence 层，不触碰 Core — 干净的增量边界。
 
-### 9. 数据同步领域 (Data Sync)
+---
 
-**概念层级**:
-- **FeishuBitable**: 飞书多维表格
-- **SyncRecord**: 同步记录
+## Domain 4 — 本地↔在线同步守护线程 (`ielts-buddy-domain-sync-daemon`)
 
-**同步方向**:
-- 本地 → 飞书
-- 飞书 → 本地
-- 双向同步
+**业务目标**：让用户在离线 / 弱网时也能用本地 SQLite 工作，回到在线时无缝合并到 MySQL。
 
-## 领域间关系
+**架构**：
+```
+本地写入 (SQLite)
+  ↓
+SyncWorker (services/sync.py: 793 行)
+  ├─ SyncWorker (同步推送/拉取)
+  ├─ SyncDaemonThread (守护线程，每 N 秒触发)
+  └─ SyncWorkerAsync (asyncio 适配)
+  ↓
+冲突解决 (last-write-wins + user_id 隔离)
+  ↓
+增量同步到 MySQL
+```
 
-```mermaid
-graph LR
-    VOCAB[词汇学习] --> REVIEW[艾宾浩斯复习]
-    VOCAB --> STATS[学习统计]
-    REVIEW --> STATS
-    STATS --> PLAN[学习计划]
-    PLAN --> RECOMMEND[智能推荐]
-    VOCAB --> WRITE[写作辅助]
-    VOCAB --> SPEAK[口语练习]
-    VOCAB --> EXAM[模拟考试]
-    EXAM --> GRADE[AI 批改]
-    WRITE --> GRADE
-    VOCAB --> PERSONAL[个人词库]
-    PERSONAL --> SYNC[数据同步]
+**配套 service**：`services/sync_service.py`（168 行，高层 `SyncService` 封装）。
+
+**风险**：
+- 多端并发时同一用户数据可能冲突（当前策略 LWW，无 CRDT）。
+- `sync.py` 793 行较长，建议未来按 (push / pull / conflict) 拆分子模块。
+
+---
+
+## 跨域关系
+
+```
+vocab-learning  ←→  exam-simulation
+       ↓                ↓
+   stats_service ←—  report_service
+       ↑                ↑
+       └───  prep-resources (v3.8) ──┘
+                ↑
+                └──  reading 答题统计
+                ↑
+                └──  listening 答题统计
+
+所有 domain 共享：persistence-layer + core-foundation
+sync-daemon 横切所有 domain（后台搬运）
 ```

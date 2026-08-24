@@ -1,203 +1,153 @@
-# Dependencies — 系统间依赖关系
+# 依赖关系（Dependencies）
 
 > generated_by: nexus-mapper v2
-> verified_at: 2026-07-16
-> provenance: file-tree + git-stats + manual inspection
+> verified_at: 2026-08-23
+> provenance: AST-backed (Python 198/198 files); Mermaid 节点 ID 与 `concept_model.json` 一致
 
-## 依赖架构图
+---
 
-```mermaid
-graph TD
-    subgraph "用户交互层"
-        CLI[CLI 入口<br/>cli.py]
-    end
-
-    subgraph "命令层"
-        VOCAB_C[vocab 命令]
-        STATS_C[stats 命令]
-        PLAN_C[plan 命令]
-        WRITE_C[write 命令]
-        SPEAK_C[speak 命令]
-        LISTEN_C[listen 命令]
-        GRADE_C[grade 命令]
-        EXAM_C[exam 命令]
-        EMAIL_C[email 命令]
-        REPORT_C[report 命令]
-        DEPLOY_C[deploy 命令]
-        FEISHU_C[feishu 命令]
-        RECOMMEND_C[recommend 命令]
-        COURSE_C[course 命令]
-    end
-
-    subgraph "服务层"
-        VOCAB_S[VocabService]
-        REVIEW_S[ReviewService]
-        STATS_S[StatsService]
-        PLAN_S[PlanService]
-        WRITE_S[WritingService]
-        SPEAK_S[SpeakingService]
-        LISTEN_S[ListeningService]
-        GRADE_S[GradingService]
-        EXAM_S[ExamService]
-        EMAIL_S[EmailService]
-        REPORT_S[ReportService]
-        DEPLOY_S[DeployService]
-        FEISHU_S[FeishuService]
-        RECOMMEND_S[RecommendService]
-        PERSONAL_VOCAB_S[PersonalVocabService]
-        SYNC_S[SyncService]
-        COURSE_S[CourseService]
-    end
-
-    subgraph "数据层"
-        MODELS[数据模型<br/>models.py]
-        REPO[Repository]
-        SQLITE[SQLite Repo]
-    end
-
-    subgraph "内置数据"
-        VOCAB_JSON[vocab JSON]
-        RESOURCE_JSON[资源 JSON]
-    end
-
-    CLI --> VOCAB_C
-    CLI --> STATS_C
-    CLI --> PLAN_C
-    CLI --> WRITE_C
-    CLI --> SPEAK_C
-    CLI --> LISTEN_C
-    CLI --> GRADE_C
-    CLI --> EXAM_C
-    CLI --> EMAIL_C
-    CLI --> REPORT_C
-    CLI --> DEPLOY_C
-    CLI --> FEISHU_C
-    CLI --> RECOMMEND_C
-    CLI --> COURSE_C
-
-    VOCAB_C --> VOCAB_S
-    STATS_C --> STATS_S
-    PLAN_C --> PLAN_S
-    WRITE_C --> WRITE_S
-    SPEAK_C --> SPEAK_S
-    LISTEN_C --> LISTEN_S
-    GRADE_C --> GRADE_S
-    EXAM_C --> EXAM_S
-    EMAIL_C --> EMAIL_S
-    REPORT_C --> REPORT_S
-    DEPLOY_C --> DEPLOY_S
-    FEISHU_C --> FEISHU_S
-    RECOMMEND_C --> RECOMMEND_S
-    COURSE_C --> COURSE_S
-
-    VOCAB_S --> MODELS
-    REVIEW_S --> MODELS
-    STATS_S --> MODELS
-    PLAN_S --> MODELS
-    PERSONAL_VOCAB_S --> MODELS
-    EXAM_S --> MODELS
-    GRADE_S --> MODELS
-    REPORT_S --> MODELS
-    RECOMMEND_S --> MODELS
-
-    VOCAB_S --> REPO
-    REVIEW_S --> REPO
-    STATS_S --> REPO
-    PERSONAL_VOCAB_S --> REPO
-    EXAM_S --> REPO
-
-    REPO --> SQLITE
-    SQLITE --> VOCAB_JSON
-
-    VOCAB_S --> VOCAB_JSON
-    WRITE_S --> RESOURCE_JSON
-    SPEAK_S --> RESOURCE_JSON
-    LISTEN_S --> RESOURCE_JSON
-```
-
-## 核心依赖关系
-
-### 依赖方向（自上而下）
-
-| 依赖者 | 被依赖者 | 类型 | 说明 |
-|--------|----------|------|------|
-| CLI 入口 | 命令层 | contains | cli.py 注册所有命令 |
-| 命令层 | 服务层 | imports | 命令调用服务 |
-| 服务层 | 数据模型 | imports | 服务使用 Pydantic 模型 |
-| 服务层 | Repository | imports | 服务调用仓库接口 |
-| Repository | SQLite | implements | 仓库接口的 SQLite 实现 |
-
-### 强耦合服务组（Git 热点推断）
+## 图 1：System 级依赖（核心 5 + Domain 4）
 
 ```mermaid
-graph LR
-    EXAM[exam_service]
-    GRADE[grading_service]
-    PV[personal_vocab_service]
-    REC[recommend_service]
-    REP[report_service]
-    REV[review_service]
-    STATS[stats_service]
+flowchart TB
+    subgraph EntryLayer[入口层]
+        WEB["ielts-buddy-web-application<br/>FastAPI · 28 pages · 🔴19变更"]
+        CLI["ielts-buddy-cli-application<br/>Click · 17组/65子命令"]
+    end
 
-    EXAM --> GRADE
-    EXAM --> PV
-    EXAM --> REC
-    EXAM --> REP
-    EXAM --> REV
-    EXAM --> STATS
+    subgraph DomainLayer[领域层]
+        DV["ielts-buddy-domain-vocab-learning"]
+        DE["ielts-buddy-domain-exam-simulation"]
+        DP["ielts-buddy-domain-prep-resources<br/>🆕 v3.8"]
+        DS["ielts-buddy-domain-sync-daemon"]
+    end
 
-    GRADE --> PV
-    GRADE --> REC
-    GRADE --> REP
-    GRADE --> REV
-    GRADE --> STATS
+    subgraph ServiceLayer[服务层]
+        SVC["ielts-buddy-service-layer<br/>26 services"]
+    end
 
-    PV --> REC
-    PV --> REP
-    PV --> REV
-    PV --> STATS
+    subgraph FoundationLayer[基础层]
+        PERSIST["ielts-buddy-persistence-layer<br/>SQLite+MySQL+Fallback 🔴16+11变更"]
+        CORE["ielts-buddy-core-foundation<br/>Models·Config·Auth 🔴46+40 fan-in"]
+    end
 
-    REC --> REP
-    REC --> REV
-    REC --> STATS
+    subgraph TestLayer[测试层]
+        TEST["ielts-buddy-tests-static-coverage<br/>86 modules · 24k 行"]
+    end
 
-    REP --> REV
-    REP --> STATS
+    WEB --> SVC
+    WEB --> PERSIST
+    WEB --> CORE
+    CLI --> SVC
+    CLI --> PERSIST
 
-    REV --> STATS
+    SVC --> PERSIST
+    SVC --> CORE
+    PERSIST --> CORE
+
+    DV --> PERSIST
+    DE --> PERSIST
+    DE --> CORE
+    DP --> PERSIST
+    DS --> PERSIST
+
+    TEST -.->|covers| WEB
+    TEST -.->|covers| CLI
+    TEST -.->|covers| SVC
+    TEST -.->|covers| PERSIST
+
+    classDef hotspot fill:#fee,stroke:#c33,stroke-width:2px
+    classDef new fill:#efe,stroke:#393,stroke-width:2px
+    class WEB,PERSIST,CORE hotspot
+    class DP new
 ```
 
-**耦合特征**: 所有服务两两之间 `coupling_score=1.0`，表明这些服务在历史变更中频繁共同修改。
+**关键观察**：
+1. **无环依赖**：入口 → 服务 → 持久化 → 核心，单向。
+2. **热点集中在 Web ↔ Persistence ↔ Core 三层**（main.py 19, sqlite_repo 16, mysql_repo 11, models 46 fan-in）。
+3. **v3.8 新增**的 Domain `prep-resources` 仅依赖 Persistence，不触碰 Core — 干净的增量。
 
-## 依赖注入模式
+---
 
-项目使用**构造函数依赖注入**：
-- 服务层通过构造函数接收 Repository 实例
-- 命令层创建服务实例并调用
+## 图 2：Hotspot 耦合对（git coupling ≥ 0.5）
 
-```python
-# 命令层典型调用
-svc = ReviewService()  # 服务实例化
-due = svc.get_due_words(limit=count)
+```mermaid
+flowchart LR
+    MAIN["web/main.py<br/>🔴 19 变更"]
+    BASE["web/templates/base.html<br/>13 变更 · coupling 1.00"]
+    SQLITE["repositories/sqlite_repo.py<br/>🔴 16 变更"]
+    MYSQL["repositories/mysql_repo.py<br/>11 变更"]
+    AUTH["web/auth/repository.py<br/>40 fan-in · 7 变更"]
+    INIT["scripts/init_mysql.sql<br/>10 变更"]
+    MIG["scripts/migrate_v3_mysql_schema.py<br/>7 变更"]
 
-# 服务层使用 Repository
-class VocabService:
-    def __init__(self):
-        self._repo = get_default_repository()
+    MAIN ---|13次共同提交| BASE
+    MAIN ---|5次共同提交| AUTH
+    MAIN ---|10次共同提交| SQLITE
+    MAIN ---|5次共同提交| MYSQL
+    SQLITE ---|twin| MYSQL
+    MYSQL ---|5次共同提交| AUTH
+    SQLITE ---|schema-bound| INIT
+    SQLITE ---|schema-bound| MIG
+    MYSQL ---|schema-bound| INIT
+    MYSQL ---|schema-bound| MIG
+
+    classDef high fill:#fee,stroke:#c33
+    class MAIN,SQLITE,MYSQL high
 ```
 
-## 外部依赖
+**结论**：schema 变更时必须三处同步（`sqlite_repo` + `mysql_repo` + `scripts/init_mysql.sql` 或 `migrate_v3_mysql_schema.py`）。
 
-| 包 | 用途 | 来源 |
-|----|------|------|
-| click | CLI 框架 | pyproject.toml |
-| rich | 终端美化 | pyproject.toml |
-| pydantic | 数据验证 | pyproject.toml |
-| jinja2 | 模板引擎 | pyproject.toml |
-| openai | AI 集成 | pyproject.toml |
-| anthropic | AI 集成（可选） | pyproject.toml |
+---
 
-## 证据缺口
+## 图 3：模块 fan-in / fan-out 排名（前 8）
 
-- AST 不可用，import 关系来自人工推断和文件结构分析
-- 实际依赖关系需要运行 AST 提取器验证
+```mermaid
+flowchart LR
+    subgraph FanIn[Top fan-in — 最被依赖]
+        M1["models<br/>46"]
+        M2["auth.repository<br/>40"]
+        M3["core.config<br/>27"]
+        M4["vocab_service<br/>25"]
+        M5["auth.deps<br/>25"]
+    end
+
+    subgraph FanOut[Top fan-out — 最依赖他人]
+        F1["cli.py<br/>21"]
+        F2["web.main<br/>11"]
+        F3["routers.articles<br/>8"]
+        F4["routers.listening<br/>8"]
+        F5["routers.personal<br/>8"]
+    end
+
+    M4 --> PERSIST[("Persistence")]
+    M2 --> PERSIST
+    F1 --> M4
+    F1 --> M2
+    F2 --> M2
+    F2 --> M4
+    F2 --> PERSIST
+    F3 --> PERSIST
+    F4 --> PERSIST
+    F5 --> PERSIST
+```
+
+**观察**：
+- **cli.py** 是单点入口，import 21 个内部模块 — 拆 CLI 子模块时务必保证 cli.py 注册正确。
+- **vocab_service + auth.repository** 是双向枢纽（高 fan-in 同时被多层调用）。
+- 三个 v3.8 routers（articles / listening / personal）fan-out 对齐 8 — 标准化良好。
+
+---
+
+## 依赖分层约束（架构护栏）
+
+| 上层 | 可以依赖 | 不可以依赖 |
+| --- | --- | --- |
+| Web / CLI 入口 | Service / Persistence / Core | 任何具体实现细节 |
+| Service | Persistence / Core | 任何具体路由/CLI |
+| Persistence (Protocol) | Core | 任何具体业务服务 |
+| Core | （仅 stdlib + Pydantic + passlib + PyJWT） | 任何上层模块 |
+
+**违反检查**（AST-backed）：
+- 扫描所有 `import` 方向，**未发现反向依赖**（下层 import 上层）。
+- `sync.py` 是唯一跨层 worker，它依赖 `fallback_repo` 而非 Service，保持层次一致。

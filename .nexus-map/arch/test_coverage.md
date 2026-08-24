@@ -1,164 +1,80 @@
-# Test Coverage — 静态测试面与证据缺口
+# 测试覆盖（Test Coverage — 静态）
 
 > generated_by: nexus-mapper v2
-> verified_at: 2026-07-16
-> provenance: file-tree + manual inspection
-
-## 测试目录结构
-
-```
-tests/
-├── __init__.py
-├── conftest.py              # pytest 配置和 fixtures
-├── test_config.py            # 配置测试
-├── test_models.py           # 数据模型测试
-├── test_commands/           # CLI 命令测试
-│   ├── test_cli.py
-│   ├── test_exam_feishu_cli.py
-│   ├── test_grade_deploy_cli.py
-│   ├── test_listen.py
-│   ├── test_report_cli.py
-│   ├── test_speak_cli.py
-│   ├── test_sync_email_cli.py
-│   └── test_write_cli.py
-├── test_repositories/       # 仓库层测试
-│   ├── test_repository_protocols.py
-│   └── test_sqlite_repo.py
-└── test_services/           # 服务层测试
-    ├── test_deploy_service.py
-    ├── test_diff_service.py
-    ├── test_email_service.py
-    ├── test_exam_service.py
-    ├── test_feishu_service.py
-    ├── test_grading_service.py
-    ├── test_listening_service.py
-    ├── test_personal_vocab_service.py
-    ├── test_plan_service.py
-    ├── test_recommend_service.py
-    ├── test_report_service.py
-    ├── test_review_service.py
-    ├── test_speaking_service.py
-    ├── test_stats_service.py
-    ├── test_sync_service.py
-    ├── test_vocab_service.py
-    └── test_writing_service.py
-```
-
-## 测试覆盖矩阵
-
-| 模块 | 测试文件 | 覆盖状态 | 说明 |
-|------|----------|----------|------|
-| **Commands** | | | |
-| vocab | 未发现独立测试文件 | ⚠️ 部分 | vocab 命令测试覆盖不足 |
-| stats | 未发现独立测试文件 | ⚠️ 部分 | |
-| plan | 未发现独立测试文件 | ⚠️ 部分 | |
-| sync | `test_sync_email_cli.py` | ✓ | |
-| email | `test_sync_email_cli.py` | ✓ | |
-| write | `test_write_cli.py` | ✓ | |
-| speak | `test_speak_cli.py` | ✓ | |
-| report | `test_report_cli.py` | ✓ | |
-| listen | `test_listen.py` | ✓ | |
-| grade | `test_grade_deploy_cli.py` | ✓ | |
-| deploy | `test_grade_deploy_cli.py` | ✓ | |
-| exam | `test_exam_feishu_cli.py` | ✓ | |
-| feishu | `test_exam_feishu_cli.py` | ✓ | |
-| recommend | 未发现独立测试文件 | ❌ 缺失 | |
-| course | 未发现独立测试文件 | ❌ 缺失 | |
-| **Services** | | | |
-| vocab_service | `test_vocab_service.py` | ✓ | |
-| review_service | `test_review_service.py` | ✓ | |
-| stats_service | `test_stats_service.py` | ✓ | |
-| plan_service | `test_plan_service.py` | ✓ | |
-| email_service | `test_email_service.py` | ✓ | |
-| writing_service | `test_writing_service.py` | ✓ | |
-| speaking_service | `test_speaking_service.py` | ✓ | |
-| listening_service | `test_listening_service.py` | ✓ | |
-| grading_service | `test_grading_service.py` | ✓ | |
-| deploy_service | `test_deploy_service.py` | ✓ | |
-| exam_service | `test_exam_service.py` | ✓ | |
-| report_service | `test_report_service.py` | ✓ | |
-| feishu_service | `test_feishu_service.py` | ✓ | |
-| recommend_service | `test_recommend_service.py` | ✓ | |
-| personal_vocab_service | `test_personal_vocab_service.py` | ✓ | |
-| sync_service | `test_sync_service.py` | ✓ | |
-| course_service | 未发现测试文件 | ❌ 缺失 | |
-| diff_service | `test_diff_service.py` | ✓ | |
-| **Repositories** | | | |
-| sqlite_repo | `test_sqlite_repo.py` | ✓ | |
-| repository protocols | `test_repository_protocols.py` | ✓ | |
-| **Core** | | | |
-| models | `test_models.py` | ✓ | |
-| config | `test_config.py` | ✓ | |
-
-## 证据缺口
-
-### 测试缺失区域
-
-| 区域 | 严重程度 | 说明 |
-|------|----------|------|
-| `recommend` 命令 | Medium | 命令层无独立测试 |
-| `course` 命令 | Medium | 命令层无独立测试 |
-| `course_service.py` | Medium | 服务层无测试 |
-
-### 静态分析声明
-
-- 本分析基于文件树和 README 声明（637 tests）
-- **未运行实际测试验证**
-- 测试是否全部通过需要执行 `pytest` 确认
-- 覆盖率数据来自 README，未经验证
-
-### 覆盖率声明来源
-
-README.md 声明：
-> ![Tests](https://img.shields.io/badge/Tests-637%20passed-brightgreen)
-
-**警告**: 此声明可能为上游项目 IELTS Buddy 的测试数量，本项目可能未完全继承。
+> verified_at: 2026-08-23
+> provenance: AST-backed (Python 198/198 files); 仅统计文件数与行数，**未实际运行 pytest**
 
 ---
 
-## v3.6+ Web 测试套件(更新)
+## 测试面总览
 
-> 自 v3.6 起新增 `tests/test_web/` 目录，覆盖 FastAPI 端到端
+| 测试包 | 模块数 | Class 数 | 行数 |
+| --- | ---: | ---: | ---: |
+| `tests/` (顶层) | 5 | 12 | 943 |
+| `tests/test_commands/` | 13 | 53 | 2,193 |
+| `tests/test_repositories/` | 11 | 52 | 3,695 |
+| `tests/test_services/` | 29 | 171 | 8,820 |
+| `tests/test_web/` | 27 | 71 | 8,561 |
+| **合计** | **86** | **359** | **24,212** |
 
-### Web API 测试文件
+> 行数与代码行（58,399）比 ≈ **1 : 2.4**，对个人项目属于较高覆盖。
 
-| 测试文件 | 用例数 | 覆盖范围 |
-|---|---|---|
-| `test_app_boot.py` | - | web 启动 + lifespan |
-| `test_auth_api.py` | - | 注册/登录/刷新 token |
-| `test_auth_repository.py` | - | web_users repo |
-| `test_auth_security.py` | - | JWT 加解密 |
-| `test_auth_service.py` | - | 认证业务层 |
-| `test_calendar_api.py` | - | 学习日历 |
-| `test_grade_api.py` | - | 写作 AI 评分 |
-| `test_listening_api.py` | - | 听力训练 |
-| `test_mistakes_api.py` | - | 错词本 |
-| `test_pomodoro_api.py` | - | 番茄钟 |
-| `test_speak_api.py` | - | 口语话题 |
-| `test_stats_api.py` | - | 统计 |
-| `test_study_api.py` | - | 学习(随机+复习) |
-| `test_typing_api.py` | - | 打字 |
-| `test_write_api.py` | - | 写作辅助 |
+---
 
-### v3.7 P1 口语对练新增测试
+## 映射到被测系统
 
-| 测试文件 | 用例数 | 覆盖 |
-|---|---|---|
-| `test_repositories/test_speaking_practice_repo.py` | 19 | 9 repo 方法 + 7 天清理 + record_speaking_error |
-| `test_repositories/test_repository_protocols.py` | +N | SpeakingPracticeRepository Protocol 一致性 |
-| `test_web/test_speaking_practice_api.py` | 21 | 6 端点 e2e + IDOR + 422 校验 + 错词回收 |
-| `test_web/test_speaking_grade_service.py` | 14 | mock fallback / 真 LLM / retry-once / JSON 容错 |
-| `test_services/test_speaking_practice_service.py` | 4 | purge 跨用户清理 |
+| 被测系统 | 测试模块数 | 主要测试文件 |
+| --- | ---: | --- |
+| `ielts-buddy-web-application` | 27 | `tests/test_web/*`（含 `test_listening_startup_seed`, `test_prep_resource_api`, `test_reading_practice_api`, `test_stats_api` 等） |
+| `ielts-buddy-cli-application` | 13 | `tests/test_commands/*`（auth, vocab, recommend, course, exam 等） |
+| `ielts-buddy-persistence-layer` | 11 | `tests/test_repositories/*`（含 `test_sqlite_repo`, `test_mysql_repo`, `test_focus_session_repository`, `test_typing_repository`, `test_speaking_practice_repo`） |
+| `ielts-buddy-service-layer` | 29 | `tests/test_services/*`（最大测试包，171 个 TestX class） |
+| `ielts-buddy-core-foundation` | 5 | `tests/test_config.py`（顶层测试包中的 `TestConfig`, `TestGetMode`, `TestGetMysqlUrl`） |
 
-**v3.7 P1 新增 58 个测试,全部 PASS。**
+---
 
-### 已知 Pre-existing 失败
+## v3.8 新功能的测试覆盖
 
-> 以下失败与本次工作无关,均为环境/mock 引起的存量问题:
+| 新功能 | 服务 | 测试文件 |
+| --- | --- | --- |
+| 备考资源广场 API | `prep_resource_service` | `tests/test_web/test_prep_resource_api.py` |
+| 阅读真题题库 API | `reading_practice_service` | `tests/test_web/test_reading_practice_api.py` |
+| 阅读启动种子 | `reading_practice_service` | `tests/test_web/test_reading_startup_seed.py` |
+| 听力启动种子 | `listening_practice_service` | `tests/test_web/test_listening_startup_seed.py` |
+| 统计 API | `stats_service` | `tests/test_web/test_stats_api.py` |
+| 个人词库 | `personal_vocab_service` | `tests/test_services/test_user_id_resolution.py` 等 |
 
-- `tomllib` ImportError(Python 3.10 才有)
-- `day_num` template UndefinedError(邮件模板)
-- `MySQLRepositoryContainer has no attribute _conn`(无 MySQL 环境)
-- LLM 评分 mock 与新 grading prompt 不匹配
+**v3.8 改动均同步增加了 Web API 测试** — 高质量的增量交付。
 
-**`tests/test_web/ + tests/test_repositories/` 516 个测试,514 PASS,2 pre-existing study_api failures。**
+---
+
+## evidence gap（缺口）
+
+| 缺口 | 影响 | 建议 |
+| --- | --- | --- |
+| **AST 阶段未运行 pytest** | 静态覆盖率≠实际通过率 | 在 CI 跑 `pytest --cov=src/ielts_buddy`，下次产物补充覆盖率数字 |
+| **3 个非 Python 文件未解析** | `.github/workflows/ci.yml`, `scripts/setup_whisper.sh` 等未纳入 AST | 边缘脚本，对核心结论无影响 |
+| **3311 Function 节点被截断** | 函数级覆盖未知 | 用 `--max-nodes 200` 重跑可补齐，或直接 `pytest --collect-only -q` 拿精确函数计数 |
+| **集成测试与端到端测试未单独标注** | 可能存在跨系统测试但归到了子包 | 建议在 README 标注 e2e 测试触发方式 |
+
+---
+
+## 测试运行入口（推断）
+
+基于 `pyproject.toml` 与文件结构推断（**未实测**）：
+
+```bash
+# 安装依赖
+pip install -e ".[test]"
+
+# 跑全部
+pytest
+
+# 单系统测试
+pytest tests/test_web/                  # Web API
+pytest tests/test_commands/             # CLI
+pytest tests/test_repositories/         # 持久化
+pytest tests/test_services/             # Service 层
+```
+
+> 实际命令以 `pyproject.toml` 与 `pytest.ini` 配置为准。

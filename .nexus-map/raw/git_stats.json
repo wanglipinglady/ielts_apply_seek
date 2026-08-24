@@ -1,231 +1,231 @@
 {
   "analysis_period_days": 90,
   "stats": {
-    "total_commits": 8,
-    "total_authors": 2
+    "total_commits": 67,
+    "total_authors": 3
   },
   "hotspots": [
     {
-      "path": "src/ielts_buddy/services/grading_service.py",
-      "changes": 3,
-      "risk": "low"
-    },
-    {
-      "path": "src/ielts_buddy/services/exam_service.py",
-      "changes": 2,
-      "risk": "low"
-    },
-    {
-      "path": "src/ielts_buddy/services/personal_vocab_service.py",
-      "changes": 2,
-      "risk": "low"
-    },
-    {
-      "path": "src/ielts_buddy/services/recommend_service.py",
-      "changes": 2,
-      "risk": "low"
-    },
-    {
-      "path": "src/ielts_buddy/services/report_service.py",
-      "changes": 2,
-      "risk": "low"
-    },
-    {
-      "path": "src/ielts_buddy/services/review_service.py",
-      "changes": 2,
-      "risk": "low"
-    },
-    {
-      "path": "src/ielts_buddy/services/stats_service.py",
-      "changes": 2,
-      "risk": "low"
-    },
-    {
-      "path": "src/ielts_buddy/core/models.py",
-      "changes": 2,
-      "risk": "low"
-    },
-    {
-      "path": "src/ielts_buddy/cli.py",
-      "changes": 2,
-      "risk": "low"
-    },
-    {
-      "path": "pyproject.toml",
-      "changes": 2,
-      "risk": "low"
-    },
-    {
-      "path": "src/ielts_buddy/commands/grade.py",
-      "changes": 2,
-      "risk": "low"
-    },
-    {
-      "path": "README.md",
-      "changes": 2,
-      "risk": "low"
-    },
-    {
-      "path": "\"docs/W1_W2_\\351\\230\\266\\346\\256\\265\\351\\227\\256\\351\\242\\230\\345\\244\\215\\347\\233\\230.md\"",
-      "changes": 1,
-      "risk": "low"
-    },
-    {
-      "path": "src/ielts_buddy/repositories/__init__.py",
-      "changes": 1,
-      "risk": "low"
+      "path": "src/ielts_buddy/web/main.py",
+      "changes": 19,
+      "risk": "high"
     },
     {
       "path": "src/ielts_buddy/repositories/sqlite_repo.py",
-      "changes": 1,
-      "risk": "low"
+      "changes": 16,
+      "risk": "high"
     },
     {
-      "path": "tests/test_repositories/test_sqlite_repo.py",
-      "changes": 1,
-      "risk": "low"
+      "path": "src/ielts_buddy/web/templates/base.html",
+      "changes": 13,
+      "risk": "medium"
+    },
+    {
+      "path": "src/ielts_buddy/repositories/mysql_repo.py",
+      "changes": 11,
+      "risk": "medium"
+    },
+    {
+      "path": "scripts/init_mysql.sql",
+      "changes": 10,
+      "risk": "medium"
+    },
+    {
+      "path": "src/ielts_buddy/repositories/__init__.py",
+      "changes": 9,
+      "risk": "medium"
+    },
+    {
+      "path": "src/ielts_buddy/web/config.py",
+      "changes": 8,
+      "risk": "medium"
+    },
+    {
+      "path": "src/ielts_buddy/web/templates/pages/personal_vocab.html",
+      "changes": 8,
+      "risk": "medium"
     },
     {
       "path": "src/ielts_buddy/core/repository.py",
-      "changes": 1,
-      "risk": "low"
+      "changes": 7,
+      "risk": "medium"
     },
     {
-      "path": "tests/test_repositories/__init__.py",
-      "changes": 1,
-      "risk": "low"
+      "path": "scripts/migrate_v3_mysql_schema.py",
+      "changes": 7,
+      "risk": "medium"
+    },
+    {
+      "path": "src/ielts_buddy/web/auth/repository.py",
+      "changes": 7,
+      "risk": "medium"
+    },
+    {
+      "path": "src/ielts_buddy/cli.py",
+      "changes": 7,
+      "risk": "medium"
+    },
+    {
+      "path": "src/ielts_buddy/web/routers/lookup.py",
+      "changes": 7,
+      "risk": "medium"
+    },
+    {
+      "path": "src/ielts_buddy/repositories/fallback_repo.py",
+      "changes": 6,
+      "risk": "medium"
+    },
+    {
+      "path": "src/ielts_buddy/web/routers/personal.py",
+      "changes": 6,
+      "risk": "medium"
+    },
+    {
+      "path": "pyproject.toml",
+      "changes": 6,
+      "risk": "medium"
     },
     {
       "path": "tests/test_repositories/test_repository_protocols.py",
-      "changes": 1,
-      "risk": "low"
+      "changes": 5,
+      "risk": "medium"
     },
     {
-      "path": "scripts/init_mysql.py",
-      "changes": 1,
-      "risk": "low"
+      "path": ".env.example",
+      "changes": 5,
+      "risk": "medium"
+    },
+    {
+      "path": "src/ielts_buddy/web/routers/study.py",
+      "changes": 5,
+      "risk": "medium"
+    },
+    {
+      "path": "src/ielts_buddy/web/static/css/app.css",
+      "changes": 5,
+      "risk": "medium"
     }
   ],
   "coupling_pairs": [
     {
-      "file_a": "src/ielts_buddy/services/exam_service.py",
-      "file_b": "src/ielts_buddy/services/grading_service.py",
-      "co_changes": 2,
+      "file_a": "src/ielts_buddy/web/main.py",
+      "file_b": "src/ielts_buddy/web/templates/base.html",
+      "co_changes": 13,
       "coupling_score": 1.0
     },
     {
-      "file_a": "src/ielts_buddy/services/exam_service.py",
-      "file_b": "src/ielts_buddy/services/personal_vocab_service.py",
-      "co_changes": 2,
+      "file_a": "src/ielts_buddy/repositories/sqlite_repo.py",
+      "file_b": "src/ielts_buddy/web/main.py",
+      "co_changes": 10,
+      "coupling_score": 0.625
+    },
+    {
+      "file_a": "src/ielts_buddy/repositories/mysql_repo.py",
+      "file_b": "src/ielts_buddy/repositories/sqlite_repo.py",
+      "co_changes": 9,
+      "coupling_score": 0.818
+    },
+    {
+      "file_a": "scripts/init_mysql.sql",
+      "file_b": "scripts/migrate_v3_mysql_schema.py",
+      "co_changes": 7,
       "coupling_score": 1.0
     },
     {
-      "file_a": "src/ielts_buddy/services/exam_service.py",
-      "file_b": "src/ielts_buddy/services/recommend_service.py",
-      "co_changes": 2,
+      "file_a": "src/ielts_buddy/repositories/__init__.py",
+      "file_b": "src/ielts_buddy/repositories/sqlite_repo.py",
+      "co_changes": 7,
+      "coupling_score": 0.778
+    },
+    {
+      "file_a": "src/ielts_buddy/core/repository.py",
+      "file_b": "src/ielts_buddy/repositories/mysql_repo.py",
+      "co_changes": 6,
+      "coupling_score": 0.857
+    },
+    {
+      "file_a": "src/ielts_buddy/repositories/sqlite_repo.py",
+      "file_b": "src/ielts_buddy/web/templates/base.html",
+      "co_changes": 6,
+      "coupling_score": 0.462
+    },
+    {
+      "file_a": "scripts/init_mysql.sql",
+      "file_b": "src/ielts_buddy/repositories/sqlite_repo.py",
+      "co_changes": 6,
+      "coupling_score": 0.6
+    },
+    {
+      "file_a": "src/ielts_buddy/repositories/__init__.py",
+      "file_b": "src/ielts_buddy/repositories/mysql_repo.py",
+      "co_changes": 6,
+      "coupling_score": 0.667
+    },
+    {
+      "file_a": "src/ielts_buddy/repositories/fallback_repo.py",
+      "file_b": "src/ielts_buddy/repositories/sqlite_repo.py",
+      "co_changes": 6,
       "coupling_score": 1.0
     },
     {
-      "file_a": "src/ielts_buddy/services/exam_service.py",
-      "file_b": "src/ielts_buddy/services/report_service.py",
-      "co_changes": 2,
+      "file_a": "scripts/init_mysql.sql",
+      "file_b": "src/ielts_buddy/repositories/fallback_repo.py",
+      "co_changes": 5,
+      "coupling_score": 0.833
+    },
+    {
+      "file_a": "scripts/migrate_v3_mysql_schema.py",
+      "file_b": "src/ielts_buddy/repositories/fallback_repo.py",
+      "co_changes": 5,
+      "coupling_score": 0.833
+    },
+    {
+      "file_a": "scripts/migrate_v3_mysql_schema.py",
+      "file_b": "src/ielts_buddy/repositories/sqlite_repo.py",
+      "co_changes": 5,
+      "coupling_score": 0.714
+    },
+    {
+      "file_a": "src/ielts_buddy/core/repository.py",
+      "file_b": "src/ielts_buddy/repositories/sqlite_repo.py",
+      "co_changes": 5,
+      "coupling_score": 0.714
+    },
+    {
+      "file_a": "src/ielts_buddy/core/repository.py",
+      "file_b": "tests/test_repositories/test_repository_protocols.py",
+      "co_changes": 5,
       "coupling_score": 1.0
     },
     {
-      "file_a": "src/ielts_buddy/services/exam_service.py",
-      "file_b": "src/ielts_buddy/services/review_service.py",
-      "co_changes": 2,
-      "coupling_score": 1.0
+      "file_a": "src/ielts_buddy/repositories/__init__.py",
+      "file_b": "src/ielts_buddy/repositories/fallback_repo.py",
+      "co_changes": 5,
+      "coupling_score": 0.833
     },
     {
-      "file_a": "src/ielts_buddy/services/exam_service.py",
-      "file_b": "src/ielts_buddy/services/stats_service.py",
-      "co_changes": 2,
-      "coupling_score": 1.0
+      "file_a": "src/ielts_buddy/repositories/fallback_repo.py",
+      "file_b": "src/ielts_buddy/repositories/mysql_repo.py",
+      "co_changes": 5,
+      "coupling_score": 0.833
     },
     {
-      "file_a": "src/ielts_buddy/services/grading_service.py",
-      "file_b": "src/ielts_buddy/services/personal_vocab_service.py",
-      "co_changes": 2,
-      "coupling_score": 1.0
+      "file_a": "src/ielts_buddy/repositories/sqlite_repo.py",
+      "file_b": "src/ielts_buddy/web/config.py",
+      "co_changes": 5,
+      "coupling_score": 0.625
     },
     {
-      "file_a": "src/ielts_buddy/services/grading_service.py",
-      "file_b": "src/ielts_buddy/services/recommend_service.py",
-      "co_changes": 2,
-      "coupling_score": 1.0
+      "file_a": "src/ielts_buddy/repositories/mysql_repo.py",
+      "file_b": "src/ielts_buddy/web/main.py",
+      "co_changes": 5,
+      "coupling_score": 0.455
     },
     {
-      "file_a": "src/ielts_buddy/services/grading_service.py",
-      "file_b": "src/ielts_buddy/services/report_service.py",
-      "co_changes": 2,
-      "coupling_score": 1.0
-    },
-    {
-      "file_a": "src/ielts_buddy/services/grading_service.py",
-      "file_b": "src/ielts_buddy/services/review_service.py",
-      "co_changes": 2,
-      "coupling_score": 1.0
-    },
-    {
-      "file_a": "src/ielts_buddy/services/grading_service.py",
-      "file_b": "src/ielts_buddy/services/stats_service.py",
-      "co_changes": 2,
-      "coupling_score": 1.0
-    },
-    {
-      "file_a": "src/ielts_buddy/services/personal_vocab_service.py",
-      "file_b": "src/ielts_buddy/services/recommend_service.py",
-      "co_changes": 2,
-      "coupling_score": 1.0
-    },
-    {
-      "file_a": "src/ielts_buddy/services/personal_vocab_service.py",
-      "file_b": "src/ielts_buddy/services/report_service.py",
-      "co_changes": 2,
-      "coupling_score": 1.0
-    },
-    {
-      "file_a": "src/ielts_buddy/services/personal_vocab_service.py",
-      "file_b": "src/ielts_buddy/services/review_service.py",
-      "co_changes": 2,
-      "coupling_score": 1.0
-    },
-    {
-      "file_a": "src/ielts_buddy/services/personal_vocab_service.py",
-      "file_b": "src/ielts_buddy/services/stats_service.py",
-      "co_changes": 2,
-      "coupling_score": 1.0
-    },
-    {
-      "file_a": "src/ielts_buddy/services/recommend_service.py",
-      "file_b": "src/ielts_buddy/services/report_service.py",
-      "co_changes": 2,
-      "coupling_score": 1.0
-    },
-    {
-      "file_a": "src/ielts_buddy/services/recommend_service.py",
-      "file_b": "src/ielts_buddy/services/review_service.py",
-      "co_changes": 2,
-      "coupling_score": 1.0
-    },
-    {
-      "file_a": "src/ielts_buddy/services/recommend_service.py",
-      "file_b": "src/ielts_buddy/services/stats_service.py",
-      "co_changes": 2,
-      "coupling_score": 1.0
-    },
-    {
-      "file_a": "src/ielts_buddy/services/report_service.py",
-      "file_b": "src/ielts_buddy/services/review_service.py",
-      "co_changes": 2,
-      "coupling_score": 1.0
-    },
-    {
-      "file_a": "src/ielts_buddy/services/report_service.py",
-      "file_b": "src/ielts_buddy/services/stats_service.py",
-      "co_changes": 2,
-      "coupling_score": 1.0
+      "file_a": "src/ielts_buddy/web/auth/repository.py",
+      "file_b": "src/ielts_buddy/web/main.py",
+      "co_changes": 5,
+      "coupling_score": 0.714
     }
   ]
 }

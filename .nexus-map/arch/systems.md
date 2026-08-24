@@ -1,214 +1,165 @@
-# Systems — 系统边界与代码位置
+# 系统边界（Systems）
 
 > generated_by: nexus-mapper v2
-> verified_at: 2026-07-16
-> provenance: file-tree + manual inspection
+> verified_at: 2026-08-23
+> provenance: AST-backed (Python 198/198 files)
 
-## 系统边界定义
-
-### 1. CLI 入口系统 (cli-entry)
-
-| 属性 | 值 |
-|------|-----|
-| **职责** | 命令行接口编排，注册 14 个命令组，46 个子命令 |
-| **代码路径** | `src/ielts_buddy/cli.py` |
-| **状态** | implemented |
-| **入口点** | `cli()` 函数，Click group |
-
-**子命令注册**:
-- vocab, stats, plan, sync, email, write, speak, report, listen, grade, deploy, exam, feishu, recommend, course
+本文件描述 5 个核心 System 与 4 个 Domain 的边界、入口、依赖与已知风险。
 
 ---
 
-### 2. 词汇学习系统 (vocabulary-system)
+## System 1 — Web Application (`ielts-buddy-web-application`)
 
-| 属性 | 值 |
-|------|-----|
-| **职责** | 大词库加载（4485词）、精选词库、艾宾浩斯复习、SQLite 缓存、内存索引加速 |
-| **代码路径** | `src/ielts_buddy/services/vocab_service.py` |
-| **状态** | implemented |
+**入口**：`src/ielts_buddy/web/main.py` (953 行，19 变更 🔴 high risk)
 
-**关键组件**:
-- `VocabService` 类：词库加载、搜索、过滤
-- SQLite 缓存：`vocab_cache.db`
-- 内存索引：`_word_index`, `_band_index`, `_topic_index`, `_search_index`
+**职责**：所有面向用户的 Web 交互 — 模板渲染、HTTP 路由、鉴权、JSON API。
 
----
+**代码地图**：
+```
+src/ielts_buddy/web/
+├── main.py                       ← FastAPI app + 启动钩子 (953 行)
+├── config.py                     ← Web 专属配置 (8 变更)
+├── __main__.py                   ← `python -m ielts_buddy.web` 入口
+├── auth/                         ← 鉴权子包 (repository, deps, security, service)
+├── routers/                      ← 16 个路由模块 (auth, articles, exam, listening, ...)
+├── services.py                   ← Web 专用服务聚合
+├── llm_service.py                ← LLM 调用封装
+├── whisper_service.py            ← 音频转写
+├── lookup_client.py              ← 词典查询
+├── translation_client.py         ← 翻译 API
+├── stats_service.py              ← 实时统计 API
+├── listening_tts_service.py      ← TTS 合成
+├── calendar_service.py           ← 日历事件
+├── speaking_grade_service.py     ← 口语评分
+├── templates/                    ← Jinja2 模板（含 base.html, 28 子页）
+├── static/                       ← 前端静态资源（CSS/JS）
+└── tools/                        ← 维护工具 (reset_password 等)
+```
 
-### 3. 数据模型系统 (data-models)
+**对外依赖**：`ielts-buddy-service-layer`、`ielts-buddy-persistence-layer`、`ielts-buddy-core-foundation`。
 
-| 属性 | 值 |
-|------|-----|
-| **职责** | Pydantic 数据模型定义，统一数据结构 |
-| **代码路径** | `src/ielts_buddy/core/models.py` |
-| **状态** | implemented |
-
-**核心模型**:
-- `Word`: 词库单词模型
-- `LearningRecord`: 学习记录模型
-- `TestSession`: 测试会话模型
-- `DailySummary`: 每日学习摘要
-- `StudyPlan`: 学习计划模型
-- `PersonalWord`: 个人词库单词
-- `GradeResult`: AI 写作批改结果
-
----
-
-### 4. 命令层系统 (commands-layer)
-
-| 属性 | 值 |
-|------|-----|
-| **职责** | 14 个命令模块，提供用户交互接口 |
-| **代码路径** | `src/ielts_buddy/commands/` |
-| **状态** | implemented |
-
-**命令模块列表**:
-| 模块 | 主要功能 |
-|------|---------|
-| `vocab.py` | 随机单词、测验、复习、搜索、浏览、个人词库 |
-| `stats.py` | 统计展示、趋势分析、进度查看 |
-| `plan.py` | 学习计划设置与展示 |
-| `sync.py` | 数据同步 |
-| `email.py` | 邮件预览与发送 |
-| `write.py` | 写作辅助（话题、句型、同义词） |
-| `speak.py` | 口语练习（Part 1/2/3 话题） |
-| `report.py` | 网页报告生成 |
-| `listen.py` | 听力资源、听写模式 |
-| `grade.py` | AI 写作批改 |
-| `deploy.py` | GitHub Pages 部署 |
-| `exam.py` | 模拟考试 |
-| `feishu.py` | 飞书多维表格同步 |
-| `recommend.py` | 智能学习推荐 |
-| `course.py` | 课程内容管理 |
+**风险**：与 `web/templates/base.html` 耦合度 **1.00**（13 次共同提交）— 改 main.py 几乎必动模板。
 
 ---
 
-### 5. 服务层系统 (services-layer)
+## System 2 — CLI Application (`ielts-buddy-cli-application`)
 
-| 属性 | 值 |
-|------|-----|
-| **职责** | 17 个业务服务，实现核心业务逻辑 |
-| **代码路径** | `src/ielts_buddy/services/` |
-| **状态** | implemented |
+**入口**：`src/ielts_buddy/cli.py` (Click group, 7 变更) + `src/ielts_buddy/__main__.py`
 
-**服务列表**:
-| 服务 | 职责 |
-|------|------|
-| `vocab_service.py` | 词库管理 |
-| `review_service.py` | 艾宾浩斯复习调度 |
-| `stats_service.py` | 学习统计 |
-| `plan_service.py` | 学习计划管理 |
-| `email_service.py` | 邮件发送 |
-| `writing_service.py` | 写作辅助 |
-| `speaking_service.py` | 口语话题浏览 / 抽题(只读) |
-| **`speaking_practice_service.py`** | **v3.7 P1**:口语对练全链路(抽题 → 落盘 → 转写 → 评分 → 错词回收) |
-| `listening_service.py` | 听力资源 |
-| `grading_service.py` | AI 写作批改 |
-| `deploy_service.py` | GitHub Pages 部署 |
-| `exam_service.py` | 模拟考试 |
-| `report_service.py` | 网页报告生成 |
-| `feishu_service.py` | 飞书同步 |
-| `recommend_service.py` | 智能推荐 |
-| `personal_vocab_service.py` | 个人词库管理 |
-| `sync_service.py` | 数据同步 |
-| `course_service.py` | 课程内容管理 |
+**职责**：面向运维 / 重度用户的命令行入口；17 命令组，65 子命令。
 
----
+**命令组清单**（按 `commands/` 目录）：
+| 命令组 | 文件 | 主要功能 |
+| --- | --- | --- |
+| `auth` | auth.py | 登录 / 退出 / whoami |
+| `vocab` | vocab.py | 词库浏览 / 抽查 / 测验 (7 子命令) |
+| `stats` | stats.py | 学习统计 |
+| `plan` | plan.py | 计划生成 |
+| `write` | write.py | 写作提交 |
+| `speak` | speak.py | 口语录制 |
+| `listen` | listen.py | 听力训练 |
+| `grade` | grade.py | LLM 评分 |
+| `exam` | exam.py | 真题模拟 |
+| `report` | report.py | 报告生成 |
+| `email` | email.py | 邮件发送 |
+| `deploy` | deploy.py | 部署辅助 |
+| `feishu` | feishu.py | 飞书集成 |
+| `recommend` | recommend.py | 资源推荐 |
+| `course` | course.py | 课程导入 |
+| `sync` | sync.py | 跨端同步 |
+| `db_status` | db_status.py | 数据库健康检查 |
 
-### 5.1 口语对练系统 (speaking-practice) — v3.7 P1 新增
+**对外依赖**：与 Web 相同的 Service + Persistence 层。
 
-| 属性 | 值 |
-|------|-----|
-| **职责** | 录音上传 + Whisper 转写 + LLM 评分 + 错词回收闭环;7 天自动清理 |
-| **代码路径** | `src/ielts_buddy/services/speaking_practice.py` + `src/ielts_buddy/web/whisper_service.py` + `src/ielts_buddy/web/speaking_grade_service.py` + `src/ielts_buddy/web/routers/speaking_practice.py` + `src/ielts_buddy/web/templates/pages/speak_practice.html` |
-| **状态** | implemented(2026-08-23) |
-
-**关键组件**:
-- `SpeakingPracticeService`:业务层,绑定 user_id 做隔离,submit 全链路管线
-- `WhisperService`:pywhispercpp 包装,Apple Silicon + Core ML 自动检测,fake fallback
-- `SpeakingGradeService`:走 `LLMService` 单例,retry-once + JSON 围栏/think 块容错 + 0.5 精度归一
-- `purge_all_expired_audio`:web 启动期跨用户清理过期录音
-- 数据表 `speaking_practice_records`(SQLite + MySQL 双实现)
-- Protocol `SpeakingPracticeRepository`(9 方法)
-- 6 个 API 端点(详见 `phase-8-speaking-practice.md` §5)
-
-**依赖新增**:
-- `pywhispercpp`(Apple Silicon + Core ML 加速)
-- `ffmpeg`(webm → wav 转码,`scripts/setup_whisper.sh` 一键安装)
+**注意**：CLI 与 Web 共享 Service 层；不在 CLI 中放业务规则。
 
 ---
 
-### 6. 数据仓库系统 (repository-layer)
+## System 3 — Persistence Layer (`ielts-buddy-persistence-layer`)
 
-| 属性 | 值 |
-|------|-----|
-| **职责** | 数据持久化抽象，SQLite 实现 |
-| **代码路径** | `src/ielts_buddy/repositories/` |
-| **状态** | implemented |
+**入口**：`src/ielts_buddy/repositories/__init__.py` (24 模块 fan-in 🔝)
 
-**核心文件**:
-- `repository.py`: 仓库接口协议定义
-- `sqlite_repo.py`: SQLite 实现
+**职责**：数据持久化的统一抽象。通过 Python `Protocol` 实现多后端 + 自动回退。
 
----
+**子模块**：
+| 文件 | 职责 | 变更 |
+| --- | --- | --- |
+| `__init__.py` | 导出 `FallbackContainer` + 仓储工厂 | 9 |
+| `sqlite_repo.py` | SQLite 本地实现 | **16 🔴** |
+| `mysql_repo.py` | MySQL 8 在线实现 | 11 |
+| `fallback_repo.py` | SQLite 优先 + MySQL 回退混合模式 | 6 |
+| `core/repository.py` | Protocol 定义 | 7 |
 
-### 7. 内置数据系统 (built-in-data)
+**核心模式**：
+```python
+# core/repository.py 定义 Repository Protocol
+# sqlite_repo.py / mysql_repo.py 实现 Protocol
+# repositories/__init__.py 通过 FallbackContainer 在运行时选择实现
+```
 
-| 属性 | 值 |
-|------|-----|
-| **职责** | 词库 JSON 文件、资源数据 |
-| **代码路径** | `src/ielts_buddy/data/` |
-| **状态** | implemented |
-
-**数据文件**:
-| 文件 | 内容 |
-|------|------|
-| `vocab_band5.json` | Band 5 词汇 (1227词) |
-| `vocab_band6.json` | Band 6 词汇 (1127词) |
-| `vocab_band7.json` | Band 7 词汇 (1076词) |
-| `vocab_band8.json` | Band 8 词汇 (745词) |
-| `vocab_band9.json` | Band 9 词汇 (310词) |
-| `vocab_master.json` | 大词库 (4485词) |
-| `writing_templates.json` | 写作句型模板 |
-| `writing_topics.json` | 写作话题 |
-| `speaking_topics.json` | 口语话题 |
-| `listening_resources.json` | 听力资源 |
-| `synonyms.json` | 同义词表 |
+**风险**：
+- `sqlite_repo.py` 与 `mysql_repo.py` 是"双胞胎"，改一个必改另一个。
+- 与 `scripts/init_mysql.sql` (10 变更) + `scripts/migrate_v3_mysql_schema.py` (7 变更) 强耦合 — schema 变更要三处同步。
 
 ---
 
-### 8. 测试系统 (test-suite)
+## System 4 — Service Layer (`ielts-buddy-service-layer`)
 
-| 属性 | 值 |
-|------|-----|
-| **职责** | 637 个测试用例，覆盖 commands/services/repositories |
-| **代码路径** | `tests/` |
-| **状态** | implemented |
+**入口**：`src/ielts_buddy/services/__init__.py`
 
-**测试目录**:
-- `tests/test_commands/`: CLI 命令测试
-- `tests/test_services/`: 服务层测试
-- `tests/test_repositories/`: 仓库层测试
+**职责**：所有业务规则实现 — Web / CLI 都不直接调用 Repository，必须经 Service。
+
+**领域服务清单**（按重要性排序）：
+
+| 服务 | 关键职责 |
+| --- | --- |
+| `vocab_service.py` | 词库学习闭环 (25 fan-in 🔝) |
+| `review_service.py` | 复习调度 (15 fan-in) |
+| `stats_service.py` | 统计聚合 (10 fan-in) |
+| `personal_vocab_service.py` | 个人词库 (v3.x) |
+| `exam_service.py` | 真题会话 |
+| `writing_service.py` / `speaking_service.py` | 单技能服务 |
+| `prep_resource_service.py` | **v3.8** 备考资源广场 |
+| `reading_practice_service.py` | **v3.8** 阅读真题题库 |
+| `listening_practice_service.py` | **v3.8** 听力练习 |
+| `speaking_practice_service.py` | **v3.8** 口语练习 |
+| `reading_question_generator.py` | **v3.8** 阅读题目生成器 |
+| `listening_question_generator.py` | **v3.8** 听力题目生成器 |
+| `sync.py` | 同步 worker / 守护线程 (793 行) |
+| `sync_service.py` | 同步 service 封装 (168 行) |
+| `auth_service.py`, `grading_service.py`, `recommend_service.py`, `mistake_service.py`, `plan_service.py`, `report_service.py`, `course_service.py`, `feishu_service.py`, `email_service.py`, `deploy_service.py`, `diff_service.py`, `db_health.py` | 支撑服务 |
+
+**注意 `sync.py` vs `sync_service.py`**：
+- `sync.py` — 低层 worker（793 行，含 `SyncWorker`、`SyncDaemonThread`、`SyncWorkerAsync`）
+- `sync_service.py` — 高层 service 封装（168 行，`SyncService`）
+- 二者是分层关系，非重名。
 
 ---
 
-### 9. 知识卡片系统 (knowledge-cards)
+## System 5 — Core Foundation (`ielts-buddy-core-foundation`)
 
-| 属性 | 值 |
-|------|-----|
-| **职责** | 课程内容管理，中文知识卡片生成 |
-| **代码路径** | `src/ielts_buddy/services/course_service.py` |
-| **状态** | implemented |
+**入口**：`src/ielts_buddy/core/` + `src/ielts_buddy/web/auth/`
 
-**关联目录**:
-- `courses/`: 课程内容目录
-- `docs/知识卡片*.md`: 知识卡片制作规范与实现文档
+**职责**：枢纽层 — Pydantic 模型、运行时配置、Web 鉴权。
+
+**核心模块**：
+| 模块 | fan-in | 关键内容 |
+| --- | --- | --- |
+| `core/models.py` | **46 🔝** | `Word`, `LearningRecord`, `TestSession`, `DailySummary`, `StudyPlan`, `ExamQuestion`, `ExamSession` ... |
+| `web/auth/repository.py` | **40 🔝** | Web 鉴权仓储（密码哈希、token 签发） |
+| `core/config.py` | 27 | Pydantic Settings |
+| `web/auth/deps.py` | 25 | FastAPI Depends 鉴权 |
+| `web/auth/security.py` | 9 | JWT / passlib |
+
+**风险**：改 `core/models.py` 影响全仓 — 任何字段变更必须同步两后端 + 所有引用方。
 
 ---
 
-## 边界模糊区域
+## Domain 概览
 
-| 区域 | 问题描述 |
-|------|---------|
-| `utils/` 或 `common/` | 未发现明显的 utils/common 目录，边界清晰 |
-| AI 集成 | `grok.py` 在 `docs/` 目录，与服务层的 AI 调用有一定耦合 |
+详细语义见 `concepts/domains.md`。摘要：
+
+- `ielts-buddy-domain-vocab-learning` — 词汇闭环（摄入→复习→统计）
+- `ielts-buddy-domain-exam-simulation` — 四技能真题 + LLM 评分
+- `ielts-buddy-domain-prep-resources` — **v3.8 新增**，资源广场 + 阅读题库
+- `ielts-buddy-domain-sync-daemon` — 本地→在线后台同步

@@ -1,79 +1,77 @@
-# IELTS Apply Seek — Nexus Map Index
+# INDEX — IELTS Buddy (ielts-apply-seek)
 
 > generated_by: nexus-mapper v2
 > verified_at: 2026-08-23
-> provenance: file-tree + git-stats + manual inspection (AST extraction unavailable due to missing tree-sitter)
-> last_major_refactor: v3.0.0（MySQL 主存 + SQLite 离线 + 双向同步）
+> provenance: AST-backed (Python 198/198 files) with inferred notes for non-Python (bash ×3, javascript ×9, sql ×1)
 
-## 项目概述
+## 一句话定位
 
-IELTS Apply Seek（ielts-apply-seek）是一款面向程序员的 **雅思备考 CLI 工具**，将词汇学习、写作辅助、口语练习和科学复习整合到终端中；同时提供 Web 端（FastAPI + uvicorn）。项目基于开源项目 IELTS Buddy 进行二次开发。**v3 起 Web/CLI 共享统一 `users` 表，数据存于 MySQL 主存 + 本地 SQLite 兜底缓存。**
+**IELTS Buddy** 是面向雅思考生的本地优先 + 在线同步双模式训练工具：FastAPI Web + Click CLI 双入口、SQLite/MySQL 双后端、覆盖词汇循环 / 四技能真题 / 口语批改 / 备考资源广场（v3.8 新增）/ 阅读真题题库（v3.8 新增）。
 
-## 核心系统
+## 核心数据（90 天）
 
-| 系统 | 职责 | 代码路径 | 状态 |
-|------|------|----------|------|
-| **CLI 入口** | 命令行接口编排，14 个命令组，46+ 个子命令 | `src/ielts_buddy/cli.py` | implemented |
-| **Web 入口** | FastAPI app + 路由 + lifespan | `src/ielts_buddy/web/main.py` | implemented |
-| **FallbackContainer** | **v3**：MySQL+SQLite 双 backend，自动降级/回切 | `src/ielts_buddy/repositories/fallback_repo.py` | implemented |
-| **SyncWorker** | **v3**：MySQL↔SQLite 双向增量同步 + last-write-wins | `src/ielts_buddy/services/sync.py` | implemented |
-| **db_health** | **v3**：MySQL ping + TTL 缓存 | `src/ielts_buddy/services/db_health.py` | implemented |
-| **统一 auth** | **v3**：users 表（CLI+Web 共用），web auth 适配 MySQL | `src/ielts_buddy/web/auth/repository.py` | implemented |
-| **词汇系统** | 大词库加载（4485词）、精选词库、艾宾浩斯复习、SQLite 缓存 | `src/ielts_buddy/services/vocab_service.py` | implemented |
-| **数据模型** | Pydantic 数据模型定义（Word、LearningRecord、StudyPlan 等） | `src/ielts_buddy/core/models.py` | implemented |
-| **命令层** | 15 个命令模块（vocab/stats/plan/sync/email/write/speak/report/listen/grade/deploy/exam/feishu/recommend/auth/db_status） | `src/ielts_buddy/commands/` | implemented |
-| **服务层** | 19 个业务服务（词汇/复习/统计/邮件/写作/口语/sync 等） | `src/ielts_buddy/services/` | implemented |
-| **数据层** | SQLite + MySQL 双实现 + Factory | `src/ielts_buddy/repositories/` | implemented |
-| **v3 迁移脚本** | **v3**：MySQL DDL 升级 + web_users → users 合并 | `scripts/migrate_v3_*.py` | implemented |
-| **口语对练系统** | **v3.7 P1**：录音上传 + Whisper 转写 + LLM 评分 + 错词回收闭环，7 天自动清理 | `services/speaking_practice_service.py` + `web/whisper_service.py` + `web/speaking_grade_service.py` + `web/routers/speaking_practice.py` | implemented |
-| **测试套件** | 700+ 个测试用例，含 v3.7 P1 口语对练 58 个 | `tests/` | implemented |
+| 指标 | 值 |
+| --- | --- |
+| Python 源文件 | 198 |
+| 代码行数 | 58,399 |
+| 顶层节点 (Module + Class) | 770 |
+| Import 边 | 5,338 |
+| Git 提交 | 67 (3 位作者) |
+| 测试模块 | 86 (含 4 个测试包) |
 
-## v3 架构亮点
+## 五大系统（System）
+
+| ID | 名称 | 行数 / 热点 |
+| --- | --- | --- |
+| `ielts-buddy-web-application` | FastAPI Web (28 页面) | 6 routers + main.py，热点 🔴 (19 变更) |
+| `ielts-buddy-cli-application` | Click + Rich CLI | 17 命令组 / 65 子命令 |
+| `ielts-buddy-persistence-layer` | SQLite + MySQL + Fallback | Protocol 抽象 + v3 容器回退 |
+| `ielts-buddy-service-layer` | 26 领域服务 | 词库 / 考试 / 评分 / 同步 / v3.8 备考 |
+| `ielts-buddy-core-foundation` | Models + Config + Auth | 被 46 模块 import 的枢纽 |
+
+## 四大领域（Domain）
+
+`vocab-learning`（词库闭环）· `exam-simulation`（四技能真题+LLM评分）· `prep-resources`（v3.8 资源广场+阅读题库）· `sync-daemon`（本地→在线守护同步）。
+
+## 三处最高风险（hub + git）
+
+1. `src/ielts_buddy/web/main.py` — 19 变更，与 `base.html` 耦合度 1.00，**重构前必读耦合数据**。
+2. `src/ielts_buddy/repositories/sqlite_repo.py` — 16 变更，依赖核心 11 个模块；与 `mysql_repo.py` 形成双胞胎对。
+3. `src/ielts_buddy/repositories/mysql_repo.py` — 11 变更；`scripts/init_mysql.sql` 与 `migrate_v3_mysql_schema.py` 强耦合（schema 与脚本同改）。
+
+## 操作指南（硬路由）
+
+| 场景 | 第一动作 |
+| --- | --- |
+| 改 Web 路由 | 先读 `arch/systems.md` → 改 routers → 看 `hotspots/git_forensics.md` 检查 main.py 耦合 |
+| 改数据库 schema | 先读 `concepts/domains.md` 确认领域归属 → 看 `arch/dependencies.md` 检查 repository → 同步 `scripts/init_mysql.sql` 与 `migrate_v3_mysql_schema.py` |
+| 新增 CLI 命令 | 参考 `arch/systems.md` 的 `ielts-buddy-cli-application` 章节 |
+| 看测试覆盖 | `arch/test_coverage.md`（4 测试包 ×86 模块 ×24k 行） |
+| 解释架构 | `arch/systems.md` + `arch/dependencies.md`（含 Mermaid 图） |
+| 查 git 热点 | `hotspots/git_forensics.md` |
+
+## 证据缺口（evidence gap）
+
+- **Function 节点被截断**（3311 个）：当前 AST 在 `--max-nodes 500` 下只保留 Module + Class；后续如需查看函数级热度，请用 `--max-nodes 200` 重跑或直接 `grep -n 'def '` 目标文件。
+- **3 个非 Python 文件未解析**：bash（3）、javascript（9）、sql（1），主要为工具脚本和 `.github/workflows/`，不影响主架构结论。
+- **CI 状态未运行**：测试静态覆盖率来自 AST 文件计数，未实际触发 `pytest`；CI 健康度不在本产物范围内。
+
+## 文档结构
 
 ```
-┌─────────────────┐                    ┌─────────────────┐
-│   Web (FastAPI)  │                    │  CLI (Click)    │
-│   + asyncio      │                    │  + threading    │
-│   SyncWorker     │                    │  SyncWorker     │
-└────────┬─────────┘                    └────────┬─────────┘
-         │                                      │
-         ▼                                      ▼
-   ┌─────────────────────────────────────────────────────┐
-   │              FallbackContainer                      │
-   │  ┌─────────────┐         ┌────────────────────┐     │
-   │  │ online      │ ◀─────▶ │ fallback_sqlite    │     │
-   │  │ MySQL 容器  │  sync   │ SQLite 容器        │     │
-   │  └─────────────┘         └────────────────────┘     │
-   └─────────────────────────────────────────────────────┘
-              │                       │
-              ▼                       ▼
-      ┌──────────────┐        ┌────────────────┐
-      │ MySQL 主存   │        │ ~/.ielts-buddy/│
-
----
-
-## [操作指南] 强制执行步骤
-
-> 本节是对所有读取本文件的 AI 发出的硬性操作指令，不是建议。
-
-### 步骤1 — 必须先读完以下所有文件（顺序不限）
-
-读完本文件后，在执行任何任务之前，必须依次 read 以下文件完整内容：
-
-- `.nexus-map/arch/systems.md` — 系统边界与代码位置
-- `.nexus-map/arch/dependencies.md` — 系统间依赖关系与 Mermaid 图
-- `.nexus-map/arch/test_coverage.md` — 测试面与证据缺口
-- `.nexus-map/hotspots/git_forensics.md` — Git 热点与耦合风险
-- `.nexus-map/concepts/domains.md` — 核心领域概念
-
-> 这些文件均为高密度摘要，总量通常 < 5000 tokens，是必要的上下文成本。
-> 不得以"任务简单"或"只改一个文件"为由跳过。
-
-### 步骤2 — 按任务类型追加操作（步骤1 完成后执行）
-
-- 若任务涉及**接口修改、新增跨模块调用、删除/重命名公共函数**：
-  → 必须运行 `query_graph.py --impact <目标文件>` 确认影响半径后再写代码。
-- 若任务需要**判断某文件被谁引用**：
-  → 运行 `query_graph.py --who-imports <模块名>`。
-- 若仓库结构已发生重大变化（新增系统、重构模块边界）：
-  → 任务完成后评估是否需要重新运行 nexus-mapper 更新知识库。
+.nexus-map/
+├── INDEX.md                          ← 本文件 (L0 摘要)
+├── raw/
+│   ├── ast_nodes.json                ← Tree-sitter Python 提取
+│   ├── git_stats.json                ← 90 天提交热点
+│   └── file_tree.txt                 ← 过滤后的源码目录
+├── concepts/
+│   ├── concept_model.json            ← Schema V1, 10 节点 / 17 边
+│   └── domains.md                    ← 4 大领域语义说明
+├── arch/
+│   ├── systems.md                    ← 5 系统边界
+│   ├── dependencies.md               ← Mermaid 依赖图
+│   └── test_coverage.md              ← 静态测试面 + 缺口
+└── hotspots/
+    └── git_forensics.md              ← 风险热点 + 耦合对
+```
