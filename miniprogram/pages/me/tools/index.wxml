@@ -1,0 +1,1 @@
+<view class="container"><view wx:for="{{tools}}" wx:key="id" class="tool-card card" data-name="{{item.name}}" bindtap="goTool"><text class="tool-icon">{{item.icon}}</text><view class="tool-info"><text class="tool-name">{{item.name}}</text><text class="tool-desc">{{item.desc}}</text></view><text class="tool-arrow">›</text></view></view>

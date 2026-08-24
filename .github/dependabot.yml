@@ -1,0 +1,43 @@
+# Dependabot 自动检测依赖更新（2026-08-24 加入）
+# 每月一次自动开 PR，merge 后 CI 自动验证
+# 收益：8 周赛事期间依赖过期的概率降到 0
+
+version: 2
+updates:
+  # ---- Python 依赖 ----
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "auto-merge-candidate"
+    commit-message:
+      prefix: "deps"
+    # 不自动合并，让 CI 跑完契约测试 + 全量测试后再决定
+
+  # ---- GitHub Actions 自身 ----
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 3
+    labels:
+      - "ci"
+      - "auto-merge-candidate"
+
+  # ---- npm（小程序前端）----
+  - package-ecosystem: "npm"
+    directory: "/miniprogram"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "auto-merge-candidate"
+    commit-message:
+      prefix: "deps(miniprogram)"

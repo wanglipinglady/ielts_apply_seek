@@ -47,6 +47,7 @@ class LoginResult:
     access_token: str
     refresh_token: str
     expires_in: int  # access token 剩余秒数
+    is_new_user: bool = False  # v3.9+：微信登录专用，true = 这次登录新建了账号
 
 
 # =============================================================
@@ -144,6 +145,100 @@ class WebAuthService:
     def get_by_id(self, user_id: int) -> WebUser | None:
         """便捷：取当前用户。"""
         return self._repo.get_by_id(user_id)
+
+    # ---- 微信小程序登录（v3.9+ / 2026-08-24 新增）----
+
+    def login_by_wechat_openid(self, openid: str, nickname: str | None = None) -> LoginResult:
+        """微信小程序登录核心方法：openid → 查/建用户 → 返回 token。
+
+        流程：
+        1. 按 openid 查现有用户（已绑定过的小程序用户）
+        2. 查到 → 直接登录（is_new_user=False，更新 last_login_at）
+        3. 查不到 → 自动创建账号（is_new_user=True，绑定 openid）
+        4. 返回 token 集合 + is_new_user 标记
+
+        参数：
+        - openid: 微信小程序返回的 openid（**已由路由层调微信 API 校验**）
+        - nickname: 用户昵称（可选，用于初始化 display_name）
+
+        异常：
+        - AuthError("INVALID_OPENID", ...): openid 为空
+        """
+        if not openid or not openid.strip():
+            raise AuthError("INVALID_OPENID", "openid 不能为空")
+
+        openid_clean = openid.strip()
+
+        # 1. 按 openid 查现有用户
+        user = self._repo.get_by_openid(openid_clean)
+        if user is not None:
+            # 已绑定 → 直接登录（is_new_user=False）
+            self._repo.update_last_login(user.id)
+            return self._build_login_result(user, is_new_user=False)
+
+        # 2. 没绑定 → 自动创建新账号
+        # username 用 `wx_<openid 前 12 位>` 派生（避免与邮箱注册冲突）
+        username = f"wx_{openid_clean[:12]}"
+        # email 用 placeholder（个人主体小程序无邮箱注册，用户也不会登录 Web）
+        # 格式：`wx+<openid 短码>@wechat.ielts-buddy.local`，不与真实邮箱冲突
+        email_placeholder = f"wx+{openid_clean[:12]}@wechat.ielts-buddy.local"
+
+        # 老用户合并路径：如果 placeholder 邮箱已被占用（极小概率），覆盖该用户的 openid
+        existing = self._repo.get_by_email(email_placeholder)
+        if existing is not None:
+            ok = self._repo.bind_wechat_openid(existing.id, openid_clean)
+            if not ok:
+                raise AuthError("BIND_FAILED", "openid 已被其他账号绑定")
+            self._repo.update_last_login(existing.id)
+            user = self._repo.get_by_id(existing.id)
+            assert user is not None
+            # 复用占位邮箱的账号 → 视为老用户
+            return self._build_login_result(user, is_new_user=False)
+
+        # 3. 创建新用户（密码 hash 用随机值占位，小程序账号不会走 Web 密码登录）
+        pw_hash = hash_password(secrets.token_urlsafe(24))
+        display_name = (nickname or "").strip() or f"微信用户{openid_clean[:6]}"
+        try:
+            new_user = self._create_wechat_user(
+                username=username,
+                email=email_placeholder,
+                password_hash=pw_hash,
+                display_name=display_name,
+                openid=openid_clean,
+            )
+        except AuthError:
+            raise
+        except Exception as e:
+            raise AuthError("WECHAT_LOGIN_FAILED", f"创建小程序用户失败: {e}") from e
+
+        return self._build_login_result(new_user, is_new_user=True)
+
+    def _create_wechat_user(
+        self,
+        *,
+        username: str,
+        email: str,
+        password_hash: str,
+        display_name: str,
+        openid: str,
+    ) -> WebUser:
+        """为微信小程序用户创建账号并绑定 openid。
+
+        子流程：先创建 → 再绑定（绑定失败时回滚用户）。
+        之所以拆开两步：openid 唯一约束可能与现存老账号冲突，回滚比异常处理更稳。
+        """
+        try:
+            user = self._repo.create(email, password_hash)
+        except WebUserEmailConflictError as e:
+            raise AuthError("EMAIL_TAKEN", str(e)) from e
+
+        # 绑定 openid
+        ok = self._repo.bind_wechat_openid(user.id, openid)
+        if not ok:
+            # openid 已被另一账号绑定（极小概率），返回错误由调用方决定如何处理
+            raise AuthError("OPENID_CONFLICT", "openid 已被其他账号绑定")
+
+        return self._repo.get_by_id(user.id) or user
 
     # ---- 改密 / 重置密码 ----
 
@@ -245,7 +340,7 @@ class WebAuthService:
 
     # ---- 内部 ----
 
-    def _build_login_result(self, user: WebUser) -> LoginResult:
+    def _build_login_result(self, user: WebUser, is_new_user: bool = False) -> LoginResult:
         access = create_access_token(
             user.id, user.email, ttl_seconds=self._access_ttl
         )
@@ -255,6 +350,7 @@ class WebAuthService:
             access_token=access,
             refresh_token=refresh,
             expires_in=self._access_ttl,
+            is_new_user=is_new_user,
         )
 
 

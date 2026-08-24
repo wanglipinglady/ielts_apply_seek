@@ -14,13 +14,18 @@ from typing import Optional, Protocol, runtime_checkable
 
 @dataclass
 class WebUser:
-    """Web 端用户领域对象。"""
+    """Web 端用户领域对象。
+
+    ``wechat_openid`` 是 2026-08-24 为微信小程序登录新增的字段，
+    默认为 None（保持向后兼容，老用户不受影响）。
+    """
 
     id: int
     email: str
     password_hash: str
     created_at: str | None = None
     last_login_at: str | None = None
+    wechat_openid: str | None = None
 
 
 # =============================================================
@@ -75,6 +80,20 @@ class WebUserRepository(Protocol):
         """
         ...
 
+    def get_by_openid(self, openid: str) -> Optional[WebUser]:
+        """按微信 openid 查（小程序登录专用，2026-08-24 新增）。
+
+        找不到返回 None；openid 通常 28 字符以内。
+        """
+        ...
+
+    def bind_wechat_openid(self, user_id: int, openid: str) -> bool:
+        """绑定用户的微信 openid（已存在用户绑定微信身份，2026-08-24 新增）。
+
+        成功返回 True；用户不存在返回 False。
+        """
+        ...
+
     def close(self) -> None:
         """关闭底层连接 / 释放资源。"""
         ...
@@ -90,13 +109,20 @@ class WebUserRepository(Protocol):
 _LEGACY_SCHEMA_NOOP = ""
 
 
-def _row_to_user(row: sqlite3.Row) -> WebUser:
+def _row_to_user(row: sqlite3.Row) -> Optional[WebUser]:
+    """sqlite3.Row → WebUser 转换（v3.9+ 含 wechat_openid 字段）。"""
+    if row is None:
+        return None
+    # sqlite3.Row 支持 keys() 检查字段是否存在（v3.9 升级时老库可能没该列）
+    cols = row.keys() if hasattr(row, "keys") else []
+    openid = row["wechat_openid"] if "wechat_openid" in cols else None
     return WebUser(
         id=row["id"],
-        email=row["email"],
+        email=row["email"] or "",
         password_hash=row["password_hash"] or "",
         created_at=row["created_at"],
         last_login_at=row["last_login_at"],
+        wechat_openid=openid,
     )
 
 
@@ -117,29 +143,54 @@ class SQLiteWebUserRepository:
         self._ensure_users_schema()
 
     def _ensure_users_schema(self) -> None:
-        """对 :memory: 等全新库，确保 users 表存在。生产 db 文件不需要这一步。"""
+        """对 :memory: 等全新库，确保 users 表存在。生产 db 文件不需要这一步。
+
+        v3.9（2026-08-24）：新增 ``wechat_openid`` 列，供小程序登录用。
+        用 ALTER TABLE + 失败回退实现"幂等"——生产 db 已有表也能跑。
+        """
         cur = self._conn.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name='users'"
         )
-        if cur.fetchone() is not None:
+        if cur.fetchone() is None:
+            # 没建就兜底建一个（仅 :memory: / 测试 fixture 场景）
+            self._conn.executescript(
+                """
+                CREATE TABLE IF NOT EXISTS users (
+                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username        TEXT NOT NULL COLLATE NOCASE,
+                    email           TEXT COLLATE NOCASE,
+                    password_hash   TEXT,
+                    display_name    TEXT,
+                    created_at      TEXT NOT NULL,
+                    last_login_at   TEXT,
+                    wechat_openid   TEXT COLLATE NOCASE,
+                    UNIQUE (username COLLATE NOCASE),
+                    UNIQUE (email COLLATE NOCASE),
+                    UNIQUE (wechat_openid COLLATE NOCASE)
+                );
+                """
+            )
+            self._conn.commit()
             return
-        # 没建就兜底建一个（仅 :memory: / 测试 fixture 场景）
-        self._conn.executescript(
-            """
-            CREATE TABLE IF NOT EXISTS users (
-                id              INTEGER PRIMARY KEY AUTOINCREMENT,
-                username        TEXT NOT NULL COLLATE NOCASE,
-                email           TEXT COLLATE NOCASE,
-                password_hash   TEXT,
-                display_name    TEXT,
-                created_at      TEXT NOT NULL,
-                last_login_at   TEXT,
-                UNIQUE (username COLLATE NOCASE),
-                UNIQUE (email COLLATE NOCASE)
-            );
-            """
-        )
-        self._conn.commit()
+
+        # 生产 db 已存在 users 表 → 幂等补列（v3.9 升级用）
+        cur = self._conn.execute("PRAGMA table_info(users)")
+        cols = {row[1] for row in cur.fetchall()}
+        if "wechat_openid" not in cols:
+            try:
+                self._conn.execute(
+                    "ALTER TABLE users ADD COLUMN wechat_openid TEXT COLLATE NOCASE"
+                )
+                # 加唯一索引（UNIQUE 约束需单独建索引）
+                self._conn.execute(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS ix_users_wechat_openid "
+                    "ON users(wechat_openid COLLATE NOCASE) "
+                    "WHERE wechat_openid IS NOT NULL"
+                )
+                self._conn.commit()
+            except sqlite3.OperationalError:
+                # 已存在等无害错误，静默跳过
+                pass
 
     def create(self, email: str, password_hash: str) -> WebUser:
         email_norm = email.strip().lower()
@@ -207,6 +258,34 @@ class SQLiteWebUserRepository:
         )
         self._conn.commit()
         return cur.rowcount > 0
+
+    def get_by_openid(self, openid: str) -> Optional[WebUser]:
+        """SQLite 实现：按 wechat_openid 查。"""
+        if not openid:
+            return None
+        row = self._conn.execute(
+            "SELECT * FROM users WHERE wechat_openid = ? COLLATE NOCASE",
+            (openid,),
+        ).fetchone()
+        return _row_to_user(row) if row else None
+
+    def bind_wechat_openid(self, user_id: int, openid: str) -> bool:
+        """SQLite 实现：把 wechat_openid 写到指定用户。
+
+        唯一约束保证 openid 不会被重复绑定（如果有冲突会抛 IntegrityError）。
+        """
+        if not openid:
+            return False
+        try:
+            cur = self._conn.execute(
+                "UPDATE users SET wechat_openid = ? WHERE id = ?",
+                (openid, user_id),
+            )
+            self._conn.commit()
+            return cur.rowcount > 0
+        except sqlite3.IntegrityError:
+            # openid 已被其他用户占用 → 拒绝绑定
+            return False
 
     def close(self) -> None:
         # SQLite 连接由调用方管理；这里 no-op 保持接口对称

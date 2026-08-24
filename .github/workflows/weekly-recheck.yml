@@ -1,0 +1,49 @@
+name: Weekly Auto Recheck
+
+# 每周一北京时间 09:00 自动跑（= UTC 01:00）
+on:
+  schedule:
+    - cron: "0 1 * * 1"
+  workflow_dispatch:  # 支持手动触发
+
+jobs:
+  weekly-auto-recheck:
+    name: 每周一自动 recheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - run: pip install -e ".[dev]"
+      - run: pip install --break-system-packages matplotlib reportlab
+
+      - name: 风险 recheck
+        env:
+          IELTS_BUDDY_ENV: dev
+        run: |
+          PYTHONPATH=src python scripts/auto/07_weekly_risk_recheck.py
+          # 把报告上传为 artifact，方便下载 review
+          mkdir -p weekly-recheck
+          cp -r docs/miniprogram/_assets/risk_recheck_*.md weekly-recheck/ 2>/dev/null || true
+
+      - name: 契约测试（确保 schema 没被破坏）
+        env:
+          IELTS_BUDDY_ENV: dev
+        run: |
+          PYTHONPATH=src pytest tests/test_contracts/ -v --tb=short
+
+      - name: 上传报告
+        uses: actions/upload-artifact@v4
+        with:
+          name: weekly-recheck-report
+          path: weekly-recheck/
+
+      - name: PR 提醒（如果发现新风险触发）
+        if: failure()
+        run: |
+          echo "⚠️ 本周 recheck 失败，详见 artifact"
+          echo "  访问：https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"

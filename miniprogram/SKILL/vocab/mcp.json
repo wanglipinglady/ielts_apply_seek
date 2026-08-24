@@ -1,0 +1,21 @@
+{
+  "name": "vocab",
+  "description": "雅思词库搭子：浏览 / 抽词 / 测验（覆盖 Band 5-9 / 12 个主题 / 5000+ 词）",
+  "version": "1.0.0",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "action": {"type": "string", "enum": ["list_vocab", "random_vocab", "submit_quiz"]},
+      "band": {"type": "integer", "minimum": 5, "maximum": 9},
+      "topic": {"type": "string"},
+      "page": {"type": "integer", "minimum": 1},
+      "per_page": {"type": "integer", "minimum": 5, "maximum": 100},
+      "count": {"type": "integer", "minimum": 1, "maximum": 50},
+      "word": {"type": "string"},
+      "user_answer": {"type": "string"},
+      "correct": {"type": "boolean"},
+      "mode": {"type": "string", "enum": ["en2zh", "zh2en"]}
+    },
+    "required": ["action"]
+  }
+}

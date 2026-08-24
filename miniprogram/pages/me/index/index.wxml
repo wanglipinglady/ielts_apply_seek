@@ -1,0 +1,39 @@
+<view class="container me-container">
+  <!-- 顶部用户卡片 -->
+  <view class="user-card">
+    <image class="avatar" src="{{user?.avatar_url || '/assets/avatar-default.png'}}" />
+    <view class="user-info">
+      <text class="nickname">{{user?.nickname || '微信用户'}}</text>
+      <text class="email">{{user?.email || '未绑定邮箱'}}</text>
+    </view>
+  </view>
+
+  <!-- 工具入口 -->
+  <view class="tool-section card">
+    <view class="tool-item" bindtap="goGrade">
+      <text class="tool-icon">📝</text>
+      <text class="tool-name">写作批改</text>
+      <text class="tool-arrow">›</text>
+    </view>
+    <view class="tool-item" bindtap="goExam">
+      <text class="tool-icon">📊</text>
+      <text class="tool-name">模拟考试</text>
+      <text class="tool-arrow">›</text>
+    </view>
+    <view class="tool-item" bindtap="goTools">
+      <text class="tool-icon">🛠️</text>
+      <text class="tool-name">工具集（打字/番茄钟/日历）</text>
+      <text class="tool-arrow">›</text>
+    </view>
+    <view class="tool-item" bindtap="goSettings">
+      <text class="tool-icon">⚙️</text>
+      <text class="tool-name">设置</text>
+      <text class="tool-arrow">›</text>
+    </view>
+  </view>
+
+  <!-- 退出登录 -->
+  <button class="btn-logout" bindtap="logout">退出登录</button>
+
+  <view class="version-tip">雅思搭子 v3.9.0 · 2026 大赛参赛作品</view>
+</view>

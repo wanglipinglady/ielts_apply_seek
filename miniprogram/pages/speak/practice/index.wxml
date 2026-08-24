@@ -1,0 +1,7 @@
+<view class="container practice-container">
+  <view class="empty">
+    <text class="empty-icon">🎤</text>
+    <text class="empty-title">Part {{part}} 口语对练</text>
+    <text class="empty-sub">W3 上线：录音 → Whisper 转写 → AI 评分</text>
+  </view>
+</view>

@@ -1,0 +1,58 @@
+{
+  "pages": [
+    "pages/auth/login/index",
+    "pages/study/index/index",
+    "pages/study/quiz/index",
+    "pages/study/random/index",
+    "pages/review/index/index",
+    "pages/review/mistakes/index",
+    "pages/speak/index/index",
+    "pages/speak/practice/index",
+    "pages/me/index/index",
+    "pages/me/grade/index",
+    "pages/me/exam/index",
+    "pages/me/tools/index"
+  ],
+  "window": {
+    "backgroundTextStyle": "light",
+    "navigationBarBackgroundColor": "#07C160",
+    "navigationBarTitleText": "雅思搭子",
+    "navigationBarTextStyle": "white",
+    "backgroundColor": "#F8F8F8"
+  },
+  "tabBar": {
+    "color": "#999999",
+    "selectedColor": "#07C160",
+    "backgroundColor": "#FFFFFF",
+    "borderStyle": "white",
+    "list": [
+      {
+        "pagePath": "pages/study/index/index",
+        "text": "学习",
+        "iconPath": "assets/tab/study.png",
+        "selectedIconPath": "assets/tab/study-active.png"
+      },
+      {
+        "pagePath": "pages/review/index/index",
+        "text": "复习",
+        "iconPath": "assets/tab/review.png",
+        "selectedIconPath": "assets/tab/review-active.png"
+      },
+      {
+        "pagePath": "pages/speak/index/index",
+        "text": "口语",
+        "iconPath": "assets/tab/speak.png",
+        "selectedIconPath": "assets/tab/speak-active.png"
+      },
+      {
+        "pagePath": "pages/me/index/index",
+        "text": "我",
+        "iconPath": "assets/tab/me.png",
+        "selectedIconPath": "assets/tab/me-active.png"
+      }
+    ]
+  },
+  "lazyCodeLoading": "requiredComponents",
+  "sitemapLocation": "sitemap.json",
+  "style": "v2"
+}

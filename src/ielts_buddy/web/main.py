@@ -53,6 +53,10 @@ from ielts_buddy.web.routers import speaking_practice as speaking_practice_route
 from ielts_buddy.web.routers import listening_practice as listening_practice_routes
 from ielts_buddy.web.routers import prep_resources as prep_resources_routes
 from ielts_buddy.web.routers import reading_practice as reading_practice_routes
+from ielts_buddy.web.routers import wechat as wechat_routes  # v3.9+：微信小程序登录（2026-08-24）
+from ielts_buddy.web.routers import wx_study as wx_study_routes  # v3.9+：小程序学习 API（2026-08-24）
+from ielts_buddy.web.routers import wx_speak as wx_speak_routes  # v3.9+：小程序口语 API（2026-08-24）
+from ielts_buddy.web.routers import wx_grade as wx_grade_routes  # v3.9+：小程序写作批改 API（2026-08-24）
 
 # 模板目录 = 本文件所在目录/templates
 WEB_DIR = Path(__file__).resolve().parent
@@ -515,6 +519,22 @@ def create_app() -> FastAPI:
     # v3.8 P3.2：Reading 真题题库
     app.include_router(reading_practice_routes.router)
     app.include_router(reading_practice_routes.api_router)
+
+    # v3.9（2026-08-24）：微信小程序登录路由（/api/wx/* 前缀，与 Web /api/auth/* 物理隔离）
+    # service 层复用 WebAuthService，零 schema 改动
+    app.include_router(wechat_routes.router)
+
+    # v3.9（2026-08-24）：微信小程序学习路由（/api/wx/study/* 前缀）
+    # service 层复用 ReviewService + VocabService，零 schema 改动
+    app.include_router(wx_study_routes.router)
+
+    # v3.9（2026-08-24）：微信小程序口语对练路由（/api/wx/speak/practice/* 前缀）
+    # service 层复用 SpeakingPracticeService
+    app.include_router(wx_speak_routes.router)
+
+    # v3.9（2026-08-24）：微信小程序写作批改路由（/api/wx/grade/* 前缀）
+    # service 层复用 GradingService（导入 Web 端 _call_llm_grader）
+    app.include_router(wx_grade_routes.router)
 
     return app
 

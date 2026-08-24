@@ -1,0 +1,20 @@
+<view class="container speak-container">
+  <view class="header-tip card">
+    <text class="tip-icon">🎤</text>
+    <text class="tip-title">口语对练</text>
+    <text class="tip-sub">AI 考官按雅思 4 维评分</text>
+  </view>
+
+  <view wx:for="{{parts}}" wx:key="id" class="part-card card" data-part="{{item.id}}" bindtap="goPart">
+    <text class="part-icon">{{item.icon}}</text>
+    <view class="part-info">
+      <text class="part-name">{{item.name}}</text>
+      <text class="part-desc">{{item.desc}}</text>
+    </view>
+    <text class="part-arrow">›</text>
+  </view>
+
+  <view class="wip-tip card">
+    <text class="wip-text">🚀 W3 上线 Whisper 录音 + AI 评分</text>
+  </view>
+</view>

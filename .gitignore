@@ -44,3 +44,12 @@ Thumbs.db
 # ===== 项目特定：避免提交数据库、覆盖率报告 =====
 coverage.xml
 .coverage
+
+# ===== auto/ 脚本产物（脚本本身提交，产物不提交）=====
+docs/miniprogram/_assets/risk_recheck_*.md
+docs/miniprogram/_assets/weekly_report_*.pdf
+docs/miniprogram/_assets/weekly_chart_*.png
+docs/miniprogram/_assets/ux_audit_*.md
+docs/miniprogram/_assets/seed_posts/
+docs/miniprogram/W8/submission/*.zip
+!docs/miniprogram/_assets/qrcode.png

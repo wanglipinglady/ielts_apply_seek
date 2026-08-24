@@ -1,0 +1,1 @@
+.tool-card{display:flex;align-items:center;margin:24rpx;padding:32rpx 24rpx}.tool-icon{font-size:56rpx;margin-right:24rpx}.tool-info{flex:1}.tool-name{font-size:32rpx;font-weight:600;color:#333;display:block;margin-bottom:8rpx}.tool-desc{font-size:24rpx;color:#999}.tool-arrow{font-size:48rpx;color:#07C160}

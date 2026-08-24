@@ -1,0 +1,59 @@
+<view class="container quiz-container">
+  <!-- 配置区 -->
+  <view class="config-bar card">
+    <view class="config-item">
+      <text class="label">模式：</text>
+      <picker mode="selector" range="{{['en2zh', 'zh2en']}}" value="{{mode === 'en2zh' ? 0 : 1}}" bindchange="onModeChange">
+        <view class="value">{{mode === 'en2zh' ? '英译中' : '中译英'}}</view>
+      </picker>
+    </view>
+    <view class="config-item">
+      <text class="label">Band：</text>
+      <picker mode="selector" range="{{[5,6,7,8,9]}}" value="{{band - 5}}" bindchange="onBandChange">
+        <view class="value">{{band}}</view>
+      </picker>
+    </view>
+  </view>
+
+  <!-- 进度 -->
+  <view wx:if="{{questions.length > 0 && !finished}}" class="progress">
+    <text class="progress-text">{{currentIndex + 1}} / {{questions.length}}</text>
+    <progress percent="{{(currentIndex + 1) * 100 / questions.length}}" stroke-width="6" color="#07C160" />
+  </view>
+
+  <!-- 题目区 -->
+  <view wx:if="{{!finished && questions.length > 0}}" class="quiz-body card">
+    <view wx:if="{{mode === 'en2zh'}}" class="question-area">
+      <text class="question-word">{{questions[currentIndex].word}}</text>
+      <text class="question-phonetic">{{questions[currentIndex].phonetic}}</text>
+    </view>
+    <view wx:else class="question-area">
+      <text class="question-meaning">{{questions[currentIndex].meaning}}</text>
+    </view>
+
+    <input
+      class="answer-input"
+      placeholder="{{mode === 'en2zh' ? '输入中文释义' : '输入英文单词'}}"
+      value="{{userAnswer}}"
+      bindinput="onAnswerInput"
+      confirm-type="done"
+      bindconfirm="submitAnswer"
+    />
+
+    <view class="action-buttons">
+      <button class="btn-secondary" bindtap="skip">跳过</button>
+      <button class="btn-primary" bindtap="submitAnswer">提交</button>
+    </view>
+  </view>
+
+  <!-- 完成 -->
+  <view wx:if="{{finished}}" class="completion card">
+    <text class="completion-icon">🎉</text>
+    <text class="completion-title">本轮完成！</text>
+    <text class="completion-score">正确率：{{correctCount}} / {{questions.length}}</text>
+    <button class="btn-primary" bindtap="restart">再来一轮</button>
+  </view>
+
+  <view wx:if="{{loading}}" class="loading">加载中…</view>
+  <view wx:if="{{questions.length === 0 && !loading && !finished}}" class="empty">没有题目</view>
+</view>

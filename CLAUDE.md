@@ -88,6 +88,149 @@ pytest tests/test_services/    # 只跑服务层测试
 - 更多词库 (Band 8+, 专题词库)
 - 每日学习计划/提醒
 
+---
+
+## 多端共享 service 层契约（铁律，2026-08-24 加入）
+
+> 本项目存在 **3 个调用同一份后端的端**：CLI v3.8 + Web v3.8 + 微信小程序「雅思搭子」。
+> 三端共用 `src/ielts_buddy/services/` 下的所有 service 函数 + `ietls_learn_online` MySQL 数据库。
+> 任何对 service 层 / schema / 公共工具的改动，**同时影响三端**。
+
+### 5 条铁律
+
+1. **service 层是单一真相源**——CLI / Web / 小程序共用同一份代码，禁止单独 fork
+2. **改 service 函数签名 = 同时改三端**——必须用 `grep` 列出所有调用方（`grep -rn "from ielts_buddy.services" src/ielts_buddy/`）并同步更新
+3. **MySQL schema 改动必须用 alembic 迁移**——禁止手改字段；新增字段用 `ALTER TABLE ... ADD COLUMN`，禁止 `DROP COLUMN` 老字段
+4. **新增字段默认可选**——不破坏老调用（用 `Optional[T] = None` + 默认值）
+### 5. **每个公共 API 都要有契约测试**——锁住 schema；CI 流水线强制跑
+
+### 监控铁律（异常处理，2026-08-24 加）
+
+> 本项目 8 周赛事期间依赖"事件驱动型"异常通知，**不靠时间轮询**。所有通知走 `ielts_buddy.monitoring.notifier` 模块。
+
+#### 3 级严重度
+
+| 级别 | 触发条件 | 通知通道 | 你的介入 |
+|------|----------|----------|----------|
+| **🟢 P3 INFO** | 已知小问题 / 数据有偏差 | 仅写死信日志 | ❌ 不介入 |
+| **🟡 P2 WARNING** | 重试 1 次仍失败 / 异常类型不明 | **邮件** | ❓ 工作时间看 |
+| **🔴 P1 CRITICAL** | 服务挂了 / 数据污染 / 涉及钱 / 未成年人 | **微信服务通知 + 邮件** | ✅ **立即介入** |
+
+#### 5 条铁律
+
+1. **不靠时间轮询**——只在异常 + AI 不能自愈时触发
+2. **5 分钟静默期**——同一 signature 的 P2 只发 1 次，避免刷屏
+3. **AI 自愈优先**——8 类已知异常（LLM 超时 / Whisper 失败 / MySQL 抖动 / 等）自动重试，不通知
+4. **不可自愈立即升级**——suppress() 达到 max_retries 自动升级到 P1
+5. **死信队列**——所有通知统一写 `~/.ielts-buddy/.dead_letter.log`，AI 自查
+
+#### 接入示例
+
+```python
+from ielts_buddy.monitoring.notifier import notify, suppress, Severity
+
+# 简单通知
+notify("服务挂了", Severity.P1_CRITICAL, context={"task": "speaking_score"})
+
+# AI 自愈循环
+for attempt in range(3):
+    try:
+        result = call_llm()
+        break
+    except Exception as e:
+        if not suppress(e, Severity.P2_WARNING, "llm_timeout"):
+            raise  # 已升级到 P1 + 通知过你
+```
+
+#### 自愈签名清单（自动重试不通知）
+
+| signature | 含义 | 自愈策略 |
+|-----------|------|----------|
+| `llm_timeout` | LLM 调用超时 | 自动切备用模型（混元 → DeepSeek） |
+| `llm_rate_limit` | LLM 限流 | 自动退避 |
+| `whisper_crash` | Whisper 失败 | 自动切 CPU 模式 |
+| `mysql_timeout` | MySQL 慢 | 自动触发 fallback_sqlite |
+| `network_blip` | 网络抖动 | 自动重试 |
+| `ci_flaky_test` | CI 偶发失败 | 自动 rebase 重跑 |
+| `subscription_api_throttle` | 微信订阅消息限流 | 退避 + 队列 |
+| `user_token_expired` | 用户 token 过期 | 自动 refresh_token |
+
+#### 升级签名清单（达到 max_retries 即升级到 P1）
+
+| signature | 含义 |
+|-----------|------|
+| `service_crashed` | 服务进程崩溃 |
+| `data_corrupted` | 数据被污染 |
+| `permission_denied` | 权限被拒（合规） |
+| `payment_error` | 涉及钱的错误 |
+| `minors_data_leaked` | 未成年人数据泄露 |
+| `wechat_audit_blocked` | 微信审核被封 |
+| `unknown_exception` | 未知异常（最危险） |
+
+#### CI 流水线
+
+- `tests/test_monitoring/`（16 个测试）覆盖：分级 / 静默 / 自愈 / 死信 / 健康快照
+- `.github/workflows/ci.yml` 加 `monitoring-tests` job（先于全量测试跑）
+- `.github/workflows/weekly-recheck.yml` 每周一跑：健康快照 + 风险 recheck
+
+---
+
+### 路由层约定（按"端"分组，但共享 service）
+
+```
+src/ielts_buddy/web/routers/
+├── auth.py            ← ← Web + 小程序共用
+├── study.py           ← ← Web + 小程序共用
+├── wechat.py          ← ← 【小程序专用】新增的路由，前缀 /api/wx/
+└── ...
+```
+
+- 小程序路由统一加 `/api/wx/` 前缀，与 Web 端 `/api/` 区分
+- service 函数禁止加"端"判断（不允许 `if request_source == "wechat"` 这种逻辑）
+- 路由层做"端到端编排"，service 层做"业务逻辑"
+
+### 提交前 checklist（任何人改 service / schema 必须跑）
+
+```
+□ 我改的是 service / schema / 公共函数吗？
+  → YES：下面 5 项都要做
+  →  NO：跳过
+□ 改了哪几个 service 函数？列出调用方清单
+□ CLI 端是否调用了？ → 跑 CLI smoke test（ib vocab random -n 5）
+□ Web 端是否调用了？ → 跑 web 端 curl 测试
+□ 小程序端是否调用了？ → 跑小程序真机测试
+□ 契约测试是否通过？ → pytest tests/test_contracts/ -v
+□ MySQL schema 是否改了？
+  → YES：必须用 alembic 生成迁移脚本 + 在本地 SQLite 也跑一遍
+  →  NO：跳过
+```
+
+### 契约测试位置
+
+- `tests/test_contracts/` ← 新增目录
+- 现有 `tests/test_web/` ← 已有，按 router 拆分
+- 现有 `tests/test_services/` ← 已有，按 service 拆分
+- 现有 `tests/test_commands/` ← 已有，按 CLI 命令拆分
+
+跑契约测试：
+
+```bash
+pytest tests/test_contracts/ -v
+```
+
+### 大赛期间版本号策略（2026-08-24 ~ 2026-10-17）
+
+| 端 | 版本 | 状态 |
+|----|------|------|
+| CLI | v3.8 | ✅ 已发布，**冻结**，只修 bug |
+| Web | v3.8 | ✅ 已发布，**冻结**，只修 bug |
+| 小程序 | v1.0 (2026-09-22 计划发布) | 🆕 新开发 |
+
+> 大赛期间 **CLI v3.8 + Web v3.8 不加新功能**——所有新功能只走小程序。
+> 这条简化了契约管理：W2–W8 改的任何代码，老 CLI / Web 都不感知（除非动了 service 层）。
+
+---
+
 ## 相关文件
 - PRD: docs/PRD.md (923行)
 - 开发计划: docs/PLAN.md (761行)

@@ -1,0 +1,32 @@
+<view class="container login-container">
+  <view class="logo-section">
+    <image class="logo" src="/assets/logo.png" mode="aspectFit"></image>
+    <view class="app-name">雅思搭子</view>
+    <view class="app-subtitle">AI 陪你一起备考</view>
+  </view>
+
+  <view class="form-card card">
+    <view class="form-item">
+      <text class="label">昵称（可选）</text>
+      <input
+        class="input"
+        placeholder="不填则用微信默认昵称"
+        value="{{nickname}}"
+        bindinput="onNicknameInput"
+        maxlength="20"
+      />
+    </view>
+
+    <button
+      class="btn-primary login-btn"
+      bindtap="doLogin"
+      disabled="{{loading}}"
+    >{{ loading ? '登录中...' : '微信一键登录' }}</button>
+
+    <view wx:if="{{errorMsg}}" class="error-msg">{{errorMsg}}</view>
+  </view>
+
+  <view class="footer">
+    <text class="footer-text">登录即同意《用户协议》《隐私协议》</text>
+  </view>
+</view>

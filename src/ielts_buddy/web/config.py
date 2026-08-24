@@ -102,6 +102,25 @@ COOKIE_SAMESITE: Final[str] = os.environ.get(
 )
 
 
+# ===== 微信小程序登录（v3.9+ / 2026-08-24 新增）=====
+
+# 微信小程序 AppID / AppSecret，用于 code2session 校验
+WECHAT_APPID: Final[str] = os.environ.get("IELTS_BUDDY_WECHAT_APPID", "").strip()
+WECHAT_SECRET: Final[str] = os.environ.get("IELTS_BUDDY_WECHAT_SECRET", "").strip()
+
+# code2session 端点（官方）
+# 文档：https://developers.weixin.qq.com/miniprogram/dev/api-backend/open-api/login/auth.code2Session.html
+WECHAT_CODE2SESSION_URL: Final[str] = (
+    "https://api.weixin.qq.com/sns/jscode2session"
+)
+
+# dev 模式开关：dev 下允许前端传 mock openid，prod 必须真实走 code2session
+# 避免 prod 环境因配置不全而把"假用户"写进生产库
+WECHAT_DEV_ALLOW_MOCK: Final[bool] = (
+    os.environ.get("IELTS_BUDDY_ENV", "dev") != "prod"
+)
+
+
 # ===== 数据库 =====
 
 def _resolve_db_mode() -> str:

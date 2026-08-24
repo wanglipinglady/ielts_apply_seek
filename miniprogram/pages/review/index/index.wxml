@@ -1,0 +1,50 @@
+<view class="container review-container">
+  <!-- Tab 切换 -->
+  <view class="tab-bar">
+    <view
+      class="tab {{activeTab === 'today' ? 'active' : ''}}"
+      data-tab="today"
+      bindtap="switchTab"
+    >今日复习 ({{count}})</view>
+    <view
+      class="tab {{activeTab === 'mistakes' ? 'active' : ''}}"
+      data-tab="mistakes"
+      bindtap="switchTab"
+    >错词本</view>
+  </view>
+
+  <!-- 今日复习卡片 -->
+  <view wx:if="{{activeTab === 'today'}}" class="review-body">
+    <view wx:if="{{dueWords.length === 0 && !loading}}" class="empty">
+      <text class="empty-icon">🎉</text>
+      <text class="empty-text">今天没有需要复习的词！</text>
+      <text class="empty-sub">明天再来看看</text>
+    </view>
+
+    <view wx:if="{{dueWords.length > 0 && currentIndex < dueWords.length}}" class="card-flip" bindtap="flipCard">
+      <view class="card-front card">
+        <text class="word">{{dueWords[currentIndex].word}}</text>
+        <text class="phonetic">{{dueWords[currentIndex].phonetic}}</text>
+        <text class="tap-hint">轻点卡片查看释义</text>
+      </view>
+      <view wx:if="{{isFlipped}}" class="card-back card">
+        <text class="word">{{dueWords[currentIndex].word}}</text>
+        <text class="meaning">{{dueWords[currentIndex].meaning}}</text>
+        <text class="memory-info">记忆等级 {{dueWords[currentIndex].memory_level}}/6</text>
+      </view>
+    </view>
+
+    <view wx:if="{{dueWords.length > 0 && currentIndex < dueWords.length}}" class="action-buttons">
+      <button class="btn-secondary" bindtap="onDontKnow">不认识</button>
+      <button class="btn-primary" bindtap="onKnow">认识</button>
+    </view>
+
+    <view wx:if="{{currentIndex >= dueWords.length && dueWords.length > 0}}" class="completion card">
+      <text class="completion-icon">🎉</text>
+      <text class="completion-title">复习完成！</text>
+      <text class="completion-sub">已完成 {{dueWords.length}} 个词</text>
+    </view>
+
+    <view wx:if="{{loading}}" class="loading">加载中…</view>
+  </view>
+</view>

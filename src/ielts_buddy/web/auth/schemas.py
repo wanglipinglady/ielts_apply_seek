@@ -105,6 +105,35 @@ class ResetPasswordResponse(BaseModel):
     user_id: int
 
 
+class WxLoginRequest(BaseModel):
+    """微信小程序登录请求（v3.9+ / 2026-08-24 新增）。
+
+    字段：
+    - code: 微信 wx.login() 返回的临时凭证，**5 分钟有效**
+    - nickname: 可选，用户昵称（用于初始化 display_name）
+    - avatar_url: 可选，用户头像 URL
+    """
+
+    code: str = Field(min_length=1, max_length=512)
+    nickname: str | None = Field(default=None, max_length=64)
+    avatar_url: str | None = Field(default=None, max_length=512)
+
+
+class WxLoginResponse(BaseModel):
+    """微信小程序登录响应。
+
+    与 TokenResponse 同 schema（统一字段名，三端共享），
+    但额外带 ``is_new_user`` 标记小程序首登 vs 老用户。
+    """
+
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+    expires_in: int
+    user: UserResponse
+    is_new_user: bool  # 小程序前端决定要不要弹"欢迎"提示
+
+
 __all__ = [
     "RegisterRequest",
     "LoginRequest",
@@ -118,4 +147,6 @@ __all__ = [
     "ResetPasswordResponse",
     "ForgotPasswordRequest",
     "ForgotPasswordResponse",
+    "WxLoginRequest",
+    "WxLoginResponse",
 ]
