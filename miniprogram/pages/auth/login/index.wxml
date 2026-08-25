@@ -1,7 +1,7 @@
 <view class="container login-container">
   <view class="logo-section">
     <image class="logo" src="/assets/logo.png" mode="aspectFit"></image>
-    <view class="app-name">雅思搭子</view>
+    <view class="app-name">英语干中学</view>
     <view class="app-subtitle">AI 陪你一起备考</view>
   </view>
 

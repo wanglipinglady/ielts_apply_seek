@@ -92,7 +92,7 @@ pytest tests/test_services/    # 只跑服务层测试
 
 ## 多端共享 service 层契约（铁律，2026-08-24 加入）
 
-> 本项目存在 **3 个调用同一份后端的端**：CLI v3.8 + Web v3.8 + 微信小程序「雅思搭子」。
+> 本项目存在 **3 个调用同一份后端的端**：CLI v3.8 + Web v3.8 + 微信小程序「英语干中学」。
 > 三端共用 `src/ielts_buddy/services/` 下的所有 service 函数 + `ietls_learn_online` MySQL 数据库。
 > 任何对 service 层 / schema / 公共工具的改动，**同时影响三端**。
 

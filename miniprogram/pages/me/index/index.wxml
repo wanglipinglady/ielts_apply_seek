@@ -35,5 +35,5 @@
   <!-- 退出登录 -->
   <button class="btn-logout" bindtap="logout">退出登录</button>
 
-  <view class="version-tip">雅思搭子 v3.9.0 · 2026 大赛参赛作品</view>
+  <view class="version-tip">英语干中学 v3.9.0 · 2026 大赛参赛作品</view>
 </view>

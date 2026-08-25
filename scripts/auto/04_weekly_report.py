@@ -112,7 +112,7 @@ def generate_chart(stats: dict, out_png: Path) -> bool:
         for bar, val in zip(bars, values):
             ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 1,
                     str(val), ha="center", fontsize=11)
-        ax.set_title("雅思搭子 · 周数据复盘", fontsize=14, fontweight="bold")
+        ax.set_title("英语干中学 · 周数据复盘", fontsize=14, fontweight="bold")
         ax.spines["top"].set_visible(False)
         ax.spines["right"].set_visible(False)
         plt.tight_layout()
@@ -162,7 +162,7 @@ def generate_pdf(stats: dict, chart_png: Path | None, out_pdf: Path,
                             topMargin=2*cm, bottomMargin=2*cm)
 
     story = []
-    story.append(Paragraph(f"雅思搭子 · 周数据复盘报告", title_style))
+    story.append(Paragraph(f"英语干中学 · 周数据复盘报告", title_style))
     story.append(Paragraph(f"周次：{week_label} · 生成时间：{datetime.now().strftime('%Y-%m-%d %H:%M')}",
                            body_style))
     story.append(Spacer(1, 0.4*cm))
@@ -218,7 +218,7 @@ def generate_pdf(stats: dict, chart_png: Path | None, out_pdf: Path,
 
 
 def main():
-    parser = argparse.ArgumentParser(description="雅思搭子周数据报告生成")
+    parser = argparse.ArgumentParser(description="英语干中学周数据报告生成")
     parser.add_argument("--week", help="ISO 周编号，如 2026-W35（默认上周）")
     parser.add_argument("--db-url", help="SQLAlchemy URL（默认走项目 .env）")
     parser.add_argument("--out", help="输出 PDF 路径")
