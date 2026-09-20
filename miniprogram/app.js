@@ -4,7 +4,9 @@ const STORAGE_TOKEN_KEY = 'ib_access_token';
 App({
   globalData: {
     // 后端 API base URL
-    apiBaseUrl: 'http://127.0.0.1:8000',
+    // 真机调试时改成 Mac 局域网 IP（172.20.10.2），模拟器保持 127.0.0.1
+    // 临时改法：开发完真机后再改回，或用 getSystemInfo 区分环境
+    apiBaseUrl: 'http://172.20.10.2:8000',
     // 当前用户
     user: null,
     // 调试模式：true 时登录页显示"调试登录面板"

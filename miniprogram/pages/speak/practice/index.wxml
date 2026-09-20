@@ -31,12 +31,12 @@
 
   <!-- 录音控制区 -->
   <view class="record-section">
-    <!-- 未录音状态：开始按钮 -->
+    <!-- 未录音状态：开始按钮（用 button 替代 view bindtap，真机 tap 稳定） -->
     <view wx:if="{{!recording && !audioPath && !loading && !feedback}}" class="record-idle">
-      <view class="record-icon-wrap" bindtap="startPractice">
+      <button class="record-icon-wrap record-btn" bindtap="startPractice">
         <view class="record-icon">🎤</view>
         <text class="record-hint">点击开始练习</text>
-      </view>
+      </button>
     </view>
 
     <!-- 录音中：录制按钮 + 计时 -->
@@ -131,13 +131,13 @@
     <button class="btn-primary retry-btn" bindtap="nextQuestion">下一题</button>
   </view>
 
-  <!-- 历史记录入口 -->
-  <view wx:if="{{!question && !loading && !feedback}}" class="history-entry card" bindtap="goHistory">
+  <!-- 历史记录入口（用 button 替代 view bindtap，真机 tap 稳定） -->
+  <button wx:if="{{!question && !loading && !feedback}}" class="history-entry card history-btn" bindtap="goHistory">
     <text class="history-icon">📋</text>
     <view class="history-info">
       <text class="history-title">查看历史记录</text>
       <text class="history-sub">最近的口语练习和评分</text>
     </view>
     <text class="history-arrow">›</text>
-  </view>
+  </button>
 </view>
