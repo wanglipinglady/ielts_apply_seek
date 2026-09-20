@@ -1,11 +1,11 @@
 <view class="container practice-container">
-  <!-- 顶部 Part 选择 -->
+  <!-- 顶部 Part 选择（用 button 替代 view bindtap，IDE/真机都能稳定响应） -->
   <view class="part-selector card">
     <text class="part-label">Part：</text>
     <view class="part-tabs">
-      <view class="part-tab {{activePart1Class}}" data-part="1" bindtap="onPartChange">Part 1</view>
-      <view class="part-tab {{activePart2Class}}" data-part="2" bindtap="onPartChange">Part 2</view>
-      <view class="part-tab {{activePart3Class}}" data-part="3" bindtap="onPartChange">Part 3</view>
+      <button class="part-tab {{activePart1Class}}" data-part="1" bindtap="onPartChange">Part 1</button>
+      <button class="part-tab {{activePart2Class}}" data-part="2" bindtap="onPartChange">Part 2</button>
+      <button class="part-tab {{activePart3Class}}" data-part="3" bindtap="onPartChange">Part 3</button>
     </view>
   </view>
 
