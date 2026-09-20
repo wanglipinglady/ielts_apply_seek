@@ -1,63 +1,115 @@
+/* pages/auth/login/index.wxss — 登录页样式（v3.9+） */
+
 .login-container {
-  padding: 80rpx 32rpx 32rpx;
   min-height: 100vh;
-  background: #F8F8F8;
+  background: linear-gradient(180deg, #07C160 0%, #06AD56 40%, #F8F8F8 40%, #F8F8F8 100%);
+  padding: 80rpx 48rpx 48rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
+
 .logo-section {
-  text-align: center;
-  padding: 80rpx 0 60rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 80rpx;
+  color: #fff;
 }
+
 .logo {
-  width: 160rpx;
-  height: 160rpx;
-  margin: 0 auto 24rpx;
+  width: 144rpx;
+  height: 144rpx;
+  border-radius: 28rpx;
+  margin-bottom: 24rpx;
+  box-shadow: 0 8rpx 24rpx rgba(0, 0, 0, 0.15);
+  background: #fff;
+  /* 占位用 — 实际 logo 上线时由 miniprogram/assets/logo.png 提供 */
 }
+
 .app-name {
   font-size: 44rpx;
   font-weight: 700;
-  color: #07C160;
   margin-bottom: 8rpx;
 }
+
 .app-subtitle {
   font-size: 26rpx;
-  color: #999;
+  opacity: 0.9;
 }
+
 .form-card {
-  padding: 32rpx;
+  background: #fff;
+  border-radius: 16rpx;
+  padding: 48rpx 32rpx;
+  width: 100%;
+  box-sizing: border-box;
+  box-shadow: 0 4rpx 16rpx rgba(0, 0, 0, 0.08);
 }
+
 .form-item {
   margin-bottom: 32rpx;
 }
+
 .label {
+  display: block;
   font-size: 26rpx;
   color: #666;
   margin-bottom: 12rpx;
-  display: block;
 }
+
 .input {
   width: 100%;
   height: 80rpx;
-  padding: 0 16rpx;
-  border: 2rpx solid #E8E8E8;
-  border-radius: 8rpx;
+  border-bottom: 2rpx solid #EEE;
   font-size: 30rpx;
   box-sizing: border-box;
 }
+
 .login-btn {
   width: 100%;
   margin-top: 16rpx;
 }
+
 .error-msg {
-  color: #F56565;
-  font-size: 26rpx;
   margin-top: 16rpx;
+  font-size: 24rpx;
+  color: #F56565;
   text-align: center;
 }
+
 .footer {
-  margin-top: 60rpx;
+  margin-top: auto;
+  padding: 32rpx 0 0;
   text-align: center;
 }
+
 .footer-text {
   font-size: 22rpx;
   color: #999;
+}
+
+/* 开发模式调试面板 */
+.dev-panel-toggle {
+  margin-top: 32rpx;
+  font-size: 24rpx;
+  color: #07C160;
+  text-decoration: underline;
+}
+
+.dev-panel {
+  margin-top: 24rpx;
+  padding: 24rpx;
+  background: #FFF9E6;
+  border: 2rpx dashed #FFD24A;
+  border-radius: 12rpx;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.dev-tip {
+  font-size: 22rpx;
+  color: #B5841F;
+  margin-bottom: 12rpx;
+  line-height: 1.5;
 }

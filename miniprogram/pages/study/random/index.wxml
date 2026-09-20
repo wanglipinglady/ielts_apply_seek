@@ -1,1 +1,69 @@
-<view class="container"><view class="config-bar card"><view class="config-item"><text class="label">Band：</text><picker mode="selector" range="{{[5,6,7,8,9]}}" value="{{band - 5}}" bindchange="onBandChange"><view class="value">{{band}}</view></picker></view><view class="config-item"><text class="label">数量：</text><picker mode="selector" range="{{[5,10,15,20]}}" value="{{count === 5 ? 0 : count === 10 ? 1 : count === 15 ? 2 : 3}}" bindchange="onCountChange"><view class="value">{{count}}</view></picker></view></view><button class="btn-primary" bindtap="loadRandom">🎲 再抽 {{count}} 个</button><view wx:for="{{words}}" wx:key="word" class="word-item card"><view class="word-main"><text class="word">{{item.word}}</text><text class="phonetic">{{item.phonetic}}</text></view><text class="meaning">{{item.meaning}}</text><text class="tag">{{item.pos}} · Band {{item.band}}</text></view><view wx:if="{{loading}}" class="loading">加载中…</view></view>
+<view class="container random-container">
+  <view class="config-bar card">
+    <view class="config-item">
+      <text class="label">Band：</text>
+      <picker mode="selector" range="{{[5,6,7,8,9]}}" value="{{band - 5}}" bindchange="onBandChange">
+        <view class="band-value">{{band}}</view>
+      </picker>
+    </view>
+    <view class="config-item">
+      <text class="label">数量：</text>
+      <picker mode="selector" range="{{counts}}" value="{{countsIndex}}" bindchange="onCountChange">
+        <view class="band-value">{{count}}</view>
+      </picker>
+    </view>
+  </view>
+
+  <view wx:if="{{words.length > 0 && !finished}}" class="progress-bar">
+    <text class="progress-text">{{currentIndex + 1}} / {{words.length}} · 认识 {{knownCount}} · 不认识 {{unknownCount}}</text>
+    <progress percent="{{progressPercent}}" stroke-width="6" color="#07C160" />
+  </view>
+
+  <view wx:if="{{words.length > 0 && !finished}}" class="word-card card">
+    <view class="word-main" bindtap="flipCard">
+      <text class="word-text">{{words[currentIndex].word}}</text>
+      <text wx:if="{{!isFlipped}}" class="word-hint">点击卡片显示答案</text>
+    </view>
+
+    <view wx:if="{{isFlipped}}" class="word-detail">
+      <text class="word-phonetic">{{words[currentIndex].phonetic}}</text>
+      <view class="word-meaning-box">
+        <text class="meaning-label">释义</text>
+        <text class="word-meaning">{{words[currentIndex].meaning}}</text>
+      </view>
+      <view class="word-tags">
+        <text class="tag tag-pos">{{words[currentIndex].pos}}</text>
+        <text class="tag tag-band">Band {{words[currentIndex].band}}</text>
+      </view>
+    </view>
+
+    <button wx:if="{{!isFlipped}}" class="btn-primary show-answer-btn" bindtap="flipCard">显示答案</button>
+
+    <view wx:if="{{isFlipped}}" class="action-buttons">
+      <button class="btn-secondary unknown-btn" bindtap="onUnknown">不认识 ✗</button>
+      <button class="btn-primary known-btn" bindtap="onKnown">认识 ✓</button>
+    </view>
+  </view>
+
+  <view wx:if="{{finished}}" class="completion card">
+    <text class="completion-icon">🎉</text>
+    <text class="completion-title">本轮完成！</text>
+    <view class="completion-stats">
+      <text class="stat-item">认识 {{knownCount}}</text>
+      <text class="stat-item">不认识 {{unknownCount}}</text>
+    </view>
+    <text class="completion-tip">已自动写入艾宾浩斯学习记录，明天再来复习</text>
+    <button class="btn-primary" bindtap="restart">再来一组</button>
+  </view>
+
+  <view wx:if="{{words.length === 0 && !loading && !finished}}" class="empty">
+    <text class="empty-icon">📚</text>
+    <text class="empty-text">点击下方按钮开始抽词</text>
+  </view>
+
+  <view wx:if="{{loading}}" class="loading">抽词中…</view>
+
+  <view wx:if="{{words.length === 0 && !loading}}" class="initial-btn-wrapper">
+    <button class="btn-primary initial-btn" bindtap="loadRandom">🎲 抽 {{count}} 个 Band {{band}} 词</button>
+  </view>
+</view>

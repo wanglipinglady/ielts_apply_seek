@@ -1,11 +1,13 @@
 <view class="container login-container">
   <view class="logo-section">
-    <image class="logo" src="/assets/logo.png" mode="aspectFit"></image>
-    <view class="app-name">英语干中学</view>
-    <view class="app-subtitle">AI 陪你一起备考</view>
+    <view class="logo-placeholder">
+      <text class="logo-text">智取</text>
+    </view>
+    <view class="app-name">智取屠鸭山</view>
+    <view class="app-subtitle">AI 陪你一起攻克雅思</view>
   </view>
 
-  <view class="form-card card">
+  <view class="form-card">
     <view class="form-item">
       <text class="label">昵称（可选）</text>
       <input
@@ -21,9 +23,34 @@
       class="btn-primary login-btn"
       bindtap="doLogin"
       disabled="{{loading}}"
-    >{{ loading ? '登录中...' : '微信一键登录' }}</button>
+    >微信一键登录</button>
 
     <view wx:if="{{errorMsg}}" class="error-msg">{{errorMsg}}</view>
+
+    <!-- 调试模式面板（默认展开） -->
+    <view wx:if="{{isDev}}" class="dev-section">
+      <view class="dev-panel-toggle" bindtap="toggleDevPanel">
+        收起 调试登录面板
+      </view>
+
+      <view wx:if="{{showDevPanel}}" class="dev-panel">
+        <view class="dev-tip">
+          💡 调试模式：跳过微信接口，直接用 code 作为 openid 登录
+          （输入任意字符串作为调试 openid）
+        </view>
+        <input
+          class="input"
+          placeholder="调试 openid（如 test_user001）"
+          value="{{devCode}}"
+          bindinput="onDevCodeInput"
+        />
+        <button
+          class="btn-secondary dev-btn"
+          bindtap="doDevLogin"
+          disabled="{{loading}}"
+        >调试登录</button>
+      </view>
+    </view>
   </view>
 
   <view class="footer">

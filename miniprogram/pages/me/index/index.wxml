@@ -1,39 +1,26 @@
 <view class="container me-container">
   <!-- 顶部用户卡片 -->
   <view class="user-card">
-    <image class="avatar" src="{{user?.avatar_url || '/assets/avatar-default.png'}}" />
+    <image class="avatar" src="{{avatarSrc}}" />
     <view class="user-info">
-      <text class="nickname">{{user?.nickname || '微信用户'}}</text>
-      <text class="email">{{user?.email || '未绑定邮箱'}}</text>
+      <text class="nickname">{{displayName}}</text>
+      <text class="email">{{displayEmail}}</text>
     </view>
   </view>
 
-  <!-- 工具入口 -->
+  <!-- 工具入口：只保留"考试日历"（作文批改/资料下载在小程序体验不佳，移到 Web 端） -->
   <view class="tool-section card">
-    <view class="tool-item" bindtap="goGrade">
-      <text class="tool-icon">📝</text>
-      <text class="tool-name">写作批改</text>
+    <button class="tool-item" bindtap="goExam">
+      <text class="tool-icon">📅</text>
+      <view class="tool-info">
+        <text class="tool-name">考试日历</text>
+        <text class="tool-desc">查看近期雅思考试时间</text>
+      </view>
       <text class="tool-arrow">›</text>
-    </view>
-    <view class="tool-item" bindtap="goExam">
-      <text class="tool-icon">📊</text>
-      <text class="tool-name">模拟考试</text>
-      <text class="tool-arrow">›</text>
-    </view>
-    <view class="tool-item" bindtap="goTools">
-      <text class="tool-icon">🛠️</text>
-      <text class="tool-name">工具集（打字/番茄钟/日历）</text>
-      <text class="tool-arrow">›</text>
-    </view>
-    <view class="tool-item" bindtap="goSettings">
-      <text class="tool-icon">⚙️</text>
-      <text class="tool-name">设置</text>
-      <text class="tool-arrow">›</text>
-    </view>
+    </button>
   </view>
 
-  <!-- 退出登录 -->
-  <button class="btn-logout" bindtap="logout">退出登录</button>
+  <view class="version-tip">智取屠鸭山 v3.9.0 · 2026 大赛参赛作品</view>
 
-  <view class="version-tip">英语干中学 v3.9.0 · 2026 大赛参赛作品</view>
+  <button class="btn-secondary logout-btn" bindtap="doLogout">退出登录</button>
 </view>

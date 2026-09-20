@@ -1,1 +1,73 @@
-<view class="container"><view wx:for="{{tools}}" wx:key="id" class="tool-card card" data-name="{{item.name}}" bindtap="goTool"><text class="tool-icon">{{item.icon}}</text><view class="tool-info"><text class="tool-name">{{item.name}}</text><text class="tool-desc">{{item.desc}}</text></view><text class="tool-arrow">›</text></view></view>
+<view class="container tools-container">
+  <view class="section-title">快捷工具</view>
+  <view class="tool-grid">
+    <view class="tool-item card" data-tool="speak" bindtap="onTapTool">
+      <text class="tool-icon">🎤</text>
+      <text class="tool-name">口语对练</text>
+    </view>
+    <view class="tool-item card" data-tool="grade" bindtap="onTapTool">
+      <text class="tool-icon">📝</text>
+      <text class="tool-name">AI 写作</text>
+    </view>
+    <view class="tool-item card" data-tool="random" bindtap="onTapTool">
+      <text class="tool-icon">🎲</text>
+      <text class="tool-name">随机抽词</text>
+    </view>
+    <view class="tool-item card" data-tool="quiz" bindtap="onTapTool">
+      <text class="tool-icon">📚</text>
+      <text class="tool-name">单词背诵</text>
+    </view>
+    <view class="tool-item card" data-tool="mistakes" bindtap="onTapTool">
+      <text class="tool-icon">📒</text>
+      <text class="tool-name">错词本</text>
+    </view>
+    <view class="tool-item card" data-tool="exam" bindtap="onTapTool">
+      <text class="tool-icon">📅</text>
+      <text class="tool-name">考试日历</text>
+    </view>
+  </view>
+
+  <view class="section-title">🍅 番茄钟</view>
+  <view class="pomodoro-card card">
+    <view class="pomodoro-display">
+      <text class="pomodoro-time">{{pomodoroTime}}</text>
+    </view>
+    <view class="pomodoro-sessions">
+      <text class="sessions-text">今日完成：{{pomodoroSessions}} 个</text>
+    </view>
+    <view class="pomodoro-buttons">
+      <button wx:if="{{!pomodoroRunning}}" class="btn-primary pomodoro-btn" bindtap="startPomodoro">开始专注</button>
+      <button wx:if="{{pomodoroRunning}}" class="btn-secondary pomodoro-btn" bindtap="pausePomodoro">暂停</button>
+      <button class="btn-secondary pomodoro-btn" bindtap="resetPomodoro">重置</button>
+    </view>
+  </view>
+
+  <view class="section-title">🌐 文章翻译</view>
+  <view class="translate-card card">
+    <textarea
+      class="translate-textarea"
+      placeholder="粘贴英文文章，自动翻译并提取生词..."
+      value="{{translateInput}}"
+      bindinput="onTranslateInput"
+      maxlength="3000"
+      auto-height
+    ></textarea>
+    <view class="translate-actions">
+      <button class="btn-primary" bindtap="onTranslate" disabled="{{translateLoading}}">
+        {{translateButtonText}}
+      </button>
+    </view>
+    <view wx:if="{{translateResult}}" class="translate-result">
+      <view wx:if="{{translateResult.translation}}" class="result-section">
+        <text class="result-title">📝 译文</text>
+        <text class="result-content">{{translateResult.translation}}</text>
+      </view>
+      <view wx:if="{{translateResult.diff_words && translateResult.diff_words.length > 0}}" class="result-section">
+        <text class="result-title">📚 生词 ({{translateResult.diff_words.length}})</text>
+        <view class="word-chips">
+          <view wx:for="{{translateResult.diff_words}}" wx:key="word" class="word-chip">{{item.word}}</view>
+        </view>
+      </view>
+    </view>
+  </view>
+</view>

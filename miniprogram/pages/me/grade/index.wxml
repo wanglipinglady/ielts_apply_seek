@@ -1,1 +1,119 @@
-<view class="container"><view class="empty"><text class="empty-icon">📝</text><text class="empty-title">AI 写作批改</text><text class="empty-sub">W3 上线：粘贴文本 → LLM 按雅思 4 维评分 + 改写建议</text></view></view>
+<view class="container grade-container">
+  <view class="task-bar card">
+    <text class="task-label">任务：</text>
+    <view class="task-tabs">
+      <button class="task-tab {{taskTab1Class}}" data-type="task1" bindtap="onTaskChange">Task 1</button>
+      <button class="task-tab {{taskTab2Class}}" data-type="task2" bindtap="onTaskChange">Task 2</button>
+    </view>
+  </view>
+
+  <view wx:if="{{showInputArea}}" class="input-area card">
+    <view class="topic-card">
+      <text class="topic-tag">{{topic}}</text>
+      <text class="topic-text">{{topicText}}</text>
+    </view>
+    <view class="input-section">
+      <view class="meta-bar">
+        <text class="meta-text">{{wordCount}} / {{minWords}} 词</text>
+        <text class="meta-status {{wordStatusClass}}">{{wordStatusText}}</text>
+      </view>
+      <textarea
+        class="essay-input"
+        placeholder="在这里输入你的作文（建议 250 词以上）..."
+        value="{{essay}}"
+        bindinput="onEssayInput"
+        maxlength="3000"
+        auto-height
+      ></textarea>
+    </view>
+    <button class="btn-primary submit-btn" bindtap="onSubmit" disabled="{{submitDisabled}}">
+      {{submitButtonText}}
+    </button>
+  </view>
+
+  <view wx:if="{{loading}}" class="loading-card card">
+    <view class="loading-spinner"></view>
+    <text class="loading-text">AI 批改中...</text>
+    <text class="loading-tip">LLM 评估 4 维分数 + 逐句批注</text>
+  </view>
+
+  <view wx:if="{{result}}" class="result-area">
+    <view class="result-header card">
+      <view class="overall-band">
+        <text class="overall-num">{{result.overall_score}}</text>
+        <text class="overall-label">总分</text>
+      </view>
+      <view class="overall-info">
+        <text class="overall-task">{{resultTaskLabel}}</text>
+        <text class="overall-topic">{{resultTopicText}}</text>
+        <text class="overall-meta">{{wordCount}} 词</text>
+      </view>
+    </view>
+
+    <view class="band-grid card">
+      <view class="band-item">
+        <text class="band-score">{{result.band_scores.task_response}}</text>
+        <text class="band-name">任务回应</text>
+      </view>
+      <view class="band-item">
+        <text class="band-score">{{result.band_scores.coherence}}</text>
+        <text class="band-name">连贯性</text>
+      </view>
+      <view class="band-item">
+        <text class="band-score">{{result.band_scores.lexical}}</text>
+        <text class="band-name">词汇</text>
+      </view>
+      <view class="band-item">
+        <text class="band-score">{{result.band_scores.grammar}}</text>
+        <text class="band-name">语法</text>
+      </view>
+    </view>
+
+    <view wx:if="{{result.rewrite}}" class="result-card card">
+      <view class="result-title">
+        <text class="title-icon">✨</text>
+        <text class="title-text">高分范文</text>
+      </view>
+      <text class="result-content">{{result.rewrite}}</text>
+    </view>
+
+    <view wx:if="{{hasAnnotations}}" class="result-card card">
+      <view class="result-title">
+        <text class="title-icon">📝</text>
+        <text class="title-text">逐句批注（{{result.annotations.length}}）</text>
+      </view>
+      <view wx:for="{{result.annotations}}" wx:key="idx" class="annotation-item">
+        <view class="anno-header">
+          <text class="anno-type {{item.annoTypeClass}}">{{item.issue_type}}</text>
+          <text class="anno-severity">{{item.severity}}</text>
+        </view>
+        <view class="anno-body">
+          <view class="anno-row">
+            <text class="anno-label">原文</text>
+            <text class="anno-original">{{item.original}}</text>
+          </view>
+          <view class="anno-row">
+            <text class="anno-label">建议</text>
+            <text class="anno-suggestion">{{item.suggestion}}</text>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <view wx:if="{{hasSuggestions}}" class="result-card card">
+      <view class="result-title">
+        <text class="title-icon">💡</text>
+        <text class="title-text">改进建议</text>
+      </view>
+      <view wx:for="{{result.suggestions}}" wx:key="*this" class="suggestion-item">
+        <text class="suggestion-bullet">•</text>
+        <text class="suggestion-text">{{item}}</text>
+      </view>
+    </view>
+
+    <view class="action-buttons">
+      <button class="btn-secondary" bindtap="onRetry">换题重写</button>
+      <button class="btn-primary" bindtap="onNewSubmission">查看历史</button>
+    </view>
+  </view>
+</view>

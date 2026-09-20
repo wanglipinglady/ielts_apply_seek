@@ -1,23 +1,32 @@
 <view class="container mistakes-container">
-  <view class="header-tip card">
-    <text class="tip-title">错词本</text>
-    <text class="tip-sub">共 {{count}} 个错词（按错次降序）</text>
+  <view class="header card">
+    <view class="header-info">
+      <text class="header-num">{{mistakes.length}}</text>
+      <text class="header-label">个错词</text>
+    </view>
+    <view wx:if="{{mistakes.length > 0}}" class="clear-btn" bindtap="onClearAll">清空</view>
   </view>
 
   <view wx:if="{{mistakes.length === 0 && !loading}}" class="empty">
-    <text class="empty-icon">✨</text>
-    <text class="empty-text">没有错词！</text>
-    <text class="empty-sub">继续保持</text>
+    <text class="empty-icon">📭</text>
+    <text class="empty-text">错词本是空的</text>
+    <text class="empty-tip">抽词或复习时答错的词会自动加入</text>
   </view>
 
-  <view wx:for="{{mistakes}}" wx:key="word" class="mistake-item card">
-    <view class="mistake-main">
-      <text class="word">{{item.word}}</text>
-      <text class="meaning">{{item.meaning}}</text>
+  <view wx:for="{{mistakes}}" wx:key="word" class="word-item card">
+    <view class="word-main" bindtap="onWordTap" data-word="{{item}}">
+      <text class="word-text">{{item.word}}</text>
+      <text class="word-phonetic">{{item.phonetic}}</text>
     </view>
-    <view class="mistake-meta">
-      <text class="wrong-count">错 {{item.wrong_count}} 次</text>
-      <button class="btn-mini" data-word="{{item.word}}" bindtap="markMastered">掌握</button>
+    <view class="word-meta">
+      <text class="word-meaning">{{item.meaning}}</text>
+      <view class="word-footer">
+        <text class="error-count">错误 {{item.error_count_text}} 次</text>
+        <text class="band-tag">Band {{item.band}}</text>
+      </view>
+    </view>
+    <view class="word-actions">
+      <view class="action-btn" bindtap="onRemove" data-word="{{item}}">移除</view>
     </view>
   </view>
 

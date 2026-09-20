@@ -1,26 +1,430 @@
+/* pages/speak/practice/index.wxss — 口语对练 v3.9+ / 2026-09-20 */
+
 .practice-container {
   padding: 24rpx;
   background: #F8F8F8;
   min-height: 100vh;
+  display: flex;
+  flex-direction: column;
 }
-.empty {
-  text-align: center;
-  padding: 200rpx 32rpx;
-}
-.empty-icon {
-  font-size: 120rpx;
-  display: block;
-  margin-bottom: 32rpx;
-}
-.empty-title {
-  font-size: 40rpx;
-  color: #07C160;
-  font-weight: 700;
-  display: block;
+
+/* Part 选择器 */
+.part-selector {
+  display: flex;
+  align-items: center;
+  padding: 20rpx 24rpx;
   margin-bottom: 16rpx;
 }
-.empty-sub {
+
+.part-label {
   font-size: 26rpx;
+  color: #666;
+  margin-right: 16rpx;
+}
+
+.part-tabs {
+  display: flex;
+  flex: 1;
+  gap: 8rpx;
+}
+
+.part-tab {
+  flex: 1;
+  text-align: center;
+  padding: 12rpx 0;
+  font-size: 26rpx;
+  color: #666;
+  background: #F0F0F0;
+  border-radius: 8rpx;
+  transition: all 0.2s;
+}
+
+.part-tab.active {
+  background: #07C160;
+  color: #fff;
+  font-weight: 500;
+}
+
+/* 题目卡 */
+.question-card {
+  padding: 32rpx 24rpx;
+  margin-bottom: 16rpx;
+}
+
+.topic-header {
+  margin-bottom: 16rpx;
+}
+
+.topic-tag {
+  display: inline-block;
+  font-size: 22rpx;
+  color: #07C160;
+  background: #E8F8EF;
+  padding: 4rpx 12rpx;
+  border-radius: 6rpx;
+}
+
+.question-text {
+  margin-bottom: 16rpx;
+}
+
+.question-content {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #1A3A5F;
+  line-height: 1.6;
+}
+
+.vocab-section {
+  margin-top: 16rpx;
+  padding-top: 16rpx;
+  border-top: 2rpx solid #F0F0F0;
+}
+
+.vocab-label {
+  font-size: 24rpx;
+  color: #666;
+  font-weight: 500;
+  display: block;
+  margin-bottom: 12rpx;
+}
+
+.vocab-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8rpx;
+}
+
+.vocab-chip {
+  font-size: 22rpx;
+  color: #1A3A5F;
+  background: #F8FCF9;
+  padding: 4rpx 12rpx;
+  border-radius: 6rpx;
+  border: 2rpx solid #E8F8EF;
+}
+
+.tips-section {
+  margin-top: 16rpx;
+  padding: 16rpx;
+  background: #FFF9E6;
+  border-radius: 8rpx;
+}
+
+.tips-label {
+  font-size: 24rpx;
+  color: #B5841F;
+  font-weight: 500;
+  display: block;
+  margin-bottom: 8rpx;
+}
+
+.tips-content {
+  font-size: 24rpx;
+  color: #664D00;
+  line-height: 1.5;
+}
+
+/* 录音区 */
+.record-section {
+  background: #fff;
+  border-radius: 16rpx;
+  padding: 48rpx 32rpx;
+  margin-bottom: 16rpx;
+  box-shadow: 0 2rpx 8rpx rgba(0,0,0,0.04);
+}
+
+.record-idle,
+.recording,
+.recorded,
+.loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.record-icon-wrap {
+  width: 200rpx;
+  height: 200rpx;
+  border-radius: 50%;
+  background: #F0F8F4;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 24rpx;
+  border: 4rpx solid #07C160;
+  position: relative;
+}
+
+.record-icon-wrap.active {
+  background: #FFE5E5;
+  border-color: #F56565;
+}
+
+.record-icon-wrap.success {
+  background: #E8F8EF;
+  border-color: #07C160;
+}
+
+.record-icon {
+  font-size: 80rpx;
+}
+
+.record-pulse {
+  position: absolute;
+  top: -4rpx; left: -4rpx; right: -4rpx; bottom: -4rpx;
+  border-radius: 50%;
+  border: 4rpx solid #F56565;
+  opacity: 0.6;
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0% { transform: scale(1); opacity: 0.6; }
+  100% { transform: scale(1.3); opacity: 0; }
+}
+
+.record-hint {
+  font-size: 26rpx;
+  color: #07C160;
+  margin-top: 12rpx;
+}
+
+.record-time {
+  font-size: 48rpx;
+  font-weight: 700;
+  color: #F56565;
+  margin-bottom: 16rpx;
+  font-family: "Courier New", monospace;
+}
+
+.record-duration {
+  font-size: 26rpx;
+  color: #666;
+  margin-bottom: 24rpx;
+}
+
+.stop-btn {
+  background: #F56565;
+  color: #fff;
+  border: none;
+  border-radius: 12rpx;
+  padding: 16rpx 48rpx;
+  font-size: 28rpx;
+}
+
+.action-buttons {
+  display: flex;
+  gap: 16rpx;
+  width: 100%;
+}
+
+.action-buttons .btn-secondary,
+.action-buttons .btn-primary {
+  flex: 1;
+  margin: 0;
+}
+
+/* Loading */
+.loading-state {
+  padding: 32rpx 0;
+}
+
+.loading-spinner {
+  width: 80rpx;
+  height: 80rpx;
+  border: 6rpx solid #E8F8EF;
+  border-top-color: #07C160;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin-bottom: 24rpx;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.loading-text {
+  font-size: 28rpx;
+  color: #07C160;
+  font-weight: 500;
+}
+
+/* 评分反馈 */
+.feedback-card {
+  margin-bottom: 16rpx;
+}
+
+.feedback-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24rpx;
+  padding-bottom: 16rpx;
+  border-bottom: 2rpx solid #F0F0F0;
+}
+
+.feedback-title {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #1A3A5F;
+}
+
+.overall-band {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.band-num {
+  font-size: 48rpx;
+  font-weight: 700;
+  color: #07C160;
+  line-height: 1.2;
+}
+
+.band-label {
+  font-size: 22rpx;
+  color: #999;
+  margin-top: 4rpx;
+}
+
+.score-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 1fr;
+  gap: 12rpx;
+  margin-bottom: 24rpx;
+}
+
+.score-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 16rpx 8rpx;
+  background: #F8FCF9;
+  border-radius: 12rpx;
+}
+
+.score-num {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #07C160;
+  line-height: 1.2;
+}
+
+.score-label {
+  font-size: 22rpx;
+  color: #666;
+  margin-top: 4rpx;
+}
+
+.section {
+  margin-bottom: 20rpx;
+  padding: 16rpx;
+  background: #FAFAFA;
+  border-radius: 8rpx;
+}
+
+.section-title {
+  font-size: 26rpx;
+  font-weight: 600;
+  color: #1A3A5F;
+  display: block;
+  margin-bottom: 12rpx;
+}
+
+.section-content {
+  font-size: 26rpx;
+  color: #333;
+  line-height: 1.6;
+  display: block;
+}
+
+.section-content.sample {
+  color: #666;
+  font-style: italic;
+}
+
+.error-item {
+  display: flex;
+  align-items: center;
+  padding: 8rpx 0;
+  font-size: 26rpx;
+}
+
+.error-original {
+  color: #F56565;
+  text-decoration: line-through;
+  margin-right: 8rpx;
+}
+
+.error-arrow {
+  color: #999;
+  margin-right: 8rpx;
+}
+
+.error-correction {
+  color: #07C160;
+  font-weight: 500;
+}
+
+.suggestion-item {
+  display: flex;
+  margin-bottom: 8rpx;
+}
+
+.suggestion-bullet {
+  color: #07C160;
+  margin-right: 8rpx;
+  font-size: 26rpx;
+}
+
+.suggestion-text {
+  flex: 1;
+  font-size: 26rpx;
+  color: #333;
+  line-height: 1.6;
+}
+
+.retry-btn {
+  width: 100%;
+  margin-top: 16rpx;
+}
+
+/* 历史记录入口 */
+.history-entry {
+  display: flex;
+  align-items: center;
+  padding: 24rpx;
+  margin-top: auto;
+}
+
+.history-icon {
+  font-size: 48rpx;
+  margin-right: 16rpx;
+}
+
+.history-info {
+  flex: 1;
+}
+
+.history-title {
+  font-size: 28rpx;
+  color: #1A3A5F;
+  font-weight: 500;
+  display: block;
+  margin-bottom: 4rpx;
+}
+
+.history-sub {
+  font-size: 22rpx;
   color: #999;
   display: block;
+}
+
+.history-arrow {
+  font-size: 36rpx;
+  color: #CCC;
 }

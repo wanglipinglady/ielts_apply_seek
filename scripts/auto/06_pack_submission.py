@@ -54,7 +54,7 @@ def check_materials(members: list[str], description_pdf: Path | None) -> dict:
             status[f"id_card_{m}"] = None  # 缺失
 
     # 2. 小程序名称：从配置读取
-    status["name"] = "英语干中学"  # 2026-08-24 定名
+    status["name"] = "屠鸭智取"  # 2026-08-24 定名
 
     # 3. AppID：从配置读取
     status["appid"] = "wx286309bc641b1d79"
@@ -78,7 +78,7 @@ def check_materials(members: list[str], description_pdf: Path | None) -> dict:
 def render_readme(status: dict, members: list[str]) -> str:
     """生成提报清单 README。"""
     md = [
-        "# 英语干中学 · 2026 微信小程序开发大赛 提报材料包\n",
+        "# 屠鸭智取 · 2026 微信小程序开发大赛 提报材料包\n",
         f"> 打包时间：{datetime.now().isoformat(timespec='seconds')}\n",
         f"> 大赛：2026 微信小程序开发大赛",
         f"> 提报截止：2026-10-17\n",

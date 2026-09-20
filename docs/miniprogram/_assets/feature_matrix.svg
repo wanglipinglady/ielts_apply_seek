@@ -1,0 +1,115 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 600" width="900" height="600">
+  <defs>
+    <linearGradient id="bg2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FAFBFC"/>
+      <stop offset="100%" stop-color="#F0F4F8"/>
+    </linearGradient>
+    <linearGradient id="title" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#0F5F4F"/>
+      <stop offset="100%" stop-color="#07A081"/>
+    </linearGradient>
+  </defs>
+  <rect width="900" height="600" fill="url(#bg2)"/>
+  <rect x="0" y="0" width="900" height="80" fill="url(#title)"/>
+  <text x="450" y="38" text-anchor="middle" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="22" font-weight="700" fill="#FFFFFF">「屠鸭智取」· 9 项 AI 备考功能矩阵</text>
+  <text x="450" y="62" text-anchor="middle" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="13" fill="#FFD24A">雅思考生专属 AI 工具 · 个人开发 · 永久免费 · 无广告</text>
+
+  <g transform="translate(60 110)">
+    <rect width="240" height="140" rx="12" fill="#FFFFFF" stroke="#0F5F4F" stroke-width="1.5"/>
+    <circle cx="30" cy="30" r="18" fill="#0F5F4F"/>
+    <text x="30" y="36" text-anchor="middle" font-family="Arial, sans-serif" font-size="18" font-weight="700" fill="#FFFFFF">1</text>
+    <text x="60" y="32" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="16" font-weight="700" fill="#0F5F4F">单词背诵</text>
+    <text x="60" y="50" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="11" fill="#666">4485 词 · 艾宾浩斯曲线</text>
+    <text x="20" y="80" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="11" fill="#333">• 按 Band 5-9 分级</text>
+    <text x="20" y="98" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="11" fill="#333">• 每日推送复习</text>
+    <text x="20" y="116" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="11" fill="#333">• 自动归集错词</text>
+  </g>
+
+  <g transform="translate(330 110)">
+    <rect width="240" height="140" rx="12" fill="#FFFFFF" stroke="#0F5F4F" stroke-width="1.5"/>
+    <circle cx="30" cy="30" r="18" fill="#07A081"/>
+    <text x="30" y="36" text-anchor="middle" font-family="Arial, sans-serif" font-size="18" font-weight="700" fill="#FFFFFF">2</text>
+    <text x="60" y="32" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="16" font-weight="700" fill="#0F5F4F">随机抽词刷词</text>
+    <text x="60" y="50" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="11" fill="#666">智能抽样 · 快速过词</text>
+    <text x="20" y="80" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="11" fill="#333">• 按 Topic / 难度筛选</text>
+    <text x="20" y="98" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="11" fill="#333">• 测验答案即时判分</text>
+    <text x="20" y="116" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="11" fill="#333">• 错题入错词本</text>
+  </g>
+
+  <g transform="translate(600 110)">
+    <rect width="240" height="140" rx="12" fill="#FFFFFF" stroke="#0F5F4F" stroke-width="1.5"/>
+    <circle cx="30" cy="30" r="18" fill="#FFD24A"/>
+    <text x="30" y="36" text-anchor="middle" font-family="Arial, sans-serif" font-size="18" font-weight="700" fill="#0F5F4F">3</text>
+    <text x="60" y="32" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="16" font-weight="700" fill="#0F5F4F">错词本复习</text>
+    <text x="60" y="50" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="11" fill="#666">自动归纳 · 重点突破</text>
+    <text x="20" y="80" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="11" fill="#333">• 自动记录错误单词</text>
+    <text x="20" y="98" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="11" fill="#333">• 按错误频次排序</text>
+    <text x="20" y="116" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="11" fill="#333">• 二次复习闭环</text>
+  </g>
+
+  <g transform="translate(60 270)">
+    <rect width="240" height="140" rx="12" fill="#FFFFFF" stroke="#07A081" stroke-width="1.5"/>
+    <circle cx="30" cy="30" r="18" fill="#07A081"/>
+    <text x="30" y="36" text-anchor="middle" font-family="Arial, sans-serif" font-size="18" font-weight="700" fill="#FFFFFF">4</text>
+    <text x="60" y="32" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="16" font-weight="700" fill="#0F5F4F">口语 AI 评分</text>
+    <text x="60" y="50" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="11" fill="#666">Whisper · 4 项 Band 评分</text>
+    <text x="20" y="80" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="11" fill="#333">• Part 1/2/3 话题库</text>
+    <text x="20" y="98" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="11" fill="#333">• 流利度 / 词汇 / 语法</text>
+    <text x="20" y="116" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="11" fill="#333">• 录音自动评分</text>
+  </g>
+
+  <g transform="translate(330 270)">
+    <rect width="240" height="140" rx="12" fill="#FFFFFF" stroke="#07A081" stroke-width="1.5"/>
+    <circle cx="30" cy="30" r="18" fill="#07A081"/>
+    <text x="30" y="36" text-anchor="middle" font-family="Arial, sans-serif" font-size="18" font-weight="700" fill="#FFFFFF">5</text>
+    <text x="60" y="32" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="16" font-weight="700" fill="#0F5F4F">写作 AI 批改</text>
+    <text x="60" y="50" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="11" fill="#666">LLM · 仿雅思考官</text>
+    <text x="20" y="80" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="11" fill="#333">• Task 1 / Task 2 双支持</text>
+    <text x="20" y="98" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="11" fill="#333">• 4 维度 Band 评分</text>
+    <text x="20" y="116" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="11" fill="#333">• 逐句批注 + 范文</text>
+  </g>
+
+  <g transform="translate(600 270)">
+    <rect width="240" height="140" rx="12" fill="#FFFFFF" stroke="#07A081" stroke-width="1.5"/>
+    <circle cx="30" cy="30" r="18" fill="#07A081"/>
+    <text x="30" y="36" text-anchor="middle" font-family="Arial, sans-serif" font-size="18" font-weight="700" fill="#FFFFFF">6</text>
+    <text x="60" y="32" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="16" font-weight="700" fill="#0F5F4F">阅读真题练习</text>
+    <text x="60" y="50" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="11" fill="#666">剑桥真题 · 智能题库</text>
+    <text x="20" y="80" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="11" fill="#333">• 按题型 / 难度筛选</text>
+    <text x="20" y="98" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="11" fill="#333">• 计时 + 错题归集</text>
+    <text x="20" y="116" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="11" fill="#333">• 答案解析</text>
+  </g>
+
+  <g transform="translate(60 430)">
+    <rect width="240" height="140" rx="12" fill="#FFFFFF" stroke="#F5A623" stroke-width="1.5"/>
+    <circle cx="30" cy="30" r="18" fill="#F5A623"/>
+    <text x="30" y="36" text-anchor="middle" font-family="Arial, sans-serif" font-size="18" font-weight="700" fill="#FFFFFF">7</text>
+    <text x="60" y="32" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="16" font-weight="700" fill="#0F5F4F">备考计划</text>
+    <text x="60" y="50" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="11" fill="#666">日历 · 个性化定制</text>
+    <text x="20" y="80" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="11" fill="#333">• 番茄钟专注计时</text>
+    <text x="20" y="98" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="11" fill="#333">• 考试倒数日历</text>
+    <text x="20" y="116" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="11" fill="#333">• 学习目标设定</text>
+  </g>
+
+  <g transform="translate(330 430)">
+    <rect width="240" height="140" rx="12" fill="#FFFFFF" stroke="#F5A623" stroke-width="1.5"/>
+    <circle cx="30" cy="30" r="18" fill="#F5A623"/>
+    <text x="30" y="36" text-anchor="middle" font-family="Arial, sans-serif" font-size="18" font-weight="700" fill="#FFFFFF">8</text>
+    <text x="60" y="32" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="16" font-weight="700" fill="#0F5F4F">数据复盘</text>
+    <text x="60" y="50" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="11" fill="#666">周报 · 学习曲线</text>
+    <text x="20" y="80" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="11" fill="#333">• 每日打卡统计</text>
+    <text x="20" y="98" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="11" fill="#333">• 模考分数趋势</text>
+    <text x="20" y="116" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="11" fill="#333">• 薄弱点定位</text>
+  </g>
+
+  <g transform="translate(600 430)">
+    <rect width="240" height="140" rx="12" fill="#FFFFFF" stroke="#F5A623" stroke-width="1.5"/>
+    <circle cx="30" cy="30" r="18" fill="#F5A623"/>
+    <text x="30" y="36" text-anchor="middle" font-family="Arial, sans-serif" font-size="18" font-weight="700" fill="#FFFFFF">9</text>
+    <text x="60" y="32" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="16" font-weight="700" fill="#0F5F4F">智能体对话</text>
+    <text x="60" y="50" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="11" fill="#666">ClawBot · 随时提问</text>
+    <text x="20" y="80" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="11" fill="#333">• 7x24 备考咨询</text>
+    <text x="20" y="98" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="11" fill="#333">• 个性化推荐</text>
+    <text x="20" y="116" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="11" fill="#333">• 学习路径调整</text>
+  </g>
+</svg>

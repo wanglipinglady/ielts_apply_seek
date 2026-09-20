@@ -1,1 +1,375 @@
-.empty{text-align:center;padding:200rpx 32rpx}.empty-icon{font-size:120rpx;display:block;margin-bottom:32rpx}.empty-title{font-size:40rpx;color:#07C160;font-weight:700;display:block;margin-bottom:16rpx}.empty-sub{font-size:26rpx;color:#999;display:block}
+/* pages/me/grade/index.wxss — AI 写作批改 v3.9+ / 2026-09-20 */
+
+.grade-container {
+  padding: 24rpx;
+  background: #F8F8F8;
+  min-height: 100vh;
+}
+
+.task-bar {
+  display: flex;
+  align-items: center;
+  padding: 20rpx 24rpx;
+  margin-bottom: 16rpx;
+}
+
+.task-label {
+  font-size: 26rpx;
+  color: #666;
+  margin-right: 16rpx;
+}
+
+.task-tabs {
+  display: flex;
+  flex: 1;
+  gap: 12rpx;
+}
+
+.task-tab {
+  flex: 1;
+  text-align: center;
+  padding: 12rpx 0;
+  font-size: 26rpx;
+  color: #666;
+  background: #F0F0F0;
+  border-radius: 8rpx;
+}
+
+.task-tab.active {
+  background: #07C160;
+  color: #fff;
+  font-weight: 500;
+}
+
+.input-area {
+  margin-bottom: 16rpx;
+}
+
+.topic-card {
+  padding: 16rpx;
+  background: #F8FCF9;
+  border-radius: 8rpx;
+  margin-bottom: 16rpx;
+  border-left: 4rpx solid #07C160;
+}
+
+.topic-tag {
+  font-size: 22rpx;
+  color: #07C160;
+  display: block;
+  margin-bottom: 4rpx;
+}
+
+.topic-text {
+  font-size: 28rpx;
+  color: #1A3A5F;
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+.input-section {
+  margin-bottom: 16rpx;
+}
+
+.meta-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12rpx;
+  padding: 0 4rpx;
+}
+
+.meta-text {
+  font-size: 22rpx;
+  color: #999;
+}
+
+.meta-status {
+  font-size: 22rpx;
+  padding: 4rpx 12rpx;
+  border-radius: 6rpx;
+}
+
+.meta-status.warn {
+  background: #FFE5E5;
+  color: #F56565;
+}
+
+.meta-status.ok {
+  background: #E8F8EF;
+  color: #07C160;
+}
+
+.essay-input {
+  width: 100%;
+  min-height: 400rpx;
+  padding: 16rpx;
+  background: #FAFAFA;
+  border: 2rpx solid #EEE;
+  border-radius: 8rpx;
+  font-size: 28rpx;
+  line-height: 1.7;
+  color: #333;
+  box-sizing: border-box;
+}
+
+.essay-input:focus {
+  border-color: #07C160;
+  background: #fff;
+}
+
+.submit-btn {
+  width: 100%;
+  margin-top: 8rpx;
+}
+
+.submit-btn[disabled] {
+  background: #B5E5C9;
+  color: #fff;
+}
+
+.loading-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 64rpx 32rpx;
+}
+
+.loading-spinner {
+  width: 80rpx;
+  height: 80rpx;
+  border: 6rpx solid #E8F8EF;
+  border-top-color: #07C160;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin-bottom: 24rpx;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.loading-text {
+  font-size: 30rpx;
+  font-weight: 500;
+  color: #07C160;
+  margin-bottom: 8rpx;
+}
+
+.loading-tip {
+  font-size: 24rpx;
+  color: #999;
+}
+
+.result-area {
+  margin-bottom: 24rpx;
+}
+
+.result-header {
+  display: flex;
+  align-items: center;
+  padding: 24rpx;
+  margin-bottom: 16rpx;
+  background: linear-gradient(135deg, #07C160 0%, #06AD56 100%);
+  color: #fff;
+}
+
+.overall-band {
+  width: 120rpx;
+  height: 120rpx;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.2);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  margin-right: 24rpx;
+}
+
+.overall-num {
+  font-size: 56rpx;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.overall-label {
+  font-size: 22rpx;
+  opacity: 0.85;
+  margin-top: 4rpx;
+}
+
+.overall-info {
+  flex: 1;
+}
+
+.overall-task {
+  font-size: 28rpx;
+  font-weight: 600;
+  display: block;
+  margin-bottom: 4rpx;
+}
+
+.overall-topic {
+  font-size: 24rpx;
+  opacity: 0.9;
+  display: block;
+  margin-bottom: 4rpx;
+}
+
+.overall-meta {
+  font-size: 22rpx;
+  opacity: 0.8;
+  display: block;
+}
+
+.band-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 1fr;
+  gap: 12rpx;
+  margin-bottom: 16rpx;
+  padding: 24rpx 16rpx;
+}
+
+.band-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 16rpx 8rpx;
+  background: #F8FCF9;
+  border-radius: 12rpx;
+}
+
+.band-score {
+  font-size: 32rpx;
+  font-weight: 700;
+  color: #07C160;
+  line-height: 1.2;
+}
+
+.band-name {
+  font-size: 20rpx;
+  color: #666;
+  margin-top: 4rpx;
+  text-align: center;
+}
+
+.result-card {
+  margin-bottom: 16rpx;
+}
+
+.result-title {
+  display: flex;
+  align-items: center;
+  margin-bottom: 12rpx;
+  padding-bottom: 12rpx;
+  border-bottom: 2rpx solid #F0F0F0;
+}
+
+.title-icon {
+  font-size: 28rpx;
+  margin-right: 8rpx;
+}
+
+.title-text {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #1A3A5F;
+}
+
+.result-content {
+  font-size: 26rpx;
+  color: #333;
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+
+.annotation-item {
+  padding: 16rpx;
+  background: #FAFAFA;
+  border-radius: 8rpx;
+  margin-bottom: 12rpx;
+}
+
+.anno-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 8rpx;
+}
+
+.anno-type {
+  font-size: 22rpx;
+  padding: 4rpx 10rpx;
+  border-radius: 4rpx;
+  margin-right: 8rpx;
+}
+
+.anno-type.grammar { background: #FFE5E5; color: #F56565; }
+.anno-type.lexical { background: #FFF9E6; color: #B5841F; }
+.anno-type.coherence { background: #E8F0FF; color: #4A6FE7; }
+.anno-type.task_response { background: #E8F0FF; color: #4A6FE7; }
+.anno-type.suggestion { background: #E8F8EF; color: #07C160; }
+
+.anno-severity {
+  font-size: 20rpx;
+  color: #999;
+  background: #F0F0F0;
+  padding: 2rpx 8rpx;
+  border-radius: 4rpx;
+}
+
+.anno-body {
+  padding: 0 8rpx;
+}
+
+.anno-row {
+  margin-bottom: 4rpx;
+}
+
+.anno-label {
+  font-size: 22rpx;
+  color: #999;
+  margin-right: 8rpx;
+}
+
+.anno-original {
+  font-size: 26rpx;
+  color: #F56565;
+  text-decoration: line-through;
+}
+
+.anno-suggestion {
+  font-size: 26rpx;
+  color: #07C160;
+  font-weight: 500;
+}
+
+.suggestion-item {
+  display: flex;
+  margin-bottom: 8rpx;
+}
+
+.suggestion-bullet {
+  color: #07C160;
+  margin-right: 8rpx;
+  font-size: 28rpx;
+}
+
+.suggestion-text {
+  flex: 1;
+  font-size: 26rpx;
+  color: #333;
+  line-height: 1.6;
+}
+
+.action-buttons {
+  display: flex;
+  gap: 16rpx;
+  margin-top: 16rpx;
+}
+
+.action-buttons .btn-secondary,
+.action-buttons .btn-primary {
+  flex: 1;
+  margin: 0;
+}

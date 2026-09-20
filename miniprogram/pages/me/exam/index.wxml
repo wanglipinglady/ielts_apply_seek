@@ -1,1 +1,59 @@
-<view class="container"><view class="empty"><text class="empty-icon">📊</text><text class="empty-title">模拟考试</text><text class="empty-sub">W3 上线：限时全真模拟 + 自动评分</text></view></view>
+<view class="container exam-container">
+  <view wx:if="{{nextExam}}" class="next-exam">
+    <view class="next-header">
+      <text class="next-label">下一场考试</text>
+      <text class="next-tag {{nextExam.type_class}}">{{nextExam.type}}</text>
+    </view>
+    <view class="next-title">{{nextExam.title}}</view>
+    <view class="next-date">{{nextExam.date_label}}</view>
+    <view class="countdown-bar">
+      <view class="countdown-item">
+        <text class="countdown-num">{{nextExam.days}}</text>
+        <text class="countdown-label">天</text>
+      </view>
+      <text class="countdown-sep">:</text>
+      <view class="countdown-item">
+        <text class="countdown-num">{{nextExam.hours}}</text>
+        <text class="countdown-label">时</text>
+      </view>
+      <text class="countdown-sep">:</text>
+      <view class="countdown-item">
+        <text class="countdown-num">{{nextExam.minutes}}</text>
+        <text class="countdown-label">分</text>
+      </view>
+    </view>
+    <view class="next-tip">{{nextExam.tip}}</view>
+  </view>
+
+  <view class="section-title">
+    <text>近期考试</text>
+  </view>
+  <view class="exam-list">
+    <view wx:for="{{exams}}" wx:key="id" class="exam-item card">
+      <view class="exam-row">
+        <view class="exam-date-col">
+          <text class="exam-month">{{item.month}}</text>
+          <text class="exam-day">{{item.day}}</text>
+          <text class="exam-weekday">{{item.weekday}}</text>
+        </view>
+        <view class="exam-info-col">
+          <view class="exam-type-row">
+            <text class="exam-type {{item.type_class}}">{{item.type}}</text>
+            <text wx:if="{{item.is_past}}" class="exam-status past">已结束</text>
+            <text wx:elif="{{item.is_today}}" class="exam-status today">今天</text>
+          </view>
+          <text class="exam-title">{{item.title}}</text>
+          <view class="exam-meta-row">
+            <text class="exam-time">{{item.time}}</text>
+            <text class="exam-fee">{{item.fee}}</text>
+          </view>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <view class="tips-card card">
+    <view class="tips-title">💡 备考建议</view>
+    <view class="tips-content">{{tipText}}</view>
+  </view>
+</view>

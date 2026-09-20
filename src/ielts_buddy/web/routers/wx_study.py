@@ -166,6 +166,19 @@ async def wx_vocab_quiz_submit(
             detail=f"写学习记录失败: {e}",
         )
 
+    # v3.9 错词本：答错自动入 personal_vocab.mistakes（对齐 web /api/quiz/answer 行为）
+    if not body.correct:
+        try:
+            container = _container_or_500(request)
+            MistakeService(container, int(user.id)).record_mistake(
+                word_obj, source=f"wx_quiz_{body.mode}_mistake"
+            )
+        except Exception:
+            import logging
+            logging.getLogger("ielts_buddy.web.wx_study").warning(
+                "[wx_quiz] record_mistake failed for %r", body.word, exc_info=True
+            )
+
     rec = svc._get_record(body.word)
     next_review = getattr(rec, "next_review", None) if rec else None
     next_review_str = (
@@ -239,6 +252,7 @@ async def wx_review_due(
 
 @router.post("/review/submit")
 async def wx_review_submit(
+    request: Request,
     body: ReviewSubmitRequest,
     user: Annotated[WebUser, Depends(get_current_user)],
     review_svc: ReviewService = Depends(get_review_service),
@@ -261,6 +275,20 @@ async def wx_review_submit(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"复习记录失败: {e}",
         )
+
+    # v3.9 错词本：答错自动入 personal_vocab.mistakes（对齐 web /api/study/answer 行为）
+    # 随机学习 (random) 和艾宾浩斯复习 (review) 共用此端点，源标记区分
+    if not body.correct:
+        try:
+            container = _container_or_500(request)
+            MistakeService(container, int(user.id)).record_mistake(
+                word_obj, source="wx_review_mistake"
+            )
+        except Exception:
+            import logging
+            logging.getLogger("ielts_buddy.web.wx_study").warning(
+                "[wx_review] record_mistake failed for %r", body.word, exc_info=True
+            )
 
     rec = svc._get_record(body.word)
     next_review = getattr(rec, "next_review", None) if rec else None
@@ -325,6 +353,50 @@ async def wx_review_mistakes(
         "mistakes": items,
         "count": len(items),
     }
+
+
+# =============================================================
+# 7. POST /api/wx/study/mistakes/{word}/mark-correct
+# =============================================================
+
+
+@router.post("/mistakes/{word}/mark-correct")
+async def wx_mistakes_mark_correct(
+    request: Request,
+    user: Annotated[WebUser, Depends(get_current_user)],
+    word: str,
+) -> dict:
+    """标记某词已掌握(清 wrong_count=0, 对齐 web /api/mistakes/{word}/mark-correct)。
+
+    与 web 端语义一致：仅清 learning_records.wrong_count,
+    不直接删 personal_vocab.mistakes 关联(若用户再次答错可重新加入)。
+    """
+    container = _container_or_500(request)
+    if not hasattr(container, "learning"):
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="业务容器未就绪",
+        )
+
+    try:
+        ok = container.learning.reset_mistake(int(user.id), word)
+    except Exception as e:
+        import logging
+        logging.getLogger("ielts_buddy.web.wx_study").exception(
+            "[wx_mistakes] mark_correct failed for %r: %s", word, e
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"标记掌握失败: {e}",
+        )
+
+    if not ok:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"没有 '{word}' 的学习记录",
+        )
+
+    return {"success": True, "word": word}
 
 
 # =============================================================

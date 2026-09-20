@@ -1,43 +1,31 @@
-<view class="container study-container">
+<view class="container study-container"><!-- v3-button-2026-09-20-18:15 -->
   <!-- 顶部统计行 -->
   <view class="top-stats card">
     <view class="stat-item">
-      <text class="stat-num">{{user?.streak_days || 0}}</text>
+      <text class="stat-num">{{streakDays}}</text>
       <text class="stat-label">连续天数</text>
     </view>
     <view class="stat-item">
-      <text class="stat-num">{{user?.learned_count || 0}}</text>
+      <text class="stat-num">{{learnedCount}}</text>
       <text class="stat-label">已学词数</text>
     </view>
     <view class="stat-item">
-      <text class="stat-num">{{user?.due_today || 0}}</text>
+      <text class="stat-num">{{dueToday}}</text>
       <text class="stat-label">待复习</text>
     </view>
   </view>
 
   <!-- Tab 切换 -->
   <view class="tab-bar">
-    <view
-      class="tab {{activeTab === 'browse' ? 'active' : ''}}"
-      data-tab="browse"
-      bindtap="switchTab"
-    >浏览</view>
-    <view
-      class="tab {{activeTab === 'random' ? 'active' : ''}}"
-      data-tab="random"
-      bindtap="switchTab"
-    >抽词</view>
-    <view
-      class="tab {{activeTab === 'quiz' ? 'active' : ''}}"
-      data-tab="quiz"
-      bindtap="switchTab"
-    >测验</view>
+    <view class="tab browse-tab {{activeBrowseClass}}" data-tab="browse" bindtap="switchTab">浏览</view>
+    <view class="tab random-tab {{activeRandomClass}}" data-tab="random" bindtap="switchTab">抽词</view>
+    <view class="tab quiz-tab {{activeQuizClass}}" data-tab="quiz" bindtap="switchTab">测验</view>
   </view>
 
   <!-- Band 选择 -->
   <view class="band-bar">
     <text class="band-label">Band：</text>
-    <picker mode="selector" range="{{[5,6,7,8,9]}}" value="{{band - 5}}" bindchange="onBandChange">
+    <picker mode="selector" range="{{[5,6,7,8,9]}}" value="{{bandIndex}}" bindchange="onBandChange">
       <view class="band-value">{{band}}</view>
     </picker>
   </view>
@@ -58,23 +46,73 @@
     <view wx:if="{{loading}}" class="loading">加载中…</view>
   </view>
 
-  <!-- 抽词模式 -->
-  <view wx:elif="{{activeTab === 'random'}}" class="word-list">
-    <view class="random-tip">每次随机抽 5 个 Band {{band}} 的词</view>
-    <button class="btn-primary" bindtap="onRandomTap">🎲 抽 5 个词</button>
-    <view wx:for="{{words}}" wx:key="word" class="word-item card">
-      <view class="word-main">
-        <text class="word-text">{{item.word}}</text>
-        <text class="word-phonetic">{{item.phonetic}}</text>
+  <!-- 抽词模式：内联完整 random 学习流程（单卡片 + flip + 认识/不认识 + 写艾宾浩斯 + 不认识入错题本） -->
+  <view wx:if="{{activeTab === 'random'}}" class="word-list">
+    <!-- 初始态：选数量 + 开始（简化版，避免 picker/progress 组件兼容问题） -->
+    <view class="random-init">
+      <view class="random-tip">每次随机抽 {{randomCount}} 个 Band {{band}} 的词，逐个判断是否认识，自动写入艾宾浩斯复习 + 错题本。</view>
+      <view class="random-count-row">
+        <text class="label">数量：</text>
+        <view class="count-options">
+          <button class="count-opt {{countCls0}}" bindtap="onPick5" hover-class="count-opt-hover">5</button>
+          <button class="count-opt {{countCls1}}" bindtap="onPick10" hover-class="count-opt-hover">10</button>
+          <button class="count-opt {{countCls2}}" bindtap="onPick15" hover-class="count-opt-hover">15</button>
+          <button class="count-opt {{countCls3}}" bindtap="onPick20" hover-class="count-opt-hover">20</button>
+        </view>
       </view>
-      <view class="word-meta">
-        <text class="word-meaning">{{item.meaning}}</text>
+      <button class="btn-primary" bindtap="onStartRandom" hover-class="btn-hover">🎲 抽 {{randomCount}} 个词</button>
+    </view>
+
+    <!-- 抽词中 -->
+    <view wx:if="{{randomLoading}}" class="loading">抽词中…</view>
+
+    <!-- 答题中：单卡片 + 翻转 + 认识/不认识 -->
+    <view wx:if="{{randomWords.length > 0 && !randomFinished}}" class="random-card card">
+      <view class="random-progress">
+        <text class="progress-text">{{randomCurrentIndex + 1}} / {{randomWords.length}} · 认识 {{randomKnown}} · 不认识 {{randomUnknown}}</text>
+        <view class="progress-bar-mini"><view class="progress-fill-mini" style="width: {{randomProgress}}%"></view></view>
       </view>
+
+      <view class="random-word-main" bindtap="onFlipRandom">
+        <text class="word-text">{{randomWords[randomCurrentIndex].word}}</text>
+        <text wx:if="{{!randomFlipped}}" class="word-hint">点击卡片显示答案</text>
+      </view>
+
+      <view wx:if="{{randomFlipped}}" class="random-detail">
+        <text class="word-phonetic">{{randomWords[randomCurrentIndex].phonetic}}</text>
+        <view class="random-meaning-box">
+          <text class="meaning-label">释义</text>
+          <text class="random-meaning">{{randomWords[randomCurrentIndex].meaning}}</text>
+        </view>
+        <view class="random-tags">
+          <text class="tag tag-pos">{{randomWords[randomCurrentIndex].pos}}</text>
+          <text class="tag tag-band">Band {{randomWords[randomCurrentIndex].band}}</text>
+        </view>
+      </view>
+
+      <button wx:if="{{!randomFlipped}}" class="btn-primary show-answer-btn" bindtap="onFlipRandom">显示答案</button>
+
+      <view wx:if="{{randomFlipped}}" class="random-actions">
+        <button class="btn-secondary" bindtap="onRandomUnknown">不认识 ✗</button>
+        <button class="btn-primary" bindtap="onRandomKnown">认识 ✓</button>
+      </view>
+    </view>
+
+    <!-- 完成态 -->
+    <view wx:if="{{randomFinished}}" class="random-done card">
+      <text class="done-icon">🎉</text>
+      <text class="done-title">本轮完成！</text>
+      <view class="done-stats">
+        <text>认识 {{randomKnown}}</text>
+        <text>不认识 {{randomUnknown}}</text>
+      </view>
+      <text class="done-tip">已自动写入艾宾浩斯 + 错题本（不认识的）</text>
+      <button class="btn-primary" bindtap="onStartRandom">再来一组</button>
     </view>
   </view>
 
   <!-- 测验模式 -->
-  <view wx:elif="{{activeTab === 'quiz'}}" class="word-list">
+  <view wx:if="{{activeTab === 'quiz'}}" class="word-list">
     <view class="quiz-tip">测验会根据你的艾宾浩斯记录挑薄弱词</view>
     <button class="btn-primary" bindtap="goQuiz">开始测验 →</button>
   </view>

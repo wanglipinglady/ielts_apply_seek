@@ -30,6 +30,16 @@ page {
   color: #fff;
 }
 
+/* 给 button 加 hover 反馈，确保 IDE 模拟器第二次点击也能识别为新事件 */
+.btn-hover {
+  opacity: 0.85;
+  background: #06AE56 !important;
+}
+.value-btn-hover {
+  opacity: 0.7;
+  background: #D8F4E4 !important;
+}
+
 .btn-secondary {
   background: #fff;
   color: #07C160;

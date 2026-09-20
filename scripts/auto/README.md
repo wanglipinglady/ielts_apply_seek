@@ -14,6 +14,7 @@
 | 6 | `06_pack_submission.py` | 无（按需跑）| 0 |
 | 7 | `07_weekly_risk_recheck.py` | 无（每周一 CI 自动跑）| 0 |
 | 8 | `.github/workflows/weekly-recheck.yml` | 推送到 GitHub 后自动生效 | 0 |
+| 9 | `08-auto_git_push.sh` | 无（仅依赖 git + 已配 SSH/PAT）| 0 |
 
 ---
 
@@ -28,6 +29,8 @@
 | **05-ux_audit** | `python 05_ux_audit.py` | W7（10/12） | 体验问题清单 Markdown |
 | **06-pack_submission** | `python 06_pack_submission.py --members "姓名"` | W8（10/17） | submission_package.zip |
 | **07-weekly_risk_recheck** | 自动（CI 每周一 9:00）| 每周一 | 风险触发报告 |
+| **08-auto-push** | `./08-auto_git_push.sh "msg"` | 改完代码随时 | 代码 commit + push origin/master |
+| **09-CI** | 自动（push 触发）| 每次 push | 跑契约/监控/全量测试 |
 
 ---
 

@@ -1,16 +1,8 @@
 <view class="container review-container">
   <!-- Tab 切换 -->
   <view class="tab-bar">
-    <view
-      class="tab {{activeTab === 'today' ? 'active' : ''}}"
-      data-tab="today"
-      bindtap="switchTab"
-    >今日复习 ({{count}})</view>
-    <view
-      class="tab {{activeTab === 'mistakes' ? 'active' : ''}}"
-      data-tab="mistakes"
-      bindtap="switchTab"
-    >错词本</view>
+    <view class="tab {{activeTodayClass}}" data-tab="today" bindtap="switchTab">今日复习 ({{count}})</view>
+    <view class="tab {{activeMistakesClass}}" data-tab="mistakes" bindtap="switchTab">错词本</view>
   </view>
 
   <!-- 今日复习卡片 -->
@@ -22,7 +14,7 @@
     </view>
 
     <view wx:if="{{dueWords.length > 0 && currentIndex < dueWords.length}}" class="card-flip" bindtap="flipCard">
-      <view class="card-front card">
+      <view wx:if="{{!isFlipped}}" class="card-front card">
         <text class="word">{{dueWords[currentIndex].word}}</text>
         <text class="phonetic">{{dueWords[currentIndex].phonetic}}</text>
         <text class="tap-hint">轻点卡片查看释义</text>

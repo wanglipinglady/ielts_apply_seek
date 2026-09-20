@@ -1,0 +1,107 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 720" width="900" height="720">
+  <defs>
+    <linearGradient id="bg3" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FAFBFC"/>
+      <stop offset="100%" stop-color="#F0F4F8"/>
+    </linearGradient>
+    <linearGradient id="green" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#0F5F4F"/>
+      <stop offset="100%" stop-color="#07A081"/>
+    </linearGradient>
+  </defs>
+
+  <!-- 背景 -->
+  <rect width="900" height="720" fill="url(#bg3)"/>
+
+  <!-- 顶部标题 -->
+  <rect x="0" y="0" width="900" height="100" fill="url(#green)"/>
+  <text x="450" y="42" text-anchor="middle" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="26" font-weight="700" fill="#FFFFFF">「屠鸭智取」补充材料</text>
+  <text x="450" y="68" text-anchor="middle" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="14" fill="#FFD24A">开发者主体说明 · 应用类目 · 内容合规 · 隐私保护</text>
+  <text x="450" y="88" text-anchor="middle" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="11" fill="#FFFFFF" opacity="0.85">提交至：微信公众平台 · 小程序审核</text>
+
+  <!-- 第一区：开发者主体 -->
+  <g transform="translate(60 130)">
+    <rect width="380" height="250" rx="10" fill="#FFFFFF" stroke="#0F5F4F" stroke-width="1"/>
+    <rect x="0" y="0" width="380" height="36" rx="10" fill="#0F5F4F"/>
+    <text x="20" y="23" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="700" fill="#FFFFFF">一、开发者主体</text>
+
+    <text x="20" y="62" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="12" font-weight="700" fill="#0F5F4F">主体类型</text>
+    <text x="20" y="82" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="12" fill="#333">个人开发者（自然人）</text>
+
+    <text x="20" y="108" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="12" font-weight="700" fill="#0F5F4F">AppID</text>
+    <text x="20" y="128" font-family="Arial, sans-serif" font-size="12" fill="#333">wx286309bc641b1d79</text>
+
+    <text x="20" y="154" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="12" font-weight="700" fill="#0F5F4F">作品性质</text>
+    <text x="20" y="174" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="12" fill="#333">个人开发 · 公益性质 · 永久免费</text>
+
+    <text x="20" y="200" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="12" font-weight="700" fill="#0F5F4F">商业行为</text>
+    <text x="20" y="220" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="12" fill="#333">无付费内容 / 无广告主 / 无课程销售</text>
+  </g>
+
+  <!-- 第二区：应用类目 -->
+  <g transform="translate(460 130)">
+    <rect width="380" height="250" rx="10" fill="#FFFFFF" stroke="#0F5F4F" stroke-width="1"/>
+    <rect x="0" y="0" width="380" height="36" rx="10" fill="#0F5F4F"/>
+    <text x="20" y="23" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="700" fill="#FFFFFF">二、应用类目</text>
+
+    <text x="20" y="62" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="12" font-weight="700" fill="#0F5F4F">一级类目</text>
+    <text x="20" y="82" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="12" fill="#333">教育</text>
+
+    <text x="20" y="108" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="12" font-weight="700" fill="#0F5F4F">二级类目</text>
+    <text x="20" y="128" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="12" fill="#333">教育辅助工具</text>
+
+    <text x="20" y="154" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="12" font-weight="700" fill="#0F5F4F">类目说明</text>
+    <text x="20" y="174" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="11" fill="#333">工具属性（背单词 / 评分 / 批改）</text>
+    <text x="20" y="192" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="11" fill="#333">非培训机构、非学历教育</text>
+
+    <text x="20" y="218" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="11" font-weight="700" fill="#D9534F">✓ 无需办学许可证</text>
+  </g>
+
+  <!-- 第三区：内容合规 -->
+  <g transform="translate(60 400)">
+    <rect width="380" height="290" rx="10" fill="#FFFFFF" stroke="#07A081" stroke-width="1"/>
+    <rect x="0" y="0" width="380" height="36" rx="10" fill="#07A081"/>
+    <text x="20" y="23" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="700" fill="#FFFFFF">三、内容合规说明</text>
+
+    <g font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="11" fill="#333">
+      <text x="20" y="64" font-weight="700" fill="#07A081">✓ 不涉及学科类培训</text>
+      <text x="20" y="82">本工具不提供视频课程、不组织授课、不销售教学服务。</text>
+
+      <text x="20" y="108" font-weight="700" fill="#07A081">✓ 不收取任何费用</text>
+      <text x="20" y="126">所有功能完全免费，无内购、无会员、无广告主。</text>
+
+      <text x="20" y="152" font-weight="700" fill="#07A081">✓ 无敏感词 / 极限词</text>
+      <text x="20" y="170">名称、简介、UI 中不含"最 / 第一 / 国家 / 官方"等违规词。</text>
+
+      <text x="20" y="196" font-weight="700" fill="#07A081">✓ 无侵权内容</text>
+      <text x="20" y="214">词库 / 真题均来自公开资源，UI / Logo 均为原创。</text>
+
+      <text x="20" y="240" font-weight="700" fill="#07A081">✓ 用户生成内容（UGC）</text>
+      <text x="20" y="258">本工具无 UGC 模块，不涉及内容审核责任。</text>
+    </g>
+  </g>
+
+  <!-- 第四区：隐私保护 -->
+  <g transform="translate(460 400)">
+    <rect width="380" height="290" rx="10" fill="#FFFFFF" stroke="#07A081" stroke-width="1"/>
+    <rect x="0" y="0" width="380" height="36" rx="10" fill="#07A081"/>
+    <text x="20" y="23" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="700" fill="#FFFFFF">四、隐私与数据保护</text>
+
+    <g font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="11" fill="#333">
+      <text x="20" y="64" font-weight="700" fill="#07A081">✓ 隐私协议</text>
+      <text x="20" y="82">已发布《隐私协议》《用户协议》，路径：我的 → 设置</text>
+
+      <text x="20" y="108" font-weight="700" fill="#07A081">✓ 微信登录授权</text>
+      <text x="20" y="126">仅获取 openid + session_key 用于登录，不读取聊天记录。</text>
+
+      <text x="20" y="152" font-weight="700" fill="#07A081">✓ 学习数据存储</text>
+      <text x="20" y="170">本地 SQLite + 服务端 MySQL，保存用户学习记录。</text>
+
+      <text x="20" y="196" font-weight="700" fill="#07A081">✓ 录音数据</text>
+      <text x="20" y="214">口语录音仅用于评分，服务端不留存原始音频。</text>
+
+      <text x="20" y="240" font-weight="700" fill="#07A081">✓ 用户注销</text>
+      <text x="20" y="258">支持一键注销账号 + 删除全部数据。</text>
+    </g>
+  </g>
+</svg>

@@ -1,0 +1,139 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 720" width="960" height="720">
+  <defs>
+    <linearGradient id="sky" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#E8F0F6"/>
+      <stop offset="100%" stop-color="#FFFFFF"/>
+    </linearGradient>
+    <linearGradient id="mt" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#1A3A5F"/>
+      <stop offset="100%" stop-color="#4FA3D1"/>
+    </linearGradient>
+    <linearGradient id="snow" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#D6E8F2"/>
+    </linearGradient>
+  </defs>
+
+  <!-- 背景 -->
+  <rect width="960" height="720" fill="url(#sky)"/>
+
+  <!-- 标题 -->
+  <text x="480" y="40" text-anchor="middle" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="24" font-weight="700" fill="#1A3A5F">「智取屠鸭山」技术架构图</text>
+  <text x="480" y="64" text-anchor="middle" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="13" fill="#666">登山比喻版：登山者 = 用户 / 山路 = 数据流 / 山峰 = 9 项功能</text>
+
+  <!-- 用户层（山脚登山者） -->
+  <g transform="translate(80 540)">
+    <ellipse cx="0" cy="20" rx="22" ry="6" fill="#0F2D4D" opacity="0.2"/>
+    <circle cx="0" cy="0" r="14" fill="#FFD24A"/>
+    <circle cx="0" cy="-2" r="4" fill="#FFFFFF"/>
+    <path d="M -14 14 L -10 30 L -4 30 L -4 18 L 4 18 L 4 30 L 10 30 L 14 14 Z" fill="#F37B1D"/>
+    <text x="0" y="50" text-anchor="middle" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="11" font-weight="700" fill="#1A3A5F">登山者（用户）</text>
+  </g>
+
+  <!-- 第一层：微信小程序客户端（登山装备包） -->
+  <g transform="translate(160 460)">
+    <rect width="200" height="120" rx="12" fill="#FFFFFF" stroke="#07A081" stroke-width="2"/>
+    <text x="100" y="30" text-anchor="middle" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="13" font-weight="700" fill="#07A081">📱 登山装备包</text>
+    <text x="100" y="50" text-anchor="middle" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="11" font-weight="700" fill="#1A3A5F">微信小程序客户端</text>
+
+    <rect x="20" y="62" width="160" height="20" rx="3" fill="#F0F8F4"/>
+    <text x="100" y="76" text-anchor="middle" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="10" fill="#333">WXML + WXSS + JS</text>
+
+    <rect x="20" y="86" width="160" height="20" rx="3" fill="#F0F8F4"/>
+    <text x="100" y="100" text-anchor="middle" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="10" fill="#333">Vant Weapp 组件库</text>
+  </g>
+
+  <!-- 第二层：API 网关（山门入口） -->
+  <g transform="translate(160 320)">
+    <rect width="200" height="100" rx="12" fill="#FFFFFF" stroke="#1A3A5F" stroke-width="2"/>
+    <text x="100" y="30" text-anchor="middle" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="13" font-weight="700" fill="#1A3A5F">🚪 山门（API 网关）</text>
+    <text x="100" y="50" text-anchor="middle" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="10" fill="#333">Nginx + HTTPS</text>
+    <text x="100" y="68" text-anchor="middle" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="10" fill="#333">域名：api.屠鸭山.cn</text>
+    <text x="100" y="86" text-anchor="middle" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="10" fill="#666">SSL · 反向代理 · 限流</text>
+  </g>
+
+  <!-- 第三层：FastAPI 后端（半山腰营地） -->
+  <g transform="translate(160 180)">
+    <rect width="200" height="100" rx="12" fill="#FFFFFF" stroke="#F5A623" stroke-width="2"/>
+    <text x="100" y="30" text-anchor="middle" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="13" font-weight="700" fill="#F5A623">⛺ 半山营地（后端）</text>
+    <text x="100" y="50" text-anchor="middle" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="11" font-weight="700" fill="#1A3A5F">FastAPI + Python 3.11</text>
+    <text x="100" y="70" text-anchor="middle" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="10" fill="#333">35+ REST API 端点</text>
+    <text x="100" y="86" text-anchor="middle" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="10" fill="#666">WebSocket / JWT 鉴权</text>
+  </g>
+
+  <!-- 右侧：9 座山峰（9 项功能） -->
+  <!-- 山峰 1-9：按高度排列 -->
+  <g transform="translate(440 580)">
+    <path d="M 0 0 L -22 0 L -16 -28 L 0 -52 L 16 -28 L 22 0 Z" fill="#B8C4D0"/>
+    <text x="0" y="-60" text-anchor="middle" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="10" font-weight="700" fill="#1A3A5F">错词本</text>
+  </g>
+  <g transform="translate(490 580)">
+    <path d="M 0 0 L -22 0 L -16 -28 L 0 -52 L 16 -28 L 22 0 Z" fill="#9DB1C4"/>
+    <text x="0" y="-60" text-anchor="middle" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="10" font-weight="700" fill="#1A3A5F">阅读真题</text>
+  </g>
+  <g transform="translate(540 580)">
+    <path d="M 0 0 L -24 0 L -18 -34 L 0 -64 L 18 -34 L 24 0 Z" fill="#7A95B0"/>
+    <text x="0" y="-72" text-anchor="middle" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="10" font-weight="700" fill="#1A3A5F">备考计划</text>
+  </g>
+  <g transform="translate(600 580)">
+    <path d="M 0 0 L -26 0 L -18 -38 L 0 -76 L 18 -38 L 26 0 Z" fill="#5F7E9C"/>
+    <text x="0" y="-84" text-anchor="middle" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="10" font-weight="700" fill="#1A3A5F">数据复盘</text>
+  </g>
+  <g transform="translate(670 580)">
+    <path d="M 0 0 L -26 0 L -18 -42 L 0 -86 L 18 -42 L 26 0 Z" fill="#3D6488"/>
+    <text x="0" y="-94" text-anchor="middle" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="10" font-weight="700" fill="#1A3A5F">随机刷词</text>
+  </g>
+  <g transform="translate(740 580)">
+    <path d="M 0 0 L -28 0 L -20 -46 L 0 -98 L 20 -46 L 28 0 Z" fill="#2E6B9E"/>
+    <path d="M -8 -66 L 0 -98 L 8 -66 L 5 -74 L 0 -82 L -5 -74 Z" fill="url(#snow)"/>
+    <text x="0" y="-106" text-anchor="middle" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="10" font-weight="700" fill="#FFD24A">单词背诵</text>
+  </g>
+  <g transform="translate(810 580)">
+    <path d="M 0 0 L -28 0 L -20 -50 L 0 -112 L 20 -50 L 28 0 Z" fill="#1A3A5F"/>
+    <path d="M -8 -76 L 0 -112 L 8 -76 L 5 -84 L 0 -94 L -5 -84 Z" fill="url(#snow)"/>
+    <text x="0" y="-120" text-anchor="middle" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="10" font-weight="700" fill="#FFD24A">口语 AI</text>
+  </g>
+  <g transform="translate(880 580)">
+    <path d="M 0 0 L -30 0 L -22 -54 L 0 -130 L 22 -54 L 30 0 Z" fill="#0F2D4D"/>
+    <path d="M -8 -88 L 0 -130 L 8 -88 L 5 -98 L 0 -110 L -5 -98 Z" fill="url(#snow)"/>
+    <line x1="0" y1="-130" x2="0" y2="-150" stroke="#F5A623" stroke-width="1.5"/>
+    <path d="M 0 -150 L 8 -147 L 0 -144 Z" fill="#F5A623"/>
+    <text x="0" y="-160" text-anchor="middle" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="10" font-weight="700" fill="#FFD24A">写作 AI</text>
+  </g>
+
+  <!-- 左侧：数据存储层（山峰脚下的湖泊） -->
+  <g transform="translate(440 460)">
+    <ellipse cx="100" cy="40" rx="100" ry="22" fill="#4FA3D1" opacity="0.4"/>
+    <ellipse cx="100" cy="40" rx="80" ry="16" fill="#4FA3D1" opacity="0.6"/>
+    <text x="100" y="44" text-anchor="middle" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="12" font-weight="700" fill="#1A3A5F">数据湖（MySQL）</text>
+    <text x="100" y="86" text-anchor="middle" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="10" fill="#666">词汇 / 错词 / 评分 / 批改 / 计划</text>
+  </g>
+
+  <!-- 左侧：AI 引擎（雪山顶的智慧光环） -->
+  <g transform="translate(440 100)">
+    <rect width="200" height="80" rx="12" fill="url(#snow)" stroke="#FFD24A" stroke-width="2"/>
+    <text x="100" y="24" text-anchor="middle" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="12" font-weight="700" fill="#1A3A5F">🧠 三大 AI 引擎</text>
+    <text x="100" y="44" text-anchor="middle" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="10" fill="#333">Whisper（口语评分）</text>
+    <text x="100" y="58" text-anchor="middle" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="10" fill="#333">LLM（写作批改）</text>
+    <text x="100" y="72" text-anchor="middle" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="10" fill="#333">艾宾浩斯曲线（单词复习）</text>
+  </g>
+
+  <!-- 连线：用户 → 小程序 → API → 后端 → AI 引擎 → 数据湖 → 9 座山峰 -->
+  <path d="M 100 540 L 160 520" stroke="#07A081" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+  <path d="M 260 460 L 260 420" stroke="#1A3A5F" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+  <path d="M 260 320 L 260 280" stroke="#F5A623" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+  <path d="M 360 230 L 440 230 L 440 140" stroke="#F5A623" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+  <path d="M 540 180 L 540 420" stroke="#4FA3D1" stroke-width="2" stroke-dasharray="3,3" fill="none" marker-end="url(#arrow)"/>
+  <path d="M 540 460 L 540 540 L 460 580" stroke="#1A3A5F" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+
+  <!-- 箭头定义 -->
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M 0 0 L 8 3 L 0 6 z" fill="#1A3A5F"/>
+    </marker>
+  </defs>
+
+  <!-- 底部说明 -->
+  <text x="80" y="690" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="10" fill="#666">图注：登山者通过"装备包"（小程序）→ 经"山门"（API 网关）→ 抵达"营地"（后端）</text>
+  <text x="80" y="705" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="10" fill="#666">→ 调用"AI 引擎"（山顶）→ 数据沉淀到"数据湖" → 支撑 9 座山峰（9 项功能）</text>
+</svg>

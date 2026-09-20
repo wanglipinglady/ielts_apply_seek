@@ -82,7 +82,7 @@ def scan_log_file(log_file: Path, since: datetime) -> dict:
 
 def render_report(issues: dict, since: datetime) -> str:
     """生成 Markdown 报告。"""
-    md = ["# 英语干中学 · 体验问题清单\n"]
+    md = ["# 屠鸭智取 · 体验问题清单\n"]
     md.append(f"> 扫描时间窗：{since.date()} ~ {datetime.now().date()}")
     md.append(f"> 报告生成：{datetime.now().isoformat(timespec='seconds')}\n")
 

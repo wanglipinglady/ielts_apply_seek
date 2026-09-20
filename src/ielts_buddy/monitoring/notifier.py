@@ -310,13 +310,13 @@ def _send_email(message: str, severity: Severity, context: dict) -> bool:
         return False
     try:
         body = (
-            f"[英语干中学 告警 {severity.value}]\n\n"
+            f"[屠鸭智取 告警 {severity.value}]\n\n"
             f"时间：{datetime.now().isoformat(timespec='seconds')}\n"
             f"消息：{message}\n\n"
             f"上下文：\n{json.dumps(context, ensure_ascii=False, indent=2)}\n"
         )
         msg = MIMEText(body, "plain", "utf-8")
-        msg["Subject"] = f"[{severity.value}] 英语干中学异常: {message[:40]}"
+        msg["Subject"] = f"[{severity.value}] 屠鸭智取异常: {message[:40]}"
         msg["From"] = smtp_user
         msg["To"] = email_to
         with smtplib.SMTP_SSL(smtp_host, 465, timeout=10) as smtp:

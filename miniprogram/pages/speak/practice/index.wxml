@@ -1,7 +1,143 @@
 <view class="container practice-container">
-  <view class="empty">
-    <text class="empty-icon">🎤</text>
-    <text class="empty-title">Part {{part}} 口语对练</text>
-    <text class="empty-sub">W3 上线：录音 → Whisper 转写 → AI 评分</text>
+  <!-- 顶部 Part 选择 -->
+  <view class="part-selector card">
+    <text class="part-label">Part：</text>
+    <view class="part-tabs">
+      <view class="part-tab {{activePart1Class}}" data-part="1" bindtap="onPartChange">Part 1</view>
+      <view class="part-tab {{activePart2Class}}" data-part="2" bindtap="onPartChange">Part 2</view>
+      <view class="part-tab {{activePart3Class}}" data-part="3" bindtap="onPartChange">Part 3</view>
+    </view>
+  </view>
+
+  <!-- 题目区 -->
+  <view wx:if="{{question}}" class="question-card card">
+    <view class="topic-header">
+      <text class="topic-tag">{{topic}}</text>
+    </view>
+    <view class="question-text">
+      <text class="question-content">{{question}}</text>
+    </view>
+    <view wx:if="{{vocab.length > 0}}" class="vocab-section">
+      <text class="vocab-label">📚 关键词提示</text>
+      <view class="vocab-list">
+        <view wx:for="{{vocab}}" wx:key="*this" class="vocab-chip">{{item}}</view>
+      </view>
+    </view>
+    <view wx:if="{{tips}}" class="tips-section">
+      <text class="tips-label">💡 答题提示</text>
+      <text class="tips-content">{{tips}}</text>
+    </view>
+  </view>
+
+  <!-- 录音控制区 -->
+  <view class="record-section">
+    <!-- 未录音状态：开始按钮 -->
+    <view wx:if="{{!recording && !audioPath && !loading && !feedback}}" class="record-idle">
+      <view class="record-icon-wrap" bindtap="startPractice">
+        <view class="record-icon">🎤</view>
+        <text class="record-hint">点击开始练习</text>
+      </view>
+    </view>
+
+    <!-- 录音中：录制按钮 + 计时 -->
+    <view wx:if="{{recording}}" class="recording">
+      <view class="record-icon-wrap active">
+        <view class="record-pulse"></view>
+        <view class="record-icon">🔴</view>
+      </view>
+      <text class="record-time">{{recordTimeText}}</text>
+      <button class="btn-secondary stop-btn" bindtap="stopRecord">停止录音</button>
+    </view>
+
+    <!-- 录音完成：可重录或提交 -->
+    <view wx:if="{{audioPath && !recording && !loading && !feedback}}" class="recorded">
+      <view class="record-icon-wrap success">
+        <view class="record-icon">✅</view>
+      </view>
+      <text class="record-duration">录音时长：{{durationText}}</text>
+      <view class="action-buttons">
+        <button class="btn-secondary" bindtap="resetRecord">重新录制</button>
+        <button class="btn-primary" bindtap="submitRecording">提交评分</button>
+      </view>
+    </view>
+
+    <!-- 评分中 loading -->
+    <view wx:if="{{loading}}" class="loading-state">
+      <view class="loading-spinner"></view>
+      <text class="loading-text">{{loadingText}}</text>
+    </view>
+  </view>
+
+  <!-- 评分反馈 -->
+  <view wx:if="{{feedback}}" class="feedback-card card">
+    <view class="feedback-header">
+      <text class="feedback-title">AI 评分结果</text>
+      <view class="overall-band">
+        <text class="band-num">{{feedback.scores.overall_band}}</text>
+        <text class="band-label">总分</text>
+      </view>
+    </view>
+
+    <view class="score-grid">
+      <view class="score-item">
+        <text class="score-num">{{feedback.scores.fluency}}</text>
+        <text class="score-label">流利度</text>
+      </view>
+      <view class="score-item">
+        <text class="score-num">{{feedback.scores.lexical}}</text>
+        <text class="score-label">词汇</text>
+      </view>
+      <view class="score-item">
+        <text class="score-num">{{feedback.scores.grammar}}</text>
+        <text class="score-label">语法</text>
+      </view>
+      <view class="score-item">
+        <text class="score-num">{{feedback.scores.pronunciation}}</text>
+        <text class="score-label">发音</text>
+      </view>
+    </view>
+
+    <!-- 转写文本 -->
+    <view wx:if="{{feedback.transcript}}" class="section">
+      <text class="section-title">📝 你的回答</text>
+      <text class="section-content">{{feedback.transcript}}</text>
+    </view>
+
+    <!-- 单词错误 -->
+    <view wx:if="{{feedback.word_errors.length > 0}}" class="section">
+      <text class="section-title">⚠️ 用词纠错 ({{feedback.word_errors.length}})</text>
+      <view wx:for="{{feedback.word_errors}}" wx:key="original" class="error-item">
+        <text class="error-original">{{item.original}}</text>
+        <text class="error-arrow">→</text>
+        <text class="error-correction">{{item.correction}}</text>
+      </view>
+    </view>
+
+    <!-- 改进建议 -->
+    <view wx:if="{{feedback.suggestions.length > 0}}" class="section">
+      <text class="section-title">💡 改进建议</text>
+      <view wx:for="{{feedback.suggestions}}" wx:key="*this" class="suggestion-item">
+        <text class="suggestion-bullet">•</text>
+        <text class="suggestion-text">{{item}}</text>
+      </view>
+    </view>
+
+    <!-- 范文参考 -->
+    <view wx:if="{{sampleAnswer && !feedbacked}}" class="section">
+      <text class="section-title">📖 范文参考</text>
+      <text class="section-content sample">{{sampleAnswer}}</text>
+    </view>
+
+    <button class="btn-primary retry-btn" bindtap="nextQuestion">下一题</button>
+  </view>
+
+  <!-- 历史记录入口 -->
+  <view wx:if="{{!question && !loading && !feedback}}" class="history-entry card" bindtap="goHistory">
+    <text class="history-icon">📋</text>
+    <view class="history-info">
+      <text class="history-title">查看历史记录</text>
+      <text class="history-sub">最近的口语练习和评分</text>
+    </view>
+    <text class="history-arrow">›</text>
   </view>
 </view>
