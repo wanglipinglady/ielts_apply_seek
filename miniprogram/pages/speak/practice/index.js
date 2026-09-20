@@ -261,6 +261,23 @@ Page({
     this.startPractice();
   },
 
+  // 重新录制当前题（不抽新题，复用现有 sessionId + topic + question + vocab）
+  retryCurrent() {
+    this.setData({
+      feedback: null,
+      feedbacked: false,
+      audioPath: '',
+      duration: 0,
+      durationText: '00:00',
+      recordTime: 0,
+      recordTimeText: '00:00',
+      recording: false,
+      loading: false,
+      loadingText: ''
+    });
+    this._stopTimer();
+  },
+
   // 跳历史记录（占位，可后续接入 /api/wx/speak/practice/history）
   goHistory() {
     wx.showToast({ title: '历史记录开发中', icon: 'none' });

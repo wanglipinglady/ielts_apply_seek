@@ -435,6 +435,23 @@ button.history-btn.history-entry::after {
   margin-top: 16rpx;
 }
 
+/* 评分反馈底部双按钮：重新录制 + 下一题 */
+.retry-actions {
+  display: flex;
+  gap: 16rpx;
+  margin-top: 16rpx;
+}
+
+.retry-actions .retry-current-btn,
+.retry-actions .retry-btn {
+  flex: 1;
+  margin: 0;
+}
+
+.retry-current-btn::after {
+  border: none;
+}
+
 /* 历史记录入口 */
 .history-entry {
   display: flex;
