@@ -936,6 +936,31 @@ class SQLiteSpeakingPracticeRepository:
         self._conn.commit()
         return int(cur.lastrowid)
 
+    def update_practice_audio(
+        self,
+        user_id: int,
+        session_id: str,
+        audio_path: Optional[str],
+        audio_duration_sec: float,
+        audio_mime: str = "audio/webm",
+    ) -> bool:
+        """重录场景:覆盖 audio_path / 时长 / mime,并清空旧的转写/评分。"""
+        cur = self._conn.execute(
+            """UPDATE speaking_practice_records
+               SET audio_path = ?, audio_duration_sec = ?, audio_mime = ?,
+                   transcript = '', transcript_tokens = NULL,
+                   llm_scores = NULL, llm_word_errors = NULL,
+                   llm_grammar_errors = NULL, llm_highlights = NULL,
+                   llm_suggestions = NULL, score_fallback = 0,
+                   updated_at = ?
+             WHERE user_id = ? AND session_id = ?""",
+            (audio_path, float(audio_duration_sec), audio_mime,
+             datetime.now().isoformat(timespec="seconds"),
+             user_id, session_id),
+        )
+        self._conn.commit()
+        return cur.rowcount > 0
+
     def update_practice_transcript(
         self,
         user_id: int,

@@ -181,18 +181,35 @@ class SpeakingPracticeService:
 
         # 1) 落盘
         audio_path = self._save_audio(session_id, audio_bytes, audio_mime)
-        # 2) 建 record (初稿,后面 update)
-        record_id = sp_repo.create_practice_record(
-            user_id=self._user_id,
-            session_id=session_id,
-            part=int(part),
-            topic_id=topic_id,
-            topic_name=topic_name,
-            question=question,
-            audio_path=str(audio_path) if audio_path else None,
-            audio_duration_sec=float(actual_duration_sec),
-            audio_mime=audio_mime or "audio/webm",
+        # 2) 建/更新 record
+        #    session_id 唯一约束:同一 session 重提交（重新录制）必须复用现有 record,
+        #    否则 UNIQUE 冲突会 500。
+        existing = sp_repo.get_practice_by_session(
+            user_id=self._user_id, session_id=session_id
         )
+        if existing is not None:
+            # 重录场景:覆盖 audio + 清空旧转写/评分
+            sp_repo.update_practice_audio(
+                user_id=self._user_id,
+                session_id=session_id,
+                audio_path=str(audio_path) if audio_path else None,
+                audio_duration_sec=float(actual_duration_sec),
+                audio_mime=audio_mime or "audio/webm",
+            )
+            record_id = int(existing["id"])
+        else:
+            # 首次提交:建初稿,后面 update
+            record_id = sp_repo.create_practice_record(
+                user_id=self._user_id,
+                session_id=session_id,
+                part=int(part),
+                topic_id=topic_id,
+                topic_name=topic_name,
+                question=question,
+                audio_path=str(audio_path) if audio_path else None,
+                audio_duration_sec=float(actual_duration_sec),
+                audio_mime=audio_mime or "audio/webm",
+            )
 
         # 3) 转写
         whisper = self._whisper or _get_whisper()

@@ -826,6 +826,40 @@ class MySQLSpeakingPracticeRepository:
             ))
             return int(result.inserted_primary_key[0])
 
+    def update_practice_audio(
+        self,
+        user_id: int,
+        session_id: str,
+        audio_path: Optional[str],
+        audio_duration_sec: float,
+        audio_mime: str = "audio/webm",
+    ) -> bool:
+        """重录场景:覆盖 audio_path / 时长 / mime,并清空旧的转写/评分。"""
+        t = t_speaking_practice_records
+        with self._engine.begin() as conn:
+            result = conn.execute(
+                update(t)
+                .where(
+                    (t.c.user_id == user_id)
+                    & (t.c.session_id == session_id)
+                )
+                .values(
+                    audio_path=audio_path,
+                    audio_duration_sec=float(audio_duration_sec),
+                    audio_mime=audio_mime,
+                    transcript="",
+                    transcript_tokens=None,
+                    llm_scores=None,
+                    llm_word_errors=None,
+                    llm_grammar_errors=None,
+                    llm_highlights=None,
+                    llm_suggestions=None,
+                    score_fallback=0,
+                    updated_at=datetime.now(),
+                )
+            )
+            return result.rowcount > 0
+
     def update_practice_transcript(
         self,
         user_id: int,
