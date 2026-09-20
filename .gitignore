@@ -52,4 +52,5 @@ docs/miniprogram/_assets/weekly_chart_*.png
 docs/miniprogram/_assets/ux_audit_*.md
 docs/miniprogram/_assets/seed_posts/
 docs/miniprogram/W8/submission/*.zip
-!docs/miniprogram/_assets/qrcode.png
+!docs/miniprogram/_assets/qrcode.png.DS_Store
+docs/.DS_Store
