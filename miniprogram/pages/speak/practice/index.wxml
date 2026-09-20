@@ -31,9 +31,9 @@
 
   <!-- 录音控制区 -->
   <view class="record-section">
-    <!-- 未录音状态：开始按钮（用 button 替代 view bindtap，真机 tap 稳定） -->
+    <!-- 未录音状态：开始录音（调 startRecord，不是 startPractice） -->
     <view wx:if="{{!recording && !audioPath && !loading && !feedback}}" class="record-idle">
-      <button class="record-icon-wrap record-btn" bindtap="startPractice">
+      <button class="record-icon-wrap record-btn" bindtap="startRecord">
         <view class="record-icon">🎤</view>
         <text class="record-hint">点击开始练习</text>
       </button>
