@@ -45,6 +45,10 @@ Thumbs.db
 coverage.xml
 .coverage
 
+# ===== 本地运行时（临时 DB / 日志 / 缓存，调试用）=====
+.runtime/
+.runtime/*
+
 # ===== auto/ 脚本产物（脚本本身提交，产物不提交）=====
 docs/miniprogram/_assets/risk_recheck_*.md
 docs/miniprogram/_assets/weekly_report_*.pdf
