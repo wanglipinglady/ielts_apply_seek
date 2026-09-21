@@ -1,0 +1,107 @@
+# IELTS Buddy · 本地开发 docker-compose
+#
+# 用途：
+#   备案前的本地联调，一键起 MySQL + Web 后端
+#   备案后改 WEB_DB_URL 即可指向云端 MySQL
+#
+# 前置：
+#   - 安装 Docker Desktop / OrbStack / Colima 任一
+#   - macOS 推荐 OrbStack（轻量）
+#
+# 启动：
+#   cd deploy && docker compose up -d
+#   等待 ~30 秒（MySQL 启动 + init schema + Web 启动）
+#
+# 验证：
+#   curl http://127.0.0.1:8000/healthz | python3 -m json.tool
+#   # 期望: db_mode=online, mysql_reachable=true
+#
+# 停止 + 清数据：
+#   cd deploy && docker compose down -v   # -v 删除 volumes
+
+version: '3.8'
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: ielts-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpass_dev_only}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-ietls_learn_online}
+      MYSQL_USER: ${MYSQL_USER:-ielts_app}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-apppass_dev_only}
+      TZ: Asia/Shanghai
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --default-authentication-plugin=mysql_native_password
+      - --max-connections=200
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ../scripts/init_mysql.sql:/docker-entrypoint-initdb.d/00-init.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-rootpass_dev_only}"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    networks:
+      - ielts-net
+
+  web:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    container_name: ielts-web
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      # === DB ===
+      IELTS_BUDDY_WEB_DB_MODE: online
+      IELTS_BUDDY_WEB_DB_URL: mysql+pymysql://${MYSQL_USER:-ielts_app}:${MYSQL_PASSWORD:-apppass_dev_only}@mysql:3306/${MYSQL_DATABASE:-ietls_learn_online}?charset=utf8mb4
+
+      # === LLM ===
+      IELTS_BUDDY_LLM_API_KEY: ${IELTS_BUDDY_LLM_API_KEY:-}
+      IELTS_BUDDY_LLM_BASE_URL: ${IELTS_BUDDY_LLM_BASE_URL:-https://api.minimaxi.com/v1}
+      IELTS_BUDDY_LLM_MODEL: ${IELTS_BUDDY_LLM_MODEL:-MiniMax-M2.7-highspeed}
+
+      # === JWT（dev 默认随机生成）===
+      IELTS_BUDDY_JWT_SECRET: ${IELTS_BUDDY_JWT_SECRET:-}
+
+      # === Whisper ===
+      IELTS_BUDDY_WHISPER_MODEL: small.en
+      IELTS_BUDDY_WHISPER_CORE_ML: "true"
+
+      # === Web ===
+      IELTS_BUDDY_WEB_HOST: 0.0.0.0
+      IELTS_BUDDY_WEB_PORT: 8000
+
+      # === 微信小程序 ===
+      IELTS_BUDDY_WECHAT_APPID: ${IELTS_BUDDY_WECHAT_APPID:-}
+      IELTS_BUDDY_WECHAT_SECRET: ${IELTS_BUDDY_WECHAT_SECRET:-}
+      IELTS_BUDDY_ENV: ${IELTS_BUDDY_ENV:-dev}
+    ports:
+      - "8000:8000"
+    volumes:
+      # 音频文件持久化
+      - audio_data:/root/.ielts-buddy/audio
+      # Whisper 模型持久化（首次启动会下载）
+      - whisper_models:/root/.cache/pywhispercpp
+    networks:
+      - ielts-net
+
+networks:
+  ielts-net:
+    driver: bridge
+
+volumes:
+  mysql_data:
+    driver: local
+  audio_data:
+    driver: local
+  whisper_models:
+    driver: local

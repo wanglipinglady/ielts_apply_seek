@@ -49,6 +49,11 @@ coverage.xml
 .runtime/
 .runtime/*
 
+# ===== deploy/ 环境配置（含密码，绝不提交）=====
+deploy/.env
+deploy/.env.*
+!deploy/.env.*.example
+
 # ===== auto/ 脚本产物（脚本本身提交，产物不提交）=====
 docs/miniprogram/_assets/risk_recheck_*.md
 docs/miniprogram/_assets/weekly_report_*.pdf
