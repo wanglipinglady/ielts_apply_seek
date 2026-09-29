@@ -1,9 +1,9 @@
 <view class="container login-container">
   <view class="logo-section">
     <view class="logo-placeholder">
-      <text class="logo-text">智取</text>
+      <text class="logo-text">屠鸭</text>
     </view>
-    <view class="app-name">智取屠鸭山</view>
+    <view class="app-name">屠鸭口语磨炼</view>
     <view class="app-subtitle">AI 陪你一起攻克雅思</view>
   </view>
 

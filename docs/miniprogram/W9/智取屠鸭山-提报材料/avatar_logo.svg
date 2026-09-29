@@ -17,7 +17,7 @@
       <stop offset="0%" stop-color="#1A3A5F"/>
       <stop offset="100%" stop-color="#0F2D4D"/>
     </linearGradient>
-    <!-- 智取光晕（山顶 AI 智慧光环） -->
+    <!-- 屠鸭光晕（山顶 AI 智慧光环） -->
     <radialGradient id="halo" cx="50%" cy="50%" r="50%">
       <stop offset="0%" stop-color="#FFE4A0" stop-opacity="0.95"/>
       <stop offset="40%" stop-color="#FFD24A" stop-opacity="0.5"/>
@@ -36,7 +36,7 @@
   <circle cx="124" cy="30" r="0.5" fill="#FFFFFF" opacity="0.6"/>
   <circle cx="92" cy="10" r="0.4" fill="#FFFFFF" opacity="0.5"/>
 
-  <!-- 智取光晕（山顶 AI 智慧之光） -->
+  <!-- 屠鸭光晕（山顶 AI 智慧之光） -->
   <circle cx="72" cy="38" r="32" fill="url(#halo)"/>
 
   <!-- 远山层次（最深处） -->
@@ -48,7 +48,7 @@
   <!-- 主峰（屠鸭山·巍峨） -->
   <path d="M 0 124 L 30 90 L 52 102 L 72 56 L 92 100 L 116 84 L 144 110 L 144 144 L 0 144 Z" fill="url(#snowMt)"/>
 
-  <!-- 山顶岩冠（智取顶） -->
+  <!-- 山顶岩冠（屠鸭顶） -->
   <path d="M 60 70 L 72 56 L 84 70 L 80 74 L 72 68 L 64 74 Z" fill="#FFFFFF"/>
   <ellipse cx="72" cy="72" rx="6" ry="2" fill="#E8F0F6"/>
 
@@ -62,7 +62,7 @@
     <circle cx="0" cy="1" r="2.5" fill="#0A1E3F"/>
     <!-- 登山杖 -->
     <line x1="3" y1="-2" x2="6" y2="14" stroke="#0A1E3F" stroke-width="0.8" stroke-linecap="round"/>
-    <!-- 提灯（智取的智慧之光，象征学子用 AI 智慧照亮前路） -->
+    <!-- 提灯（屠鸭的智慧之光，象征学子用 AI 智慧照亮前路） -->
     <line x1="-3" y1="6" x2="-5" y2="2" stroke="#0A1E3F" stroke-width="0.6"/>
     <circle cx="-6" cy="2" r="1.8" fill="#FFD24A"/>
     <circle cx="-6" cy="2" r="3.2" fill="#FFD24A" opacity="0.3"/>
@@ -76,9 +76,9 @@
   <ellipse cx="98" cy="126" rx="1.2" ry="0.6" fill="#FFFFFF" opacity="0.4"/>
   <ellipse cx="92" cy="120" rx="1.2" ry="0.6" fill="#FFFFFF" opacity="0.4"/>
 
-  <!-- "智取"二字顶部装饰小印 -->
+  <!-- "屠鸭"二字顶部装饰小印 -->
   <g transform="translate(72 22)">
     <rect x="-9" y="-5" width="18" height="10" rx="1" fill="#FFD24A" opacity="0.95"/>
-    <text x="0" y="3" text-anchor="middle" font-family="STKaiti, KaiTi, serif" font-size="8" font-weight="700" fill="#0A1E3F">智取</text>
+    <text x="0" y="3" text-anchor="middle" font-family="STKaiti, KaiTi, serif" font-size="8" font-weight="700" fill="#0A1E3F">屠鸭</text>
   </g>
 </svg>

@@ -1,5 +1,4 @@
-# 「智取屠鸭山」小程序头像 AI 生图 Prompt（2026-09-17）
-
+# 「屠鸭口语磨炼」小程序头像 AI 生图 Prompt（2026-09-17）
 > 说明：当前会话没有可用的 `GenerateImage` MCP tool（视觉图像生成插件未挂载到当前 MCP 服务器）。
 > 下面是一份**精心编写的中英文双版本 Prompt**，可直接复制到任何 AI 生图工具使用：
 > 即梦 / Midjourney / Stable Diffusion / DALL-E / GPT-4o / Flux / Seedream 等。
@@ -8,11 +7,11 @@
 
 ## 一、设计理念回顾
 
-- **品牌**：智取屠鸭山（个人开发者作品，雅思考生 AI 备考工具）
-- **意境**：登山攀顶（屠鸭 = 攻克雅思这个意向，不是动物）
-- **核心符号**：山峰 + 学子 + 智慧之光 + AI 光环
-- **避免**：鸭子、卡通形象、呆板元素
-- **调性**：简约、专业、有文化感、意境深
+- **品牌**：屠鸭口语磨炼（个人开发者作品，雅思考生 AI 备考工具）
+- **意境**：磨砺与成长（屠鸭 = 攻克雅思，口语磨炼 = 反复练习提升分数）
+- **核心符号**：麦克风/对话气泡 + 进步曲线 + AI 光点
+- **避免**：鸭子、游戏元素、卡通形象、呆板元素
+- **调性**：简约、专业、有学习氛围、不带任何游戏倾向
 
 ---
 
@@ -26,7 +25,7 @@
 画面正中是一座巍峨的雪山主峰，山体由白色到浅灰渐变，山顶呈三角尖锥形，
 覆盖白色雪冠；主峰两侧各有 2 层更深的远山剪影，营造纵深感。
 
-山顶上方有一团柔和的暖金色径向光晕，象征"智取"的 AI 智慧之光。
+画面上方有一团柔和的暖金色光晕，象征"磨炼"中积累的成长之光，无游戏感。
 
 主峰右下方山腰处有一个深色（接近黑色）的小小人影剪影——
 一位提灯夜行的登山学子，身形纤细，背着行囊，手持登山杖，
@@ -35,7 +34,7 @@
 从学子脚下向画面右下角延伸出一条由 3 个淡白色小脚印组成的登山小径，
 暗示"攀登的痕迹"。
 
-整体氛围：静谧、专业、有意境、夜登智取峰的孤独与坚持。
+整体氛围：静谧、专业、有学习氛围、夜色下专注备考的孤独与坚持。
 无任何动物形象，无任何中文字符。
 
 色彩：深蓝夜空（#0A1E3F）→ 雪山白（#FFFFFF）→ 暖金智慧光（#FFD24A）→ 学子剪影深色（#0A1E3F）
@@ -146,8 +145,8 @@ deformed, ugly, multiple people, daylight
 
 如果你想立刻拿到头像，可以继续使用我已经生成的 SVG 版本：
 
-- [avatar_logo.svg](computer:///Users/wangliping/Public/selfProgram/ielts_apply_seek/docs/miniprogram/W9/智取屠鸭山-提报材料/avatar_logo.svg)
-- [avatar_logo_144.png](computer:///Users/wangliping/Public/selfProgram/ielts_apply_seek/docs/miniprogram/W9/智取屠鸭山-提报材料/avatar_logo_144.png)（10.4 KB）
+- [avatar_logo.svg](computer:///Users/wangliping/Public/selfProgram/ielts_apply_seek/docs/miniprogram/W9/屠鸭口语磨炼-提报材料/avatar_logo.svg)
+- [avatar_logo_144.png](computer:///Users/wangliping/Public/selfProgram/ielts_apply_seek/docs/miniprogram/W9/屠鸭口语磨炼-提报材料/avatar_logo_144.png)（10.4 KB）
 
 这个版本已经是：
 - ✅ 深蓝夜空 + 雪山 + 学子剪影 + 提灯 + 脚印

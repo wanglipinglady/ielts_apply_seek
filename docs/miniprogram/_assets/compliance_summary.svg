@@ -15,7 +15,7 @@
 
   <!-- 顶部标题 -->
   <rect x="0" y="0" width="900" height="100" fill="url(#green)"/>
-  <text x="450" y="42" text-anchor="middle" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="26" font-weight="700" fill="#FFFFFF">「屠鸭智取」补充材料</text>
+  <text x="450" y="42" text-anchor="middle" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="26" font-weight="700" fill="#FFFFFF">「屠鸭口语磨炼」补充材料</text>
   <text x="450" y="68" text-anchor="middle" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="14" fill="#FFD24A">开发者主体说明 · 应用类目 · 内容合规 · 隐私保护</text>
   <text x="450" y="88" text-anchor="middle" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="11" fill="#FFFFFF" opacity="0.85">提交至：微信公众平台 · 小程序审核</text>
 

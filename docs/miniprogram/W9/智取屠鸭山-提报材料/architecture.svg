@@ -18,7 +18,7 @@
   <rect width="960" height="720" fill="url(#sky)"/>
 
   <!-- 标题 -->
-  <text x="480" y="40" text-anchor="middle" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="24" font-weight="700" fill="#1A3A5F">「智取屠鸭山」技术架构图</text>
+  <text x="480" y="40" text-anchor="middle" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="24" font-weight="700" fill="#1A3A5F">「屠鸭口语磨炼」技术架构图</text>
   <text x="480" y="64" text-anchor="middle" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="13" fill="#666">登山比喻版：登山者 = 用户 / 山路 = 数据流 / 山峰 = 9 项功能</text>
 
   <!-- 用户层（山脚登山者） -->

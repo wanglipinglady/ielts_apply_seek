@@ -499,6 +499,7 @@ t_users_mysql = Table(
     Column("display_name", String(64), nullable=True),
     Column("created_at", DateTime, nullable=False, server_default=sa_text("CURRENT_TIMESTAMP")),
     Column("last_login_at", DateTime, nullable=True),
+    Column("wechat_openid", String(64), nullable=True, unique=True),
 )
 
 

@@ -20,7 +20,7 @@
     </button>
   </view>
 
-  <view class="version-tip">智取屠鸭山 v3.9.0 · 2026 大赛参赛作品</view>
+  <view class="version-tip">屠鸭口语磨炼 v3.9.0 · 2026 大赛参赛作品</view>
 
   <button class="btn-secondary logout-btn" bindtap="doLogout">退出登录</button>
 </view>

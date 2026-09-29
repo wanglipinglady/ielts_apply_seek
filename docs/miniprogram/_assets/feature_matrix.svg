@@ -11,7 +11,7 @@
   </defs>
   <rect width="900" height="600" fill="url(#bg2)"/>
   <rect x="0" y="0" width="900" height="80" fill="url(#title)"/>
-  <text x="450" y="38" text-anchor="middle" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="22" font-weight="700" fill="#FFFFFF">「屠鸭智取」· 9 项 AI 备考功能矩阵</text>
+  <text x="450" y="38" text-anchor="middle" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="22" font-weight="700" fill="#FFFFFF">「屠鸭口语磨炼」· 9 项 AI 备考功能矩阵</text>
   <text x="450" y="62" text-anchor="middle" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="13" fill="#FFD24A">雅思考生专属 AI 工具 · 个人开发 · 永久免费 · 无广告</text>
 
   <g transform="translate(60 110)">
