@@ -1,0 +1,19 @@
+[Unit]
+Description=IELTS Buddy Web (FastAPI on port 8001)
+After=network.target
+
+[Service]
+Type=simple
+User=admin
+Group=admin
+WorkingDirectory=/opt/ielts_apply_seek
+EnvironmentFile=/opt/ielts_apply_seek/.env
+Environment="PATH=/opt/ielts_apply_seek/.venv/bin:/usr/local/bin:/usr/bin:/bin"
+ExecStart=/opt/ielts_apply_seek/.venv/bin/uvicorn ielts_buddy.web.main:app --host 127.0.0.1 --port 8001 --workers 2
+Restart=always
+RestartSec=5
+StandardOutput=append:/var/log/ielts-buddy/web.log
+StandardError=append:/var/log/ielts-buddy/web-error.log
+
+[Install]
+WantedBy=multi-user.target
