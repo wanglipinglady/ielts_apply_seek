@@ -178,3 +178,83 @@ rm /tmp/wanglipingresume.com.* /tmp/new.zip
 
 > **按域名分子目录放 `/etc/nginx/ssl/<domain>/`**，私钥 `chmod 600`，证书 `chmod 644`，所有者 root，Nginx 配置里写完整路径。**永远不要把网站证书放到 `/etc/ssl/certs/` 或 `/etc/ssl/private/`**。
 <!-- v1.1 -->
+
+
+
+---
+
+## 9. 常见 Shell 转义坑（部署时必看）
+
+### 9.1 `!` 历史扩展问题
+
+**症状**：
+```bash
+$ echo "<!DOCTYPE html>"
+-bash: !DOCTYPE: event not found
+```
+
+**原因**：bash 里 `!` 是历史扩展符（调用历史命令），即使在双引号里也会触发。
+
+**解决**：用 heredoc **单引号** 版本：
+
+```bash
+# 正确写法（带引号的 EOF）
+sudo tee /var/www/personal/index.html <<'EOF'
+<!DOCTYPE html>
+<html>
+...
+</html>
+EOF
+
+# 错误写法（双引号或无引号 EOF 仍会触发历史扩展）
+sudo tee /var/www/personal/index.html <<EOF
+<!DOCTYPE html>   # 报错！
+EOF
+```
+
+**关键点**：**`<<'EOF'` 引号包 EOF**，这样整个 heredoc 内容不做任何变量/历史扩展。
+
+### 9.2 其他常见转义坑
+
+| 字符 | 在双引号里 | 在 heredoc 无引号 | 在 heredoc `<<'EOF'` | 解决 |
+|------|----------|------------------|---------------------|------|
+| `!` | 历史扩展 ❌ | 历史扩展 ❌ | 字面量 ✅ | 用单引号 |
+| `$` | 变量扩展 | 变量扩展 | 字面量 ✅ | 用单引号或 `\$` |
+| `` ` `` | 命令替换 | 命令替换 | 字面量 ✅ | 用单引号 |
+| `\` | 转义符 | 转义符 | 字面量（但不转义） | 看具体场景 |
+| `"` | 字符串结束 | 字面量 | 字面量 ✅ | 双引号里用 `"` |
+
+### 9.3 写 HTML / JSON / SQL 时的金科玉律
+
+**永远用单引号 heredoc**：
+```bash
+cat > file.html <<'EOF'
+<!DOCTYPE html>
+<html>
+  <p>$variable 不会被扩展</p>
+  <p>`command` 不会被执行</p>
+</html>
+EOF
+```
+
+**或者用 printf**（更可移植）：
+```bash
+printf '%s\n' '这是字面量文本' '$variable 不会扩展' '!history 不会触发' > file.txt
+```
+
+### 9.4 部署禁用 write 模式
+
+临时禁用 bash 历史扩展：
+```bash
+set +H  # 关闭历史扩展（本次 session）
+# 现在 echo "!" 不会触发
+```
+
+永久禁用（写入 ~/.bashrc）：
+```bash
+echo 'set +H' >> ~/.bashrc
+```
+
+但更推荐用**单引号 heredoc**，不会影响其他 shell 操作。
+
+<!-- v3.1 -->
