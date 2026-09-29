@@ -52,4 +52,3 @@ App({
     return wx.getStorageSync(STORAGE_TOKEN_KEY);
   }
 });
-<!-- spacer v1 -->

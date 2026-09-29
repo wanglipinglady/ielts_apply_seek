@@ -434,6 +434,52 @@ class MySQLWebUserRepository:
             )
             return result.rowcount > 0
 
+    def get_by_openid(self, openid: str) -> Optional[WebUser]:
+        """v3+：从统一 users 表按 wechat_openid 查（小程序登录专用）。
+
+        找不到返回 None；openid 通常 28 字符以内。
+        """
+        if not openid:
+            return None
+        from sqlalchemy import select
+        with self._engine.connect() as conn:
+            row = conn.execute(
+                select(t_users_mysql).where(
+                    t_users_mysql.c.wechat_openid == openid
+                )
+            ).first()
+            if row is None:
+                return None
+            m = row._mapping
+            return WebUser(
+                id=m["id"],
+                email=m["email"],
+                password_hash=m["password_hash"] or "",
+                created_at=m["created_at"].isoformat() if m["created_at"] else None,
+                last_login_at=m["last_login_at"].isoformat() if m["last_login_at"] else None,
+            )
+
+    def bind_wechat_openid(self, user_id: int, openid: str) -> bool:
+        """v3+：把 wechat_openid 写到指定用户（已存在用户绑定微信身份）。
+
+        成功返回 True；用户不存在返回 False；openid 已被其他用户占用返回 False。
+        """
+        if not openid:
+            return False
+        from sqlalchemy import update
+        from sqlalchemy.exc import IntegrityError
+        try:
+            with self._engine.begin() as conn:
+                result = conn.execute(
+                    update(t_users_mysql)
+                    .where(t_users_mysql.c.id == user_id)
+                    .values(wechat_openid=openid)
+                )
+                return result.rowcount > 0
+        except IntegrityError:
+            # openid 已被其他用户占用（唯一索引冲突）→ 拒绝绑定
+            return False
+
     def close(self) -> None:
         # MySQL 连接由 Engine 管理，这里 no-op
         pass
