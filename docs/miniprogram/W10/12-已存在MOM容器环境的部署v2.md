@@ -101,20 +101,59 @@ echo "<!DOCTYPE html>
 
 ### Step 4：上传雅思备考助手代码（3 分钟）
 
+**注意**：**只需要上传后端代码**（`src/` + `pyproject.toml`）。**不要上传**：
+- ❌ `miniprogram/`（小程序前端，IDE 用）
+- ❌ `docs/`（文档）
+- ❌ `.git/`（git 仓库）
+- ❌ `.env`（本地配置，含密码）
+
+**部署目录命名**：用仓库名 `ielts_apply_seek`，**不要用 Python 包名 `ielts_buddy`**（避免混淆）：
+
 ```bash
 # === 在 Mac 上 ===
-rsync -avz --exclude='.git' --exclude='__pycache__' --exclude='.venv' \
-  --exclude='.runtime' --exclude='*.pyc' --exclude='.env' \
+# 推荐：用精确 include / exclude，最小化传输
+rsync -avz \
+  --include='/' \
+  --include='pyproject.toml' \
+  --include='src/***' \
+  --include='scripts/***' \
+  --exclude='*' \
   -e "ssh -i ~/Downloads/你的密钥.pem" \
   /Users/wangliping/Public/selfProgram/ielts_apply_seek/ \
-  admin@118.190.148.121:/opt/ielts_buddy/
+  admin@118.190.148.121:/opt/ielts_apply_seek/
+
+# 验证上传结果
+ssh -i ~/Downloads/你的密钥.pem admin@118.190.148.121 \
+  "ls -la /opt/ielts_apply_seek/ && find /opt/ielts_apply_seek/src -name '*.py' | wc -l"
+# 期望: 看到 pyproject.toml + src/ + scripts/ 目录
+# 期望: 上百个 .py 文件
+```
+
+**目录最终结构**：
+
+```
+/opt/ielts_apply_seek/        ← 部署根目录（仓库名）
+├── pyproject.toml              ← Python 依赖
+├── src/                         ← 后端代码
+│   └── ielts_buddy/            ← Python 包名（包内部用）
+│       ├── web/main.py
+│       ├── services/
+│       └── ...
+└── scripts/                     ← 初始化脚本（可选）
+    └── init_mysql.py
+```
+
+**易混淆提醒**：
+- `/opt/ielts_apply_seek/` = **部署目录**（操作系统层面）
+- `src/ielts_buddy/` = **Python 包**（代码层面）
+- uvicorn 启动命令：必须用包路径 `ielts_buddy.web.main:app`（这是 Python 导入机制决定的，不能改）
 ```
 
 ### Step 5：装 Python 依赖（5 分钟）
 
 ```bash
 # === 在 ECS 上 ===
-cd /opt/ielts_buddy
+cd /opt/ielts_apply_seek
 python3 -m venv .venv
 source .venv/bin/activate
 pip install --upgrade pip
@@ -124,7 +163,7 @@ pip install -e ".[web]"
 ### Step 6：写生产 .env（1 分钟）
 
 ```bash
-cat > /opt/ielts_buddy/.env <<'EOF'
+cat > /opt/ielts_apply_seek/.env <<'EOF'
 IELTS_BUDDY_WEB_DB_MODE=online
 IELTS_BUDDY_WEB_DB_URL=mysql+pymysql://remote_user:Pass@666@127.0.0.1:3306/ietls_learn_online?charset=utf8mb4
 IELTS_BUDDY_LLM_API_KEY=sk-cp-crF61iHIxekGHshefJm0zWb6GFmL0x_tV47xBBYok369iI92IEWjdym7l6UXHXO-EmSyNqtJvd6v3qcjZdS-CoXH63u9Bt3Zl-EcA2mIF8ggnQdARmVp34c
@@ -135,7 +174,7 @@ TZ=Asia/Shanghai
 IELTS_BUDDY_JWT_SECRET=$(openssl rand -base64 48)
 IELTS_BUDDY_WECHAT_APPID=wx5aac958e916e8199
 IELTS_BUDDY_WECHAT_SECRET=<你的 AppSecret>
-chmod 600 /opt/ielts_buddy/.env
+chmod 600 /opt/ielts_apply_seek/.env
 ```
 
 ### Step 7：systemd 管 uvicorn:8001（3 分钟）
@@ -155,9 +194,9 @@ After=network.target
 Type=simple
 User=admin
 Group=admin
-WorkingDirectory=/opt/ielts_buddy
-EnvironmentFile=/opt/ielts_buddy/.env
-ExecStart=/opt/ielts_buddy/.venv/bin/uvicorn ielts_buddy.web.main:app --host 127.0.0.1 --port 8001 --workers 2
+WorkingDirectory=/opt/ielts_apply_seek
+EnvironmentFile=/opt/ielts_apply_seek/.env
+ExecStart=/opt/ielts_apply_seek/.venv/bin/uvicorn ielts_buddy.web.main:app --host 127.0.0.1 --port 8001 --workers 2
 Restart=always
 RestartSec=5
 StandardOutput=append:/var/log/ielts-buddy/web.log
@@ -317,7 +356,7 @@ docker ps
 
 | ❌ 不要做 | ✅ 要做 |
 |---|---|
-| 不要 `docker stop mom-qa-mvp` | 只在自己 /opt/ielts_buddy 操作 |
+| 不要 `docker stop mom-qa-mvp` | 只在自己 /opt/ielts_apply_seek 操作 |
 | 不要重启 supervisor | 它空跑，不用管 |
 | 不要改 MySQL 端口 | 已有 MOM 系统在用 |
 | 不要碰 aegis / aliyun / cloudmonitor | 阿里云内置监控 |
@@ -339,7 +378,7 @@ sudo systemctl disable nginx
 sudo apt remove nginx -y
 
 # 3. 删除部署文件
-sudo rm -rf /opt/ielts_buddy
+sudo rm -rf /opt/ielts_apply_seek
 sudo rm -rf /etc/nginx/ssl/wanglipingresume.com
 sudo rm -rf /var/www/personal
 sudo rm -rf /var/log/ielts-buddy
@@ -369,3 +408,5 @@ curl http://118.190.148.121:8000/healthz  # MOM 应该还能访问
 
 部署完后我会把这次的实操经验（Docker 容器共存、端口 8001 选择、supervisor 空跑的处理）固化到 `W10/12-已存在MOM容器环境的部署v2.md`（本文档），下次类似环境直接用。
 <!-- v2 spacer 1 -->
+
+<!-- v3 spacer 1 -->
