@@ -191,7 +191,7 @@ IELTS_BUDDY_ENV=prod
 TZ=Asia/Shanghai
 IELTS_BUDDY_JWT_SECRET=$JWT_SECRET
 IELTS_BUDDY_WECHAT_APPID=wx286309bc641b1d79
-IELTS_BUDDY_WECHAT_SECRET=在这里粘贴你的AppSecret
+IELTS_BUDDY_WECHAT_SECRET=cc2854b6e9ddf958d24bd5e268ceafa3
 chmod 600 /opt/ielts_apply_seek/.env
 ```
 
@@ -209,13 +209,10 @@ sudo cat /opt/ielts_apply_seek/.env
 
 ### Step 7：systemd 管 uvicorn:8001（3 分钟）
 
+**推荐用 `tee` 而非 `vim`**（避免 swap 文件 / 转义问题 / 中途断连）：
+
 ```bash
-sudo vim /etc/systemd/system/ielts-web.service
-```
-
-写入：
-
-```ini
+sudo tee /etc/systemd/system/ielts-web.service > /dev/null <<'EOF'
 [Unit]
 Description=IELTS Buddy Web (FastAPI on port 8001)
 After=network.target
@@ -234,7 +231,40 @@ StandardError=append:/var/log/ielts-buddy/web-error.log
 
 [Install]
 WantedBy=multi-user.target
+EOF
+
+**如果之前用 vim 编辑中断了**，先清理 swap 文件：
+
+```bash
+sudo rm -f /etc/systemd/system/.ielts-web.service.swp
+ls -la /etc/systemd/system/.ielts-web.service*
+# 应该只看到 .service，没有 .swp
 ```
+
+**vim 用户参考**（不推荐，容易出问题）：
+
+```bash
+sudo vim /etc/systemd/system/ielts-web.service
+# 写入（注意 ! 要用单引号 heredoc 写法）：
+```
+
+[Service]
+Type=simple
+User=admin
+Group=admin
+WorkingDirectory=/opt/ielts_apply_seek
+EnvironmentFile=/opt/ielts_apply_seek/.env
+ExecStart=/opt/ielts_apply_seek/.venv/bin/uvicorn ielts_buddy.web.main:app --host 127.0.0.1 --port 8001 --workers 2
+Restart=always
+RestartSec=5
+StandardOutput=append:/var/log/ielts-buddy/web.log
+StandardError=append:/var/log/ielts-buddy/web-error.log
+
+[Install]
+WantedBy=multi-user.target
+```
+
+**（vim 用户参考结束）**
 
 ```bash
 sudo mkdir -p /var/log/ielts-buddy
@@ -442,3 +472,5 @@ curl http://118.190.148.121:8000/healthz  # MOM 应该还能访问
 <!-- v3 spacer 1 -->
 
 <!-- v4 spacer 1 -->
+
+<!-- v5 spacer 1 -->
