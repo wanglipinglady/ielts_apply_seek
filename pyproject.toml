@@ -2,6 +2,32 @@
 requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
+# ============================================================
+# ⚠️ 命名约定（不要轻易改）
+# ------------------------------------------------------------
+# GitHub 仓库名:  ielts_apply_seek          （连字符，SEO 友好）
+# Python 包名:    ielts-buddy / ielts_buddy  （短横线/下划线，import 友好）
+# 部署目录:      /opt/ielts_apply_seek      （用仓库名，与 git 一致）
+#
+# 为什么仓库名 ≠ 包名？
+#   - PyPI 包名可用短横线（ielts-buddy），但 Python module 路径不能有短横线
+#   - 业界惯例：django-rest-framework → rest_framework、
+#               scikit-learn → sklearn、python-dateutil → dateutil
+#   - 详见 docs/miniprogram/W10/14-包名与仓库名命名约定.md
+#
+# 如果改包名，需要同时改：
+#   1. pyproject.toml 的 name = "..."
+#   2. pyproject.toml 的 packages = [...]
+#   3. 所有 pyproject.toml 里的 entry_points（CLI 命令）
+#   4. src/ 目录下的所有 .py 文件（约 400 处 from ielts_buddy.xxx import）
+#   5. src/ielts_buddy/ 目录名
+#   6. systemd unit 里的 uvicorn 启动命令
+#   7. 测试代码（tests/）
+#   8. IDE 配置（.vscode/, pycharm）
+#
+# 结论：不要改。改完还是会有新的不一致（包名 vs 仓库名）
+# ============================================================
+
 [project]
 name = "ielts-buddy"
 version = "0.1.0"
