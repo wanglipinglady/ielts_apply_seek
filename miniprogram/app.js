@@ -1,16 +1,20 @@
-// app.js — 小程序入口（v3.9+ / 2026-09-20）
+// app.js — 小程序入口（v3.9+ / 2026-09-29 生产配置）
+//
+// apiBaseUrl 配置说明：
+// - 生产：https://ielts.wanglipingresume.com（部署到阿里云 ECS 后）
+// - 真机调试：改回 http://172.20.10.2:8001（Mac LAN IP + 雅思助手端口）
+// - 模拟器：127.0.0.1:8001
 const STORAGE_TOKEN_KEY = 'ib_access_token';
 
 App({
   globalData: {
-    // 后端 API base URL
-    // 真机调试时改成 Mac 局域网 IP（172.20.10.2），模拟器保持 127.0.0.1
-    // 临时改法：开发完真机后再改回，或用 getSystemInfo 区分环境
-    apiBaseUrl: 'http://172.20.10.2:8000',
-    // 当前用户
+    // === 生产配置（2026-09-29 部署到阿里云 ECS） ===
+    apiBaseUrl: 'https://ielts.wanglipingresume.com',
+    // 实际用户
     user: null,
     // 调试模式：true 时登录页显示"调试登录面板"
-    debug: true,
+    // 生产必须改成 false（走真实 wx.login）
+    debug: false,
     // 系统信息
     systemInfo: null
   },
@@ -48,3 +52,4 @@ App({
     return wx.getStorageSync(STORAGE_TOKEN_KEY);
   }
 });
+<!-- spacer v1 -->
