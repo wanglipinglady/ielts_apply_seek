@@ -160,10 +160,28 @@ pip install --upgrade pip
 pip install -e ".[web]"
 ```
 
-### Step 6：写生产 .env（1 分钟）
+### Step 6：写生产 .env（2 分钟）
+
+**先在 ECS 上生成强随机 JWT secret**（在 heredoc 外执行）：
 
 ```bash
-cat > /opt/ielts_apply_seek/.env <<'EOF'
+JWT_SECRET=$(openssl rand -base64 48)
+echo "JWT_SECRET=$JWT_SECRET"
+# 复制输出，下面 heredoc 里要用
+```
+
+**获取微信小程序 AppSecret**（首次需要去公众平台生成）：
+
+1. 打开 [微信公众平台](https://mp.weixin.qq.com) → 登录
+2. **开发管理** → **开发设置** → **开发者凭证**
+3. 看到 AppID：`wx286309bc641b1d79`
+4. AppSecret 默认隐藏 → 点 **「生成」**（需要管理员扫码）
+5. **复制保存**（只显示一次）
+
+**写 .env**（把上面的 `JWT_SECRET` 和 AppSecret 替换进去）：
+
+```bash
+cat > /opt/ielts_apply_seek/.env <<EOF
 IELTS_BUDDY_WEB_DB_MODE=online
 IELTS_BUDDY_WEB_DB_URL=mysql+pymysql://remote_user:Pass@666@127.0.0.1:3306/ietls_learn_online?charset=utf8mb4
 IELTS_BUDDY_LLM_API_KEY=sk-cp-crF61iHIxekGHshefJm0zWb6GFmL0x_tV47xBBYok369iI92IEWjdym7l6UXHXO-EmSyNqtJvd6v3qcjZdS-CoXH63u9Bt3Zl-EcA2mIF8ggnQdARmVp34c
@@ -171,10 +189,22 @@ IELTS_BUDDY_LLM_BASE_URL=https://api.minimaxi.com/v1
 IELTS_BUDDY_LLM_MODEL=MiniMax-M2.7-highspeed
 IELTS_BUDDY_ENV=prod
 TZ=Asia/Shanghai
-IELTS_BUDDY_JWT_SECRET=$(openssl rand -base64 48)
-IELTS_BUDDY_WECHAT_APPID=wx5aac958e916e8199
-IELTS_BUDDY_WECHAT_SECRET=<你的 AppSecret>
+IELTS_BUDDY_JWT_SECRET=$JWT_SECRET
+IELTS_BUDDY_WECHAT_APPID=wx286309bc641b1d79
+IELTS_BUDDY_WECHAT_SECRET=在这里粘贴你的AppSecret
 chmod 600 /opt/ielts_apply_seek/.env
+```
+
+> **注意**：这里用 **无引号的 `EOF`**（不是 `<<'EOF'`）——目的是让 `$JWT_SECRET` 变量被 shell 展开。如果用 `<<'EOF'`，变量会变成字面量字符串。
+
+**验证 .env 内容**：
+
+```bash
+sudo cat /opt/ielts_apply_seek/.env
+# 确认:
+#   IELTS_BUDDY_WECHAT_APPID=wx286309bc641b1d79
+#   IELTS_BUDDY_WECHAT_SECRET=xxxxx  ← 不是"在这里粘贴"
+#   IELTS_BUDDY_JWT_SECRET=长随机字符串
 ```
 
 ### Step 7：systemd 管 uvicorn:8001（3 分钟）
@@ -410,3 +440,5 @@ curl http://118.190.148.121:8000/healthz  # MOM 应该还能访问
 <!-- v2 spacer 1 -->
 
 <!-- v3 spacer 1 -->
+
+<!-- v4 spacer 1 -->
