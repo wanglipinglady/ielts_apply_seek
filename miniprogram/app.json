@@ -9,6 +9,9 @@
     "pages/speak/index/index",
     "pages/speak/practice/index",
     "pages/me/index/index",
+    "pages/me/merge/index",
+    "pages/me/activate/index",
+    "pages/me/password/index",
     "pages/me/grade/index",
     "pages/me/exam/index",
     "pages/me/tools/index"
@@ -54,5 +57,6 @@
   },
   "lazyCodeLoading": "requiredComponents",
   "sitemapLocation": "sitemap.json",
-  "style": "v2"
+  "style": "v2",
+  "__usePrivacyCheck__": true
 }

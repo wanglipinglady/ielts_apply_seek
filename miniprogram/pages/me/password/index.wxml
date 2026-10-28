@@ -1,0 +1,55 @@
+<view class="container password-container">
+  <view class="hero card">
+    <view class="hero-title">重置 PC 端密码</view>
+    <view class="hero-subtitle">设置新的登录密码。邮箱不可修改（为安全起见，绑定后锁定）。</view>
+  </view>
+
+  <view class="form-card card">
+    <view class="form-item">
+      <text class="label">账号邮箱</text>
+      <input
+        class="input"
+        type="text"
+        placeholder="您的注册邮箱"
+        value="{{email}}"
+        bindinput="onEmailInput"
+        disabled="{{submitting}}"
+      />
+    </view>
+
+    <view class="form-item">
+      <text class="label">新密码</text>
+      <input
+        class="input"
+        password
+        placeholder="至少 8 位"
+        value="{{newPassword}}"
+        bindinput="onPasswordInput"
+        disabled="{{submitting}}"
+      />
+    </view>
+
+    <view class="form-item">
+      <text class="label">确认新密码</text>
+      <input
+        class="input"
+        password
+        placeholder="再输入一次"
+        value="{{confirmPassword}}"
+        bindinput="onConfirmInput"
+        disabled="{{submitting}}"
+      />
+    </view>
+
+    <view wx:if="{{errorMessage}}" class="error-message">{{errorMessage}}</view>
+
+    <button class="btn-primary reset-btn" bindtap="onSubmit" disabled="{{submitting}}">
+      {{submitting ? '重置中...' : '重置密码'}}
+    </button>
+
+    <view class="form-tip">
+      <text class="tip-line">· 邮箱必须和当前账号一致</text>
+      <text class="tip-line">· 重置后旧密码立即失效</text>
+    </view>
+  </view>
+</view>

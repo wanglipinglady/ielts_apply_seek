@@ -1,0 +1,57 @@
+<view class="container activate-container">
+  <view class="hero card">
+    <view class="hero-title">开通 PC 端账号</view>
+    <view class="hero-subtitle">设置邮箱和密码后，就能用同一账号在电脑端继续学习。所有学习记录会自动同步。</view>
+  </view>
+
+  <view class="form-card card">
+    <view class="form-item">
+      <text class="label">邮箱</text>
+      <input
+        class="input"
+        type="text"
+        placeholder="例如：zhang@163.com"
+        value="{{email}}"
+        bindinput="onEmailInput"
+        disabled="{{submitting}}"
+      />
+    </view>
+
+    <view class="form-item">
+      <text class="label">密码</text>
+      <input
+        class="input"
+        password
+        placeholder="至少 8 位"
+        value="{{password}}"
+        bindinput="onPasswordInput"
+        disabled="{{submitting}}"
+      />
+    </view>
+
+    <view class="form-item">
+      <text class="label">确认密码</text>
+      <input
+        class="input"
+        password
+        placeholder="再输入一次"
+        value="{{confirmPassword}}"
+        bindinput="onConfirmInput"
+        disabled="{{submitting}}"
+      />
+    </view>
+
+    <view wx:if="{{errorMessage}}" class="error-message">{{errorMessage}}</view>
+
+    <button class="btn-primary activate-btn" bindtap="onSubmit" disabled="{{submitting}}">
+      {{submitting ? '开通中...' : '开通'}}
+    </button>
+
+    <view class="form-tip">
+      开通后：
+      <text class="tip-line">· 邮箱会成为您的登录账号</text>
+      <text class="tip-line">· 电脑端用该邮箱 + 密码登录</text>
+      <text class="tip-line">· 小程序里的学习数据不会丢失</text>
+    </view>
+  </view>
+</view>

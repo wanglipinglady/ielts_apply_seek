@@ -5,7 +5,49 @@
     <view class="user-info">
       <text class="nickname">{{displayName}}</text>
       <text class="email">{{displayEmail}}</text>
+      <!-- v4.0+ 调试用：显示当前用户 id 和 API 模式 -->
+      <text class="debug-info" wx:if="{{debug}}">[v4] user_id={{user.id}} | state={{pcAccountState}} | api={{apiMode}}</text>
     </view>
+  </view>
+
+  <!-- v4.0+：PC 端账号区域（3 个状态） -->
+  <view class="pc-account-section card">
+    <view class="section-title">PC 端账号</view>
+
+    <!-- 状态 1：占位账号（未开通 PC 端） -->
+    <block wx:if="{{pcAccountState === 'placeholder'}}">
+      <view class="hint-text">在电脑端也能用？请补全邮箱和密码</view>
+      <button class="btn-primary" bindtap="onOpenPCAccount">开通 PC 端账号</button>
+    </block>
+
+    <!-- 状态 2：已开通，未登录过 PC 端（可编辑） -->
+    <block wx:elif="{{pcAccountState === 'bound'}}">
+      <view class="info-row">
+        <text class="label">邮箱</text>
+        <text class="value">{{user.email}}</text>
+      </view>
+      <view class="info-row">
+        <text class="label">密码</text>
+        <text class="value">********</text>
+        <text class="action" bindtap="onChangePassword">重置</text>
+      </view>
+      <view class="hint-text-small">登录 ielts.wanglipingresume.com 即可在 PC 端使用</view>
+    </block>
+
+    <!-- 状态 3：已登录过 PC 端（邮箱锁定） -->
+    <block wx:elif="{{pcAccountState === 'locked'}}">
+      <view class="info-row locked">
+        <text class="label">邮箱</text>
+        <text class="value">{{user.email}}</text>
+        <text class="lock-icon">🔒</text>
+      </view>
+      <view class="info-row">
+        <text class="label">密码</text>
+        <text class="value">********</text>
+        <text class="action" bindtap="onChangePassword">重置</text>
+      </view>
+      <view class="locked-hint">为安全起见，邮箱绑定后不可修改</view>
+    </block>
   </view>
 
   <!-- 工具入口：只保留"考试日历"（作文批改/资料下载在小程序体验不佳，移到 Web 端） -->

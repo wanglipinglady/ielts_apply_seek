@@ -1,0 +1,47 @@
+<view class="container merge-container">
+  <view class="hero card">
+    <view class="hero-title">合并 PC 端账号</view>
+    <view class="hero-subtitle">输入您在 PC 端注册的邮箱和密码，合并后两端的单词本、错题、学习历史会自动同步。</view>
+  </view>
+
+  <view class="form-card card">
+    <view class="form-item">
+      <text class="label">PC 端邮箱</text>
+      <input
+        class="input"
+        type="text"
+        placeholder="例如：zhang@163.com"
+        value="{{email}}"
+        bindinput="onEmailInput"
+        disabled="{{submitting}}"
+      />
+    </view>
+
+    <view class="form-item">
+      <text class="label">PC 端密码</text>
+      <input
+        class="input"
+        password
+        placeholder="请输入密码"
+        value="{{password}}"
+        bindinput="onPasswordInput"
+        disabled="{{submitting}}"
+      />
+    </view>
+
+    <view wx:if="{{errorMessage}}" class="error-message">{{errorMessage}}</view>
+
+    <button class="btn-primary merge-btn" bindtap="onSubmit" disabled="{{submitting}}">
+      {{submitting ? '合并中...' : '合并'}}
+    </button>
+
+    <view class="form-tip">
+      合并后：
+      <text class="tip-line">· 当前小程序账号会被删除</text>
+      <text class="tip-line">· PC 端账号会获得小程序端的所有数据</text>
+      <text class="tip-line">· 您将在小程序以 PC 端账号身份登录</text>
+    </view>
+  </view>
+
+  <view class="cancel-btn" bindtap="onCancel">暂不合并</view>
+</view>

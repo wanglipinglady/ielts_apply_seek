@@ -25,11 +25,22 @@ from fastapi.responses import JSONResponse
 
 from ielts_buddy.web import config as web_config
 from ielts_buddy.web.auth.deps import (
+    get_current_user,
     get_web_auth_service,
     user_to_response,
 )
-from ielts_buddy.web.auth.schemas import WxLoginRequest, WxLoginResponse
+from ielts_buddy.web.auth.schemas import (
+    WxActivatePcAccountRequest,
+    WxActivatePcAccountResponse,
+    WxLoginRequest,
+    WxLoginResponse,
+    WxMergeToExistingRequest,
+    WxMergeToExistingResponse,
+    WxResetPasswordRequest,
+    WxResetPasswordResponse,
+)
 from ielts_buddy.web.auth.service import AuthError, WebAuthService
+from ielts_buddy.web.auth.repository import WebUser
 
 logger = logging.getLogger(__name__)
 
@@ -162,13 +173,267 @@ async def api_wx_login(
         )
 
     # 3. 返回 token + user + is_new_user
+    user_resp = user_to_response(result.user)
     return WxLoginResponse(
         access_token=result.access_token,
         refresh_token=result.refresh_token,
         expires_in=result.expires_in,
-        user=user_to_response(result.user),
+        user=user_resp,
         is_new_user=result.is_new_user,
+        # v4.0+：复用 user_to_response 的计算结果，避免两处逻辑分叉
+        is_placeholder_account=user_resp.is_placeholder_account,
     )
+
+
+# =============================================================
+# v4.0+：占位账号合并到老账号
+# =============================================================
+
+
+@router.post(
+    "/merge-to-existing",
+    response_model=WxMergeToExistingResponse,
+    responses={
+        400: {"description": "请求参数无效"},
+        401: {"description": "未登录或登录已失效"},
+        404: {"description": "目标邮箱未注册"},
+        409: {"description": "目标账号已绑定其他微信 / 不能合并到占位账号"},
+        500: {"description": "合并过程失败（已回滚）"},
+    },
+)
+async def api_wx_merge_to_existing(
+    request: Request,
+    body: WxMergeToExistingRequest,
+    current_user: Annotated[WebUser, Depends(get_current_user)],
+    svc: Annotated[WebAuthService, Depends(get_web_auth_service)],
+) -> WxMergeToExistingResponse | JSONResponse:
+    """v4.0+：把当前微信占位账号合并到指定邮箱的老账号。
+
+    **前置条件**：
+    - 调用方必须已通过 ``/api/wx/login`` 登录（依赖 ``get_current_user`` 强制校验 token）
+    - 当前用户**必须是占位账号**（email 以 ``@wechat.ielts-buddy.local`` 结尾）
+
+    **请求**：
+    ```json
+    {"email": "zhang@163.com", "password": "aaa123456"}
+    ```
+
+    **业务行为**：
+    1. 校验老账号存在 + 密码对
+    2. 校验老账号没绑过其他微信
+    3. 事务里：迁移占位账号所有业务数据到老账号 + 转移 openid + 删除占位账号 + 写审计日志
+    4. 返回基于老账号身份的新 token（小程序端需更新本地 user.id）
+
+    **成功（200）**：
+    ```json
+    {
+      "access_token": "...",
+      "refresh_token": "...",
+      "token_type": "bearer",
+      "expires_in": 3600,
+      "user": {"id": 42, "email": "zhang@163.com", "is_placeholder_account": false, ...},
+      "merged_from_user_id": 156,
+      "merged_vocab_count": 23
+    }
+    ```
+
+    **失败**：
+    - 400 INVALID_REQUEST：当前用户不是微信账号
+    - 401 UNAUTHORIZED：未登录
+    - 404 USER_NOT_FOUND：邮箱未注册
+    - 400 INVALID_CREDENTIALS：密码错
+    - 400 INVALID_TARGET：目标是占位账号
+    - 409 ALREADY_BOUND：目标账号已绑定其他微信
+    - 400 CANNOT_MERGE_SELF：合并目标是当前账号
+    - 500 MERGE_FAILED：合并过程出错（已自动回滚）
+    """
+    # 1. 前置校验：当前用户必须是微信账号
+    if not current_user.wechat_openid:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={"detail": "当前账号不是微信账号，无法触发合并", "code": "INVALID_REQUEST"},
+        )
+
+    # 2. 调 service 执行合并
+    try:
+        login_result, merged_from_user_id, merged_vocab_count = svc.merge_wechat_to_existing(
+            wechat_openid=current_user.wechat_openid,
+            target_email=body.email,
+            target_password=body.password,
+        )
+    except AuthError as e:
+        # service 层错误统一映射
+        # USER_NOT_FOUND 用 404，其他用 400
+        if e.code == "USER_NOT_FOUND":
+            status_code = status.HTTP_404_NOT_FOUND
+        elif e.code == "ALREADY_BOUND":
+            status_code = status.HTTP_409_CONFLICT
+        else:
+            status_code = status.HTTP_400_BAD_REQUEST
+        return JSONResponse(
+            status_code=status_code,
+            content={"detail": e.message, "code": e.code},
+        )
+    except Exception as e:
+        # 兜底：service 抛 MERGE_FAILED 等
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={
+                "detail": f"合并失败: {str(e)[:200]}",
+                "code": "MERGE_FAILED",
+            },
+        )
+
+    # 3. 返回新 token（基于老账号身份）
+    return WxMergeToExistingResponse(
+        access_token=login_result.access_token,
+        refresh_token=login_result.refresh_token,
+        expires_in=login_result.expires_in,
+        user=user_to_response(login_result.user),
+        merged_from_user_id=merged_from_user_id,
+        merged_vocab_count=merged_vocab_count,
+    )
+
+
+# =============================================================
+# v4.0+：小程序内开通 PC 端账号
+# =============================================================
+
+
+@router.post(
+    "/activate-pc-account",
+    response_model=WxActivatePcAccountResponse,
+    responses={
+        400: {"description": "参数无效 / 账号状态不对"},
+        401: {"description": "未登录或登录已失效"},
+        409: {"description": "邮箱已被注册"},
+    },
+)
+async def api_wx_activate_pc_account(
+    request: Request,
+    body: WxActivatePcAccountRequest,
+    current_user: Annotated[WebUser, Depends(get_current_user)],
+    svc: Annotated[WebAuthService, Depends(get_web_auth_service)],
+) -> WxActivatePcAccountResponse | JSONResponse:
+    """v4.0+：在小程序里直接开通 PC 端账号（不再让用户去网页注册）。
+
+    **前置条件**：已登录（token 有效），且当前账号是微信占位账号。
+
+    **业务行为**：
+    1. 校验邮箱格式 + 密码强度
+    2. 校验邮箱未被注册
+    3. **原地**把占位账号的 email 改成真实邮箱、写入密码 hash
+       （保留 user_id → 小程序里的学习数据零迁移）
+    4. 返回基于新身份签发的 token（小程序端需更新本地 user 缓存）
+
+    **成功（200）**：
+    ```json
+    {
+      "access_token": "...",
+      "refresh_token": "...",
+      "token_type": "bearer",
+      "expires_in": 3600,
+      "user": {"id": 42, "email": "zhang@163.com", "is_placeholder_account": false}
+    }
+    ```
+
+    **失败**：
+    - 400 INVALID_EMAIL / WEAK_PASSWORD / ALREADY_ACTIVATED
+    - 409 EMAIL_TAKEN：邮箱已被注册
+    """
+    try:
+        result = svc.activate_pc_account(
+            user_id=int(current_user.id),
+            email=body.email,
+            password=body.password,
+        )
+    except AuthError as e:
+        if e.code == "EMAIL_TAKEN":
+            status_code = status.HTTP_409_CONFLICT
+        elif e.code == "USER_NOT_FOUND":
+            status_code = status.HTTP_404_NOT_FOUND
+        else:
+            status_code = status.HTTP_400_BAD_REQUEST
+        return JSONResponse(
+            status_code=status_code,
+            content={"detail": e.message, "code": e.code},
+        )
+    except Exception as e:
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"detail": f"开通失败: {str(e)[:200]}", "code": "ACTIVATE_FAILED"},
+        )
+
+    return WxActivatePcAccountResponse(
+        access_token=result.access_token,
+        refresh_token=result.refresh_token,
+        expires_in=result.expires_in,
+        user=user_to_response(result.user),
+    )
+
+
+# =============================================================
+# v4.0+：已登录用户重置 PC 端密码
+# =============================================================
+
+
+@router.post(
+    "/reset-password",
+    response_model=WxResetPasswordResponse,
+    responses={
+        400: {"description": "参数无效"},
+        401: {"description": "未登录或登录已失效"},
+        403: {"description": "邮箱与当前账号不一致"},
+    },
+)
+async def api_wx_reset_password(
+    request: Request,
+    body: WxResetPasswordRequest,
+    current_user: Annotated[WebUser, Depends(get_current_user)],
+    svc: Annotated[WebAuthService, Depends(get_web_auth_service)],
+) -> WxResetPasswordResponse | JSONResponse:
+    """v4.0+：已登录用户重置自己账号的 PC 端密码。
+
+    **为什么需要这个**：账号一旦在 PC 端登录过，邮箱就被锁定不能改
+    （``pc_logged_in_at`` 有值）。但用户可能忘了密码 → 只能"重置密码"。
+
+    **安全约束**：
+    - 必须持有效 access token（登录态 = 微信身份证明）
+    - body 里的 email 必须等于当前账号的 email（防越权重置他人密码）
+
+    **成功（200）**：
+    ```json
+    {"ok": true, "email": "zhang@163.com"}
+    ```
+
+    **失败**：
+    - 400 WEAK_PASSWORD：新密码太弱
+    - 403 EMAIL_MISMATCH：邮箱与当前账号不一致
+    """
+    try:
+        user = svc.reset_password_for_session(
+            user_id=int(current_user.id),
+            email=body.email,
+            new_password=body.new_password,
+        )
+    except AuthError as e:
+        if e.code == "EMAIL_MISMATCH":
+            status_code = status.HTTP_403_FORBIDDEN
+        elif e.code == "USER_NOT_FOUND":
+            status_code = status.HTTP_404_NOT_FOUND
+        else:
+            status_code = status.HTTP_400_BAD_REQUEST
+        return JSONResponse(
+            status_code=status_code,
+            content={"detail": e.message, "code": e.code},
+        )
+    except Exception as e:
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"detail": f"重置失败: {str(e)[:200]}", "code": "RESET_FAILED"},
+        )
+
+    return WxResetPasswordResponse(ok=True, email=user.email)
 
 
 @router.post(

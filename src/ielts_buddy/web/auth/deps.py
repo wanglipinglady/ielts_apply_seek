@@ -135,11 +135,17 @@ def get_refresh_token_from_cookie(
 
 def user_to_response(user: WebUser) -> UserResponse:
     """把 domain WebUser 转 API 响应模型。"""
+    # v4+：判断是否为占位账号（@wechat.ielts-buddy.local 是微信占位邮箱）
+    is_placeholder = bool(user.email and user.email.endswith("@wechat.ielts-buddy.local"))
+
     return UserResponse(
         id=user.id,
         email=user.email,
         created_at=user.created_at,
         last_login_at=user.last_login_at,
+        wechat_openid=user.wechat_openid,
+        is_placeholder_account=is_placeholder,
+        pc_logged_in_at=user.pc_logged_in_at,  # type: ignore[arg-type]
     )
 
 

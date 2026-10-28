@@ -28,7 +28,7 @@ import logging
 import sqlite3
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
@@ -177,6 +177,31 @@ SYNC_TABLES: list[dict[str, Any]] = [
 def _now_iso() -> str:
     """UTC ISO 格式时间戳（同步时间戳基准）。"""
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def _sqlite_safe(value: Any) -> Any:
+    """把 MySQL 返回值转成 sqlite3 能绑定的类型。
+
+    v3.6 修复：MySQL 的 DECIMAL 列（grade_history.overall_score /
+    typing_history.wpm / typing_history.accuracy）读出来是 ``decimal.Decimal``，
+    而 sqlite3 只支持 int / float / str / bytes / None —— 直接绑定会报
+    ``InterfaceError: Error binding parameter N: type 'decimal.Decimal' is not supported``，
+    导致 pull 整张表失败（跨设备数据同步静默中断）。
+
+    规则：
+    - Decimal → float（保留精度足够；score / wpm 都是小数）
+    - datetime / date → ISO 字符串（与 SQLite 端 TEXT 列的存储格式一致）
+    - 其余原样返回
+    """
+    import decimal
+
+    if isinstance(value, decimal.Decimal):
+        return float(value)
+    if isinstance(value, datetime):
+        return value.isoformat(timespec="seconds")
+    if isinstance(value, date):
+        return value.isoformat()
+    return value
 
 
 def _append_error_log(errors: list[str]) -> None:
@@ -550,7 +575,11 @@ class SyncWorker:
                     )
                     + ", sync_status='synced'"
                 )
-                args = [row_dict[c] for c in insert_cols_list]  # sync_status 已用字面量 'synced'
+                # v3.6 修复：DECIMAL → float，datetime → ISO 字符串，
+                # 否则 sqlite3 绑定时报 "type 'decimal.Decimal' is not supported"
+                args = [
+                    _sqlite_safe(row_dict[c]) for c in insert_cols_list
+                ]  # sync_status 已用字面量 'synced'
             else:
                 # vocab_category_words 这类：fallback 到 INSERT OR REPLACE
                 insert_cols_list = select_cols
@@ -559,7 +588,7 @@ class SyncWorker:
                     f"({', '.join(f'`{c}`' for c in insert_cols_list)}, sync_status) "
                     f"VALUES ({', '.join('?' for _ in insert_cols_list)}, 'synced')"
                 )
-                args = [row_dict[c] for c in insert_cols_list]
+                args = [_sqlite_safe(row_dict[c]) for c in insert_cols_list]
 
             sqlite_conn.execute(insert_sql, args)
             pulled += 1

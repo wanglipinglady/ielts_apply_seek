@@ -79,6 +79,19 @@ SECTION_PROFILES: dict[str, SectionProfile] = {
 }
 
 
+def _distribute_questions(total: int, passages: int) -> list[int]:
+    """把 total 道题**精确**分配到 passages 个 passage（余数先给前面的）。
+
+    例：_distribute_questions(13, 3) → [5, 4, 4]（和 = 13）
+    """
+    base = total // passages
+    remainder = total % passages
+    return [
+        base + (1 if i < remainder else 0)
+        for i in range(passages)
+    ]
+
+
 # =============================================================
 # 出题器
 # =============================================================
@@ -92,15 +105,31 @@ class ReadingQuestionGenerator:
         model: 模型名,默认走 .env 的 IELTS_BUDDY_LLM_MODEL。
     """
 
-    def __init__(self, llm_client: Any = None, model: Optional[str] = None) -> None:
+    def __init__(
+        self,
+        llm_client: Any = None,
+        model: Optional[str] = None,
+        timeout: Optional[float] = None,
+    ) -> None:
         self._llm_client = llm_client
         self._model = model
+        # v4.0：出题是"长输出"任务（3 篇 passage + 10-14 道题，实测 ~40s），
+        # 默认的 LLM_TIMEOUT_SECONDS=30 不够 → 线上一直 "Request timed out" 降级到 mock。
+        # 这里用独立的 READING_LLM_TIMEOUT_SECONDS（默认 180s）。
+        self._timeout = timeout
         try:
             from ielts_buddy.web.llm_service import get_llm_service
             self._llm_service = get_llm_service()
         except Exception as exc:
             logger.warning("[reading-gen] LLMService init failed: %s", exc)
             self._llm_service = None
+
+        if self._timeout is None:
+            try:
+                from ielts_buddy.web import config as web_config
+                self._timeout = web_config.READING_LLM_TIMEOUT_SECONDS
+            except Exception:
+                self._timeout = 180.0
 
     # =============================================================
     # 主要入口
@@ -174,8 +203,18 @@ class ReadingQuestionGenerator:
         wc_min, wc_max = profile.word_count_range
         # 题型分布(根据 question_count 调整)
         total_q = profile.question_count
-        # 3 个 passage 各 ~4-5 题
-        per_passage = (total_q + 2) // 3
+        # v4.0：把 total_q 题**精确**分配到 3 个 passage。
+        # 初版用 per_passage = (total_q + 2) // 3，13 题时算出 5 → prompt 里
+        # 同时出现 "3 篇各 5 题"（=15）和 "总共 13 题"，模型自己先在 <think> 里
+        # 发现矛盾（线上实测："3 passages each followed by 5 questions = 15
+        # conflict total 13"），导致输出质量下降。
+        counts = _distribute_questions(total_q, 3)
+        per_passage_desc = (
+            f"Passage 1 has {counts[0]} questions, "
+            f"Passage 2 has {counts[1]} questions, "
+            f"Passage 3 has {counts[2]} questions "
+            f"(total {total_q} questions)"
+        )
         schema_block = (
             "{{"
             "\"passage_number\": <int 1-3>, "
@@ -199,8 +238,7 @@ class ReadingQuestionGenerator:
             f"Scenario/topic: {scenario}\n"
             f"Difficulty: {profile.difficulty}\n"
             f"Word count range per passage: {wc_min}-{wc_max}\n\n"
-            f"Generate exactly 3 reading passages, each followed by "
-            f"{per_passage} questions (total {total_q} questions).\n"
+            f"Generate exactly 3 reading passages. {per_passage_desc}.\n"
             "Each passage should be 3-5 short paragraphs (NOT a single line).\n\n"
             "Allowed question types (use all 5 types across the set):\n"
             "  - tfng (True/False/Not Given): stem is a statement, "
@@ -256,6 +294,8 @@ class ReadingQuestionGenerator:
                         {"role": "user", "content": prompt},
                     ],
                     temperature=0.7,
+                    # v4.0：单独给长任务设超时（默认 30s 不够，会 "Request timed out"）
+                    timeout=self._timeout,
                 )
                 last_text = (resp.choices[0].message.content or "").strip()
                 parsed = extract_json(last_text)

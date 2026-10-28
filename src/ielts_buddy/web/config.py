@@ -193,6 +193,14 @@ LLM_TIMEOUT_SECONDS: Final[float] = float(
 # dry-run 模式：未设置 API key 时，返回 mock 数据，让前端能正常显示
 LLM_DRY_RUN: Final[bool] = not bool(LLM_API_KEY)
 
+# v4.0：阅读出题专用超时。
+# 出题是"长输出"任务（3 篇 passage + 10-14 道题），线上实测单次 ~41s；
+# 而通用 LLM_TIMEOUT_SECONDS 默认 30s → 出题必然 "Request timed out" 降级到 mock。
+# 这里给阅读出题单独放宽到 180s（MiniMax 侧不会因此变慢，超时只是上限）。
+READING_LLM_TIMEOUT_SECONDS: Final[float] = float(
+    os.environ.get("IELTS_BUDDY_READING_LLM_TIMEOUT", "180")
+)
+
 
 def _env_bool(key: str, default: bool) -> bool:
     """读环境变量解析为 bool。
@@ -227,8 +235,26 @@ SPEAKING_MAX_DURATION_SEC: Final[int] = int(
 )
 
 # v3.7 P2 真·听力题库配置
-TTS_VOICE: Final[str] = os.environ.get("IELTS_BUDDY_TTS_VOICE", "male-en-1").strip()
-TTS_MODEL: Final[str] = os.environ.get("IELTS_BUDDY_TTS_MODEL", "speech-01").strip()
+#
+# v4.0 修正：初版用的是 chat.completions + modalities=["text","audio"]，
+# 但 MiniMax 的 chat 端点**不支持音频模态**，线上一直报
+#   'Chat' object has no attribute 'post'
+#   unknown model 'speech-01'
+# 现在改用 MiniMax 私有的 T2A v2 端点 POST {base}/t2a_v2。
+# 线上实测可用：
+#   model=speech-02-hd, voice_id=English_Trustworth_Man → 返回 hex mp3
+#   （旧默认 male-en-1 在当前账号下不存在，会返回 "voice id not exist"）
+TTS_VOICE: Final[str] = os.environ.get(
+    "IELTS_BUDDY_TTS_VOICE", "English_Trustworth_Man"
+).strip()
+TTS_MODEL: Final[str] = os.environ.get("IELTS_BUDDY_TTS_MODEL", "speech-02-hd").strip()
+# T2A v2 端点基址（不含 /t2a_v2 路径后缀）
+TTS_API_BASE: Final[str] = os.environ.get(
+    "IELTS_BUDDY_TTS_API_BASE", "https://api.minimaxi.com/v1"
+).strip()
+TTS_TIMEOUT_SECONDS: Final[float] = float(
+    os.environ.get("IELTS_BUDDY_TTS_TIMEOUT", "60")
+)
 # 听力音频保留天数(默认 30;启动期同步清理)
 LISTENING_AUDIO_RETENTION_DAYS: Final[int] = int(
     os.environ.get("IELTS_BUDDY_LISTENING_AUDIO_RETENTION_DAYS", "30").strip() or "30"
@@ -266,6 +292,9 @@ __all__ = [
     # v3.7 P2
     "TTS_VOICE",
     "TTS_MODEL",
+    "TTS_API_BASE",
+    "TTS_TIMEOUT_SECONDS",
+    "READING_LLM_TIMEOUT_SECONDS",
     "LISTENING_AUDIO_RETENTION_DAYS",
     "LISTENING_AUTO_SEED",
     "LISTENING_SEED_S1",

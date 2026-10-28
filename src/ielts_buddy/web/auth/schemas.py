@@ -32,6 +32,9 @@ class UserResponse(BaseModel):
     email: str
     created_at: str | None = None
     last_login_at: str | None = None
+    wechat_openid: str | None = None  # v4+：绑定的微信 openid
+    is_placeholder_account: bool = False  # v4+：是否为占位账号（@wechat.ielts-buddy.local 邮箱）
+    pc_logged_in_at: str | None = None  # v4+：PC 端首次登录时间（ISO 字符串）
 
 
 class TokenResponse(BaseModel):
@@ -132,6 +135,76 @@ class WxLoginResponse(BaseModel):
     expires_in: int
     user: UserResponse
     is_new_user: bool  # 小程序前端决定要不要弹"欢迎"提示
+    is_placeholder_account: bool = False  # v4+：占位账号标记（前端用此决定要不要弹"合并"提示）
+
+
+class WxMergeToExistingRequest(BaseModel):
+    """v4+：把当前微信占位账号合并到老账号。
+
+    字段：
+    - email: 老账号的邮箱
+    - password: 老账号的密码（必须校验通过才允许合并）
+    """
+
+    email: EmailStr
+    password: str = Field(min_length=8, max_length=128)
+
+
+class WxMergeToExistingResponse(BaseModel):
+    """v4+：合并成功后的响应。
+
+    返回新 token（基于老账号身份），小程序端需要更新本地 user.id。
+    """
+
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+    expires_in: int
+    user: UserResponse
+    merged_from_user_id: int  # 被合并删除的占位账号 id（前端可用于日志）
+    merged_vocab_count: int  # 本次合并迁移的单词数
+
+
+class WxActivatePcAccountRequest(BaseModel):
+    """v4+：小程序内开通 PC 端账号请求体。
+
+    - email: 用户自选的 PC 端登录邮箱（不能已被注册）
+    - password: PC 端登录密码（至少 8 位）
+    """
+
+    email: EmailStr
+    password: str = Field(min_length=8, max_length=128)
+
+
+class WxActivatePcAccountResponse(BaseModel):
+    """v4+：开通 PC 端账号成功后的响应。
+
+    返回新 token —— 因为账号的 email 变了，小程序本地要同步更新 user 缓存。
+    """
+
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+    expires_in: int
+    user: UserResponse
+
+
+class WxResetPasswordRequest(BaseModel):
+    """v4+：已登录用户重置 PC 端密码请求体。
+
+    - email: 当前账号邮箱（必须与登录态对应的账号一致）
+    - new_password: 新密码（至少 8 位）
+    """
+
+    email: EmailStr
+    new_password: str = Field(min_length=8, max_length=128)
+
+
+class WxResetPasswordResponse(BaseModel):
+    """v4+：重置密码成功响应。"""
+
+    ok: bool = True
+    email: str
 
 
 __all__ = [
@@ -149,4 +222,10 @@ __all__ = [
     "ForgotPasswordResponse",
     "WxLoginRequest",
     "WxLoginResponse",
+    "WxMergeToExistingRequest",
+    "WxMergeToExistingResponse",
+    "WxActivatePcAccountRequest",
+    "WxActivatePcAccountResponse",
+    "WxResetPasswordRequest",
+    "WxResetPasswordResponse",
 ]
