@@ -2,11 +2,19 @@
 //
 // 流程：
 //   1. 页面加载 → 自动调 /api/wx/speak/practice/start 拿题（按当前 part）
-//   2. 用户点大麦克风图标 → 开始录音（wx.getRecorderManager）
+//   2. 用户点大麦克风图标 → 授权麦克风 → 开始录音（wx.getRecorderManager）
 //   3. 用户点停止 → 录音文件暂存本地
 //   4. 用户点提交 → 用 wx.uploadFile 上传到 /api/wx/speak/practice/submit（multipart/form-data）
 //   5. 后端返回 4 维 Band 分数 + 转写 + 纠错 + 建议
 //   6. 用户点"下一题" → 重新调 start 拿新题
+//
+// v4.0 修复：真机点「开始练习」报 "start fail:api..."
+// 根因：开了 __usePrivacyCheck__ 但没声明录音相关隐私接口，
+//      RecorderManager.start 直接被微信拦掉。
+//      修法：① app.json 补 permission(scope.record) + requiredPrivateInfos
+//            ② 录音前显式 wx.authorize({scope:'scope.record'}) 并给出可读错误
+//      注意：mp 后台的《用户隐私保护指引》也必须声明「访问你的麦克风」，
+//            否则 authorize 会报 "api scope is not declared in the privacy agreement"。
 
 const app = getApp();
 
@@ -105,20 +113,86 @@ Page({
   },
 
   // 开始录音（入口）
-  // 微信要求：调用隐私接口（麦克风）前必须先获得用户对隐私协议的同意
+  //
+  // 微信隐私接口调用顺序：
+  //   1. wx.requirePrivacyAuthorize —— 拿到《用户隐私保护指引》的用户同意
+  //      （2023-09 后所有敏感接口都需要；已在 app.json 开 __usePrivacyCheck__）
+  //   2. wx.authorize({scope:'scope.record'}) —— 拿到麦克风权限
+  //      （用户拒绝过就要引导到设置页）
+  //   3. RecorderManager.start()
+  //
+  // 之前只做了第 1 步就直接 start()，真机上被微信拦掉报 "start fail:api..."
   startRecord() {
     const that = this;
+
+    // 第 1 步：隐私协议同意
+    const afterPrivacy = () => {
+      // 第 2 步：麦克风权限
+      that._requestRecordAuth();
+    };
+
     if (wx.requirePrivacyAuthorize) {
       wx.requirePrivacyAuthorize({
-        success: () => { that._doStartRecord(); },
+        success: afterPrivacy,
         fail: () => {
-          wx.showToast({ title: '需要同意隐私协议才能录音', icon: 'none' });
+          wx.showModal({
+            title: '需要隐私授权',
+            content: '口语对练需要使用麦克风录音，请在弹出的授权界面同意隐私保护指引。',
+            showCancel: false,
+            confirmText: '知道了'
+          });
         }
       });
     } else {
-      // 兼容低版本基础库（无隐私接口）
-      that._doStartRecord();
+      afterPrivacy();
     }
+  },
+
+  // 申请麦克风权限
+  _requestRecordAuth() {
+    const that = this;
+
+    const start = () => {
+      that._doStartRecord();
+    };
+
+    // 已授权过的情况：直接调 authorize 会立刻 success
+    wx.authorize({
+      scope: 'scope.record',
+      success: start,
+      fail: (err) => {
+        const msg = (err && err.errMsg) || '';
+        // 用户之前拒绝过 → 引导到设置页手动开启
+        if (msg.indexOf('auth deny') >= 0 || msg.indexOf('authorize:fail') >= 0) {
+          wx.showModal({
+            title: '需要麦克风权限',
+            content: '口语对练需要麦克风权限才能录音。\n点击「去设置」开启麦克风权限。',
+            confirmText: '去设置',
+            cancelText: '取消',
+            success: (res) => {
+              if (res.confirm) {
+                wx.openSetting({
+                  success: (setting) => {
+                    if (setting.authSetting && setting.authSetting['scope.record']) {
+                      start();
+                    } else {
+                      wx.showToast({ title: '仍未开启麦克风权限', icon: 'none' });
+                    }
+                  }
+                });
+              }
+            }
+          });
+        } else {
+          wx.showModal({
+            title: '录音不可用',
+            content: '无法开启麦克风（' + msg.slice(0, 80) + '）。\n请确认小程序《用户隐私保护指引》已声明「访问你的麦克风」。',
+            showCancel: false,
+            confirmText: '知道了'
+          });
+        }
+      }
+    });
   },
 
   // 实际录音逻辑
@@ -144,7 +218,14 @@ Page({
     });
 
     recorderManager.onError((err) => {
-      wx.showToast({ title: '录音失败：' + (err.errMsg || '未知错误'), icon: 'none' });
+      // 真机上最常见的失败原因：隐私接口未声明 / 用户未授权
+      const msg = (err && err.errMsg) || '未知错误';
+      wx.showModal({
+        title: '录音失败',
+        content: msg + '\n\n若提示 scope/privacy 相关错误，请在 mp 后台《用户隐私保护指引》补充「访问你的麦克风」。',
+        showCancel: false,
+        confirmText: '知道了'
+      });
       that.setData({ recording: false });
       that._stopTimer();
     });
@@ -154,7 +235,15 @@ Page({
       duration: 60000,
       sampleRate: 16000,
       numberOfChannels: 1,
-      format: 'mp3'
+      format: 'mp3',
+      fail: (err) => {
+        wx.showModal({
+          title: '录音启动失败',
+          content: (err && err.errMsg) || '未知错误',
+          showCancel: false,
+          confirmText: '知道了'
+        });
+      }
     });
   },
 
@@ -247,14 +336,29 @@ Page({
             wx.showToast({ title: '评分完成', icon: 'success' });
           } else {
             const msg = (body && body.detail) || ('评分失败 ' + res.statusCode);
-            wx.showToast({ title: msg, icon: 'none' });
+            wx.showModal({
+              title: '评分失败',
+              content: msg,
+              showCancel: false,
+              confirmText: '知道了'
+            });
           }
         } catch (e) {
-          wx.showToast({ title: '响应解析失败', icon: 'none' });
+          wx.showModal({
+            title: '响应解析失败',
+            content: String(e && e.message ? e.message : e).slice(0, 200),
+            showCancel: false,
+            confirmText: '知道了'
+          });
         }
       },
       fail: (err) => {
-        wx.showToast({ title: '上传失败：' + (err.errMsg || '网络异常'), icon: 'none' });
+        wx.showModal({
+          title: '上传失败',
+          content: (err && err.errMsg) || '网络异常',
+          showCancel: false,
+          confirmText: '知道了'
+        });
       },
       complete: () => {
         this.setData({ loading: false, loadingText: '' });

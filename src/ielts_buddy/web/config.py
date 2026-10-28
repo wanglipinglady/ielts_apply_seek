@@ -218,7 +218,22 @@ def _env_bool(key: str, default: bool) -> bool:
 # =============================================================
 # 模型:small.en / base.en / tiny.en / small / base
 # PRD 决策:选 small.en(英文优化版,M4 + Core ML 30s 音频 ~5s 内的转写精度)
-WHISPER_MODEL: Final[str] = os.environ.get("IELTS_BUDDY_WHISPER_MODEL", "small.en").strip()
+# v4.0：生产服务器的 whisper 模型
+#   - 服务器连不上 huggingface.co（Network is unreachable），模型只能走
+#     ModelScope 镜像下载：
+#       https://modelscope.cn/models/KBLab/kb-whisper-small/resolve/master/ggml-model.bin
+#     → 放到 /root/.local/share/pywhispercpp/models/ggml-small.en.bin
+#   - tiny.en（77MB）精度不够（"Good morning" 会转成 "Got morning"），
+#     所以用 small.en（487MB），已实测下载并转写成功
+#   - 本地 Mac 开发也用 small.en
+WHISPER_MODEL: Final[str] = os.environ.get(
+    "IELTS_BUDDY_WHISPER_MODEL", "small-multi"
+).strip()
+# whisper ggml 模型存放目录（pywhispercpp 默认 ~/.local/share/pywhispercpp/models）
+WHISPER_MODELS_DIR: Final[str] = os.environ.get(
+    "IELTS_BUDDY_WHISPER_MODELS_DIR",
+    "/root/.local/share/pywhispercpp/models",
+).strip()
 # 语种:MVP 强制 en(雅思口语只有英文)
 WHISPER_LANGUAGE: Final[str] = os.environ.get("IELTS_BUDDY_WHISPER_LANGUAGE", "en").strip()
 # Core ML 加速(Apple Silicon ANE;非 M 系列自动忽略)
@@ -284,6 +299,7 @@ __all__ = [
     "get_web_db_path",
     "CORS_ORIGINS",
     "WHISPER_MODEL",
+    "WHISPER_MODELS_DIR",
     "WHISPER_LANGUAGE",
     "WHISPER_CORE_ML",
     "WHISPER_THREADS",

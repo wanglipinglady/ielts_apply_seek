@@ -58,5 +58,16 @@
   "lazyCodeLoading": "requiredComponents",
   "sitemapLocation": "sitemap.json",
   "style": "v2",
-  "__usePrivacyCheck__": true
+  "__usePrivacyCheck__": true,
+  "permission": {
+    "scope.record": {
+      "desc": "用于口语对练录音，将您的语音转写为文本并由 AI 评分"
+    }
+  },
+  "requiredPrivateInfos": [
+    "getRecorderManager",
+    "chooseMedia",
+    "chooseImage",
+    "saveImageToPhotosAlbum"
+  ]
 }

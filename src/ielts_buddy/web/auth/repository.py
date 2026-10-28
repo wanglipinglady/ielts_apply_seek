@@ -740,12 +740,26 @@ class MySQLWebUserRepository:
             if row is None:
                 return None
             m = row._mapping
+            # v4.0 修复：这里原来**漏了 wechat_openid**，
+            # 导致 service 层 merge_wechat_to_existing 拿到的
+            # placeholder.wechat_openid 恒为 None
+            #   → from_user_snapshot['wechat_openid'] = None
+            #   → merge_user_data(wechat_openid=None) 不转移 openid
+            #   → 源账号被删 → openid 彻底丢失
+            #   → 用户下次微信登录会创建一个全新空账号（数据看不到）
+            # 同类问题见《技术复盘》"坑 8：多实现漏方法"——这里同理是漏字段。
             return WebUser(
                 id=m["id"],
                 email=m["email"],
                 password_hash=m["password_hash"] or "",
                 created_at=m["created_at"].isoformat() if m["created_at"] else None,
                 last_login_at=m["last_login_at"].isoformat() if m["last_login_at"] else None,
+                wechat_openid=m.get("wechat_openid"),
+                pc_logged_in_at=(
+                    m.get("pc_logged_in_at").isoformat()
+                    if m.get("pc_logged_in_at") else None
+                ),
+                email_verified=bool(m.get("email_verified", 0)),
             )
 
     def bind_wechat_openid(self, user_id: int, openid: str) -> bool:
