@@ -63,11 +63,5 @@
     "scope.record": {
       "desc": "用于口语对练录音，将您的语音转写为文本并由 AI 评分"
     }
-  },
-  "requiredPrivateInfos": [
-    "getRecorderManager",
-    "chooseMedia",
-    "chooseImage",
-    "saveImageToPhotosAlbum"
-  ]
+  }
 }
