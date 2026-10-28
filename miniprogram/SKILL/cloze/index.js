@@ -1,6 +1,6 @@
 // SKILL/cloze/index.js — 完形填空
 const axios = require('axios');
-const API_BASE = 'https://api.your-domain.cn';
+const API_BASE = 'https://ielts.wanglipingresume.com';
 
 module.exports = {
   async generate_cloze(input) {

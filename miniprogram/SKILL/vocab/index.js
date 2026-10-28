@@ -5,7 +5,7 @@
 const axios = require('axios');
 
 // 运行时由微信注入；后端 API base URL 配置在 app.js
-const API_BASE = 'https://api.your-domain.cn';
+const API_BASE = 'https://ielts.wanglipingresume.com';
 
 module.exports = {
   /**

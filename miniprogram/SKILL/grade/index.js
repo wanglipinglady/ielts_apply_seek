@@ -1,6 +1,6 @@
 // SKILL/grade/index.js — 写作批改
 const axios = require('axios');
-const API_BASE = 'https://api.your-domain.cn';
+const API_BASE = 'https://ielts.wanglipingresume.com';
 
 module.exports = {
   async submit_grade(input) {

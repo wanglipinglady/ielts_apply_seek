@@ -7,7 +7,7 @@
  * - 错误 toast
  * - GET/POST/upload 三种便捷方法
  */
-const API_BASE_URL = (getApp() && getApp().globalData.apiBaseUrl) || 'http://127.0.0.1:8000';
+const API_BASE_URL = (getApp() && getApp().globalData.apiBaseUrl) || 'https://ielts.wanglipingresume.com';
 
 function getAuthHeader() {
   const token = wx.getStorageSync('ib_access_token');

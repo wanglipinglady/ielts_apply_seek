@@ -1,6 +1,6 @@
 // SKILL/review/index.js — 艾宾浩斯复习
 const axios = require('axios');
-const API_BASE = 'https://api.your-domain.cn';
+const API_BASE = 'https://ielts.wanglipingresume.com';
 
 module.exports = {
   async get_due_words(input) {

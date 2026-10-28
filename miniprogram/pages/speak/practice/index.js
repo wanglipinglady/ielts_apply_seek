@@ -104,8 +104,25 @@ Page({
     });
   },
 
-  // 开始录音
+  // 开始录音（入口）
+  // 微信要求：调用隐私接口（麦克风）前必须先获得用户对隐私协议的同意
   startRecord() {
+    const that = this;
+    if (wx.requirePrivacyAuthorize) {
+      wx.requirePrivacyAuthorize({
+        success: () => { that._doStartRecord(); },
+        fail: () => {
+          wx.showToast({ title: '需要同意隐私协议才能录音', icon: 'none' });
+        }
+      });
+    } else {
+      // 兼容低版本基础库（无隐私接口）
+      that._doStartRecord();
+    }
+  },
+
+  // 实际录音逻辑
+  _doStartRecord() {
     const that = this;
     const recorderManager = wx.getRecorderManager();
     this.setData({ recorderManager: recorderManager });

@@ -1,20 +1,34 @@
-// app.js — 小程序入口（v3.9+ / 2026-09-29 生产配置）
+// app.js — 小程序入口（v3.9+ / 2026-09-29 生产配置，v4.0+ 本地测试模式）
 //
-// apiBaseUrl 配置说明：
-// - 生产：https://ielts.wanglipingresume.com（部署到阿里云 ECS 后）
-// - 真机调试：改回 http://172.20.10.2:8001（Mac LAN IP + 雅思助手端口）
-// - 模拟器：127.0.0.1:8001
+// ===== 环境切换（只改这一个常量）=====
+// 'local'    本地后端 https://ielts.wanglipingresume.com（微信开发者工具模拟器）
+// 'lan'      本地后端 http://<Mac局域网IP>:8001（真机调试，需改 LAN_HOST）
+// 'prod'     生产 https://ielts.wanglipingresume.com
+//
+// v4.0+ 调试要点：
+// - local/lan 模式：debug=true，登录页显示"调试登录面板"，可走 dev-mock-login
+// - prod 模式：debug=false，走真实 wx.login
+const ENV = 'prod';
+
+// 真机调试时填你 Mac 的局域网 IP（终端执行 `ipconfig getifaddr en0` 获取）
+const LAN_HOST = '192.168.1.100';
+
+const ENV_CONFIG = {
+  local: { apiBaseUrl: 'https://ielts.wanglipingresume.com', debug: true },
+  lan:   { apiBaseUrl: `http://${LAN_HOST}:8001`, debug: true },
+  prod:  { apiBaseUrl: 'https://ielts.wanglipingresume.com', debug: false },
+};
+
 const STORAGE_TOKEN_KEY = 'ib_access_token';
 
 App({
   globalData: {
-    // === 生产配置（2026-09-29 部署到阿里云 ECS） ===
-    apiBaseUrl: 'https://ielts.wanglipingresume.com',
-    // 实际用户
+    // 当前环境（供页面判断）
+    env: ENV,
+    apiBaseUrl: ENV_CONFIG[ENV].apiBaseUrl,
     user: null,
     // 调试模式：true 时登录页显示"调试登录面板"
-    // 生产必须改成 false（走真实 wx.login）
-    debug: false,
+    debug: ENV_CONFIG[ENV].debug,
     // 系统信息
     systemInfo: null
   },

@@ -8,7 +8,7 @@
  * - 响应字段与 Web 端契约保持一致（access_token / refresh_token / user 等）
  */
 
-const API_BASE_URL = (getApp() as any).globalData.apiBaseUrl;
+const API_BASE_URL = (getApp() as any).globalData.apiBaseUrl || 'https://ielts.wanglipingresume.com';
 
 /** 解析响应：成功返回 data，失败 toast + 抛错 */
 function handleResponse<T>(res: WechatMiniprogram.RequestSuccessCallbackResult, resolve: (data: T) => void, reject: (err: any) => void) {
