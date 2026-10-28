@@ -51,6 +51,21 @@ class WebUserEmailConflictError(Exception):
     """email 已被注册。"""
 
 
+def _sqlite_has_user_id(conn: sqlite3.Connection, table: str) -> bool:
+    """判断 SQLite 表是否有 user_id 列。
+
+    v4.0：SQLite 端的 ``vocab_category_words`` 结构是
+    ``(category_id, word_id, added_at)`` —— **没有 user_id**，
+    与 MySQL 端 ``(user_id, category_id, word)`` 完全不同。
+    这类表无法按 user_id 迁移，合并时必须跳过（否则 SQL 直接报错）。
+    """
+    try:
+        rows = conn.execute("PRAGMA table_info(%s)" % table).fetchall()
+    except sqlite3.OperationalError:
+        return False
+    return any(str(r[1]) == "user_id" for r in rows)
+
+
 def _is_missing_table(exc: Exception) -> bool:
     """判断 SQLAlchemy 异常是否是"表不存在"。
 
@@ -471,12 +486,23 @@ class SQLiteWebUserRepository:
         """
         import json
 
+        from ielts_buddy.web.auth.merge_conflict import resolve_merge_conflicts
+
         moved: dict[str, int] = {}
         try:
             # 先提交可能残留的事务，避免 "cannot start a transaction within a transaction"
             self._conn.commit()
             self._conn.execute("BEGIN")
+            # v4.0 关键：迁移 user_id **之前**先消解唯一约束冲突
+            # （分类重名 / 同一个词两边都有 → 保留目标账号那份）
+            resolve_merge_conflicts(self._conn, from_user_id, to_user_id)
+
             for table in _MERGE_BUSINESS_TABLES:
+                # SQLite 端部分表结构与 MySQL 不同（vocab_category_words
+                # 在 SQLite 是 (category_id, word_id, added_at)，没有 user_id），
+                # 这类表无法按 user_id 迁移 → 跳过
+                if not _sqlite_has_user_id(self._conn, table):
+                    continue
                 try:
                     cur = self._conn.execute(
                         f"UPDATE {table} SET user_id = ? WHERE user_id = ?",
@@ -491,18 +517,6 @@ class SQLiteWebUserRepository:
                     raise
 
             if wechat_openid:
-                # 关键顺序：先把**源账号**的 openid 置空，再写到目标账号。
-                # 否则 UNIQUE(wechat_openid) 会因为两行同值而冲突。
-                self._conn.execute(
-                    "UPDATE users SET wechat_openid = NULL WHERE id = ?",
-                    (from_user_id,),
-                )
-                # 关键顺序：先把**源账号**的 openid 置空，再写到目标账号。
-                # 否则 UNIQUE(wechat_openid) 会因为两行同值而冲突。
-                self._conn.execute(
-                    "UPDATE users SET wechat_openid = NULL WHERE id = ?",
-                    (from_user_id,),
-                )
                 # 关键顺序：先把**源账号**的 openid 置空，再写到目标账号。
                 # 否则 UNIQUE(wechat_openid) 会因为两行同值而冲突。
                 self._conn.execute(
@@ -830,8 +844,17 @@ class MySQLWebUserRepository:
 
         from sqlalchemy import text
 
+        from ielts_buddy.web.auth.merge_conflict import resolve_merge_conflicts
+
         moved: dict[str, int] = {}
         with self._engine.begin() as conn:
+            # v4.0 关键：迁移 user_id **之前**先消解唯一约束冲突。
+            # 目标账号和源账号都持有系统内置分类 favorites/mistakes，
+            # 而 vocab_categories 上有 UNIQUE(user_id, name)，
+            # 不消解直接 UPDATE 必然报
+            #   Duplicate entry '1155-favorites' for key 'vocab_categories.uk_vc_user_name'
+            resolve_merge_conflicts(conn, from_user_id, to_user_id)
+
             for table in _MERGE_BUSINESS_TABLES:
                 try:
                     result = conn.execute(
@@ -854,16 +877,6 @@ class MySQLWebUserRepository:
             if wechat_openid:
                 # 关键顺序：先把**源账号**的 openid 置空，再写到目标账号。
                 # 否则 UNIQUE(wechat_openid) 会因为两行同值而冲突。
-                conn.execute(
-                    text("UPDATE users SET wechat_openid = NULL WHERE id = :uid"),
-                    {"uid": from_user_id},
-                )
-                # 关键顺序：先把**源账号**的 openid 置空，再写到目标账号。
-                # 否则 UNIQUE(wechat_openid) 会因为两行同值而冲突。
-                conn.execute(
-                    text("UPDATE users SET wechat_openid = NULL WHERE id = :uid"),
-                    {"uid": from_user_id},
-                )
                 # 关键顺序：先把**源账号**的 openid 置空，再写到目标账号。
                 # 否则 UNIQUE(wechat_openid) 会因为两行同值而冲突。
                 conn.execute(
