@@ -63,3 +63,10 @@ docs/miniprogram/_assets/seed_posts/
 docs/miniprogram/W8/submission/*.zip
 !docs/miniprogram/_assets/qrcode.png.DS_Store
 docs/.DS_Store
+
+# ===== 部署打包产物（手工上传用，不进版本库）=====
+# src.zip / src/ielts_buddy.zip 是给服务器手动上传用的打包快照，
+# 每次代码改动都会产生大 diff，没有评审价值。
+src.zip
+src/ielts_buddy.zip
+__MACOSX/
