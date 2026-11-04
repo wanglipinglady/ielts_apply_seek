@@ -1,6 +1,6 @@
 {
     "provider": "openai",
-    "api_key": "sk-cp-#",
+    "api_key": "sk-cp-<在此填入你的 MiniMax key>",
     "model": "MiniMax-M2.7-highspeed",
     "base_url": "https://api.minimaxi.com/v1"
 }

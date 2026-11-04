@@ -47,6 +47,10 @@ coverage.xml
 
 # ===== 本地运行时（临时 DB / 日志 / 缓存，调试用）=====
 .runtime/
+
+# ===== 本地运行时配置（含真实 LLM key，绝不提交）=====
+# docs/grok.py 从这里读 key；模板见 docs/GROK_CONFIG_EXAMPLE.json
+docs/grok_config.json
 .runtime/*
 
 # ===== deploy/ 环境配置（含密码，绝不提交）=====

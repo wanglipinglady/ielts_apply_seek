@@ -32,7 +32,7 @@ export IELTS_BUDDY_WEB_DB_MODE=online
 export IELTS_BUDDY_WEB_DB_URL="mysql+pymysql://remote_user:Pass@666@118.190.148.121:3306/ietls_learn_online?charset=utf8mb4"
 
 # === LLM ===
-export IELTS_BUDDY_LLM_API_KEY="sk-cp-crF61iHIxekGHshefJm0zWb6GFmL0x_tV47xBBYok369iI92IEWjdym7l6UXHXO-EmSyNqtJvd6v3qcjZdS-CoXH63u9Bt3Zl-EcA2mIF8ggnQdARmVp34c"
+export IELTS_BUDDY_LLM_API_KEY="sk-cp-<在此填入你的 MiniMax key>"
 export IELTS_BUDDY_LLM_BASE_URL="https://api.minimaxi.com/v1"
 export IELTS_BUDDY_LLM_MODEL="MiniMax-M2.7-highspeed"
 

@@ -184,7 +184,7 @@ echo "JWT_SECRET=$JWT_SECRET"
 cat > /opt/ielts_apply_seek/.env <<EOF
 IELTS_BUDDY_WEB_DB_MODE=online
 IELTS_BUDDY_WEB_DB_URL=mysql+pymysql://remote_user:Pass@666@127.0.0.1:3306/ietls_learn_online?charset=utf8mb4
-IELTS_BUDDY_LLM_API_KEY=sk-cp-crF61iHIxekGHshefJm0zWb6GFmL0x_tV47xBBYok369iI92IEWjdym7l6UXHXO-EmSyNqtJvd6v3qcjZdS-CoXH63u9Bt3Zl-EcA2mIF8ggnQdARmVp34c
+IELTS_BUDDY_LLM_API_KEY=sk-cp-<在此填入你的 MiniMax key>
 IELTS_BUDDY_LLM_BASE_URL=https://api.minimaxi.com/v1
 IELTS_BUDDY_LLM_MODEL=MiniMax-M2.7-highspeed
 IELTS_BUDDY_ENV=prod
