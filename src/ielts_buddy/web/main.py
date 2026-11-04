@@ -380,6 +380,9 @@ def create_app() -> FastAPI:
             "app": "ielts-buddy-web",
             "version": app.version,
             "prefer_mode": web_config.WEB_DB_MODE,
+            # LLM 配置状态：key 没配 / 写成占位符时，运维一眼能看出来，
+            # 不用去点"翻译"按钮试（那是 2026-11-04 文章翻译 401 的排查痛点）
+            "llm": dict(web_config.LLM_STATUS),
         }
 
         container = getattr(app.state, "container", None)

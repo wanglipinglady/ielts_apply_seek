@@ -20,6 +20,26 @@ from ielts_buddy.web import config as web_config
 logger = logging.getLogger(__name__)
 
 
+# LLM 鉴权类错误的可读提示。
+# 生产事故（2026-11-04）：服务器 .env / EnvironmentFile 里的 key 被写成
+# 9 字符占位符，每次调用都 401，而前端只显示 MiniMax 的原始 JSON，
+# 用户完全看不出是"配置写坏了"。这里给出可操作的提示。
+_AUTH_ERROR_HINT = (
+    "LLM 鉴权失败（HTTP 401）：服务器上的 IELTS_BUDDY_LLM_API_KEY 无效。"
+    "请检查 .env 与 systemd EnvironmentFile（/etc/ielts-web.env）里的 key "
+    "是否为完整值（不能是 sk-cp-... 这类占位符），修正后重启 ielts-web 服务。"
+)
+
+
+def _is_auth_error(exc: Exception) -> bool:
+    """判断异常是否为 LLM 鉴权失败（401 / unauthorized / login fail）。"""
+    text = f"{type(exc).__name__}: {exc}".lower()
+    return any(
+        marker in text
+        for marker in ("401", "authorized_error", "unauthorized", "login fail")
+    )
+
+
 # =============================================================
 # 数据结构
 # =============================================================
@@ -242,6 +262,13 @@ class LLMService:
         try:
             return self._llm_translate(text, target_lang)
         except Exception as e:
+            if _is_auth_error(e):
+                logger.error(f"LLM 翻译失败（鉴权）: {e}")
+                return TranslationResult(
+                    source_text=text,
+                    translation=_AUTH_ERROR_HINT,
+                    source="error",
+                )
             logger.error(f"LLM 翻译失败: {e}")
             return TranslationResult(
                 source_text=text,
@@ -388,6 +415,12 @@ class LLMService:
         try:
             return self._llm_analyze_words(words, context)
         except Exception as e:
+            if _is_auth_error(e):
+                logger.error(f"LLM 生词分析失败（鉴权）: {e}")
+                return [
+                    WordAnalysis(word=w, source="error", context_meaning=_AUTH_ERROR_HINT)
+                    for w in words
+                ]
             logger.error(f"LLM 生词分析失败: {e}")
             # Fallback：每个词返回空结构（前端仍能展示，但 source=error）
             return [

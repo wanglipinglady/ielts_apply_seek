@@ -7,11 +7,15 @@ Web 用户的配置通过进程环境变量（生产用 systemd EnvironmentFile�
 
 from __future__ import annotations
 
+import logging
 import os
 import secrets
 import warnings
 from pathlib import Path
 from typing import Final
+
+
+logger = logging.getLogger(__name__)
 
 
 # ===== 路径 =====
@@ -176,11 +180,54 @@ CORS_ORIGINS: Final[tuple[str, ...]] = tuple(
 
 # ===== LLM (联网查词 / 文章翻译共用) =====
 
-LLM_ENABLED: Final[bool] = bool(
-    os.environ.get("IELTS_BUDDY_LLM_API_KEY", "").strip()
-    or os.environ.get("IELTS_BUDDY_LLM_BASE_URL", "").strip()
+
+def _validate_llm_api_key(raw: str) -> tuple[str, str]:
+    """校验 LLM API key 是否是"占位符 / 被截断"的值。
+
+    生产事故复盘（2026-11-04 文章翻译 401）：
+    ``.env`` 与 systemd EnvironmentFile 里的 key 被误写成 9 字符占位符，
+    而配置层只判断"非空" → ``LLM_ENABLED=True`` → 每次调用都返回
+    401 authorized_error → 前端把原始报错塞进翻译正文，
+    用户完全看不出是"配置写坏了"。
+
+    这里在启动时就识别明显不可用的 key 并**大声告警**（不抛异常：
+    LLM 坏掉不应该让登录 / 学习等无关功能一起挂掉），
+    结论写进 ``LLM_STATUS``，由 ``/healthz`` 暴露给运维。
+
+    Returns:
+        (清洗后的 key, 可疑原因；无问题时原样返回 + 空字符串)
+    """
+    key = raw.strip()
+    if not key:
+        return key, ""
+
+    reasons: list[str] = []
+    if len(key) < 32:
+        reasons.append(f"长度仅 {len(key)} 字符")
+    if "..." in key or "\u2026" in key:
+        reasons.append("含省略号（占位符特征）")
+    if not reasons:
+        return key, ""
+
+    reason = "；".join(reasons)
+    msg = (
+        f"IELTS_BUDDY_LLM_API_KEY 疑似无效（{reason}）。"
+        "所有 LLM 调用都会 401 authorized_error，"
+        "请修正 .env / systemd EnvironmentFile 里的 key 后重启服务。"
+    )
+    if os.environ.get("IELTS_BUDDY_ENV", "dev") == "prod":
+        logger.error(msg)
+    else:
+        warnings.warn(msg, stacklevel=2)
+    return key, reason
+
+
+LLM_API_KEY, _LLM_KEY_SUSPECT = _validate_llm_api_key(
+    os.environ.get("IELTS_BUDDY_LLM_API_KEY", "")
 )
-LLM_API_KEY: Final[str] = os.environ.get("IELTS_BUDDY_LLM_API_KEY", "").strip()
+LLM_ENABLED: Final[bool] = bool(
+    LLM_API_KEY or os.environ.get("IELTS_BUDDY_LLM_BASE_URL", "").strip()
+)
 LLM_BASE_URL: Final[str] = os.environ.get(
     "IELTS_BUDDY_LLM_BASE_URL", "https://api.minimaxi.com/v1"
 )
@@ -192,6 +239,16 @@ LLM_TIMEOUT_SECONDS: Final[float] = float(
 )
 # dry-run 模式：未设置 API key 时，返回 mock 数据，让前端能正常显示
 LLM_DRY_RUN: Final[bool] = not bool(LLM_API_KEY)
+
+# LLM 就绪状态（供 /healthz 暴露，运维不用点按钮试就知道 key 坏没坏）
+LLM_STATUS: Final[dict] = {
+    "configured": bool(LLM_API_KEY),
+    "key_length": len(LLM_API_KEY),
+    "key_suspect": _LLM_KEY_SUSPECT,
+    "model": LLM_MODEL,
+    "base_url": LLM_BASE_URL,
+    "dry_run": LLM_DRY_RUN,
+}
 
 # v4.0：阅读出题专用超时。
 # 出题是"长输出"任务（3 篇 passage + 10-14 道题），线上实测单次 ~41s；
