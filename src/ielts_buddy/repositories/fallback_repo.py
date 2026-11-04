@@ -107,6 +107,11 @@ class FallbackContainer:
         return self._active.reading_practice
 
     @property
+    def voice_training(self):
+        """v3.9 W11:语音训练工坊仓储透传。"""
+        return self._active.voice_training
+
+    @property
     def online(self) -> Optional[MySQLRepositoryContainer]:
         """MySQL container；强制 sqlite 模式下为 None。"""
         return self._online

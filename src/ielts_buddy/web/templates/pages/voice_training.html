@@ -1,0 +1,373 @@
+{% extends "base.html" %}
+
+{% block page_title %}语音训练{% endblock %}
+
+{% block content %}
+<section class="voice-training-page">
+  <h2>🗣 语音训练工坊</h2>
+  <p class="lede">
+    每日循环：中文感想 → AI 改写英文 → 音标拼读 → 听标准音 → 跟读对比（1000h 方法论，零积分）
+  </p>
+
+  <div class="vt-layout">
+    {# === 左侧：五步训练区 === #}
+    <div class="vt-main">
+      {# Step 1: 中文输入 #}
+      <div class="vt-card" id="vt-step1">
+        <div class="vt-step-title">① 今天的感想（中文）</div>
+        <textarea id="zh-input" rows="5" maxlength="800"
+          placeholder="用中文写下今天工作/生活中的一件小事（100-150字最佳）……"></textarea>
+        <div class="vt-row">
+          <label>风格：
+            <select id="style-select">
+              <option value="natural" selected>自然（默认）</option>
+              <option value="casual">口语</option>
+              <option value="formal">正式</option>
+            </select>
+          </label>
+          <span id="zh-count" class="vt-muted">0/800</span>
+          <button id="rewrite-btn" class="btn-primary">改写成英文</button>
+        </div>
+      </div>
+
+      {# Step 2: 英文结果 + 音标 #}
+      <div class="vt-card" id="vt-step2" style="display:none">
+        <div class="vt-step-title">
+          ② English
+          <button id="retry-btn" class="btn-secondary vt-small">重新生成</button>
+          <span id="en-count" class="vt-muted"></span>
+        </div>
+        <div id="en-text" class="vt-en"></div>
+        <div class="vt-row">
+          <button id="phonetics-btn" class="btn-primary">解析音标</button>
+          <button id="tts-btn" class="btn-primary">生成语音</button>
+          <span id="vt-provider" class="vt-muted"></span>
+        </div>
+        <div id="ipa-panel" class="ipa-panel" style="display:none"></div>
+      </div>
+
+      {# Step 3: 音频与跟读 #}
+      <div class="vt-card" id="vt-step3" style="display:none">
+        <div class="vt-step-title">③ 标准音 · 跟读</div>
+        <div class="vt-row">
+          <label>音色：
+            <select id="voice-select">
+              <option value="en-US-AriaNeural" selected>Aria（美音·女）</option>
+              <option value="en-US-GuyNeural">Guy（美音·男）</option>
+              <option value="en-GB-SoniaNeural">Sonia（英音·女）</option>
+            </select>
+          </label>
+          <label>语速：
+            <input type="range" id="speed-range" min="0.5" max="1.5" step="0.25" value="0.75">
+            <span id="speed-label">0.75x</span>
+          </label>
+        </div>
+        <div class="vt-row vt-audio-row">
+          <audio id="tts-audio" controls preload="none" style="flex:1"></audio>
+          <audio id="rec-audio" controls preload="none" style="flex:1;display:none"></audio>
+        </div>
+        <div class="vt-row">
+          <button id="record-btn" class="btn-primary">🎙 开始跟读</button>
+          <button id="ab-btn" class="btn-secondary" disabled>A/B 对比连播</button>
+          <span id="record-status" class="vt-muted"></span>
+        </div>
+      </div>
+
+      {# Step 4: 纠音记录 + journal 复制 #}
+      <div class="vt-card" id="vt-step4" style="display:none">
+        <div class="vt-step-title">④ 纠音备注 & journal</div>
+        <textarea id="notes-input" rows="3" maxlength="2000"
+          placeholder="今天读错的地方：哪个音、怎么改的（对应 daily 模板第 4 节）"></textarea>
+        <div class="vt-row">
+          <button id="save-notes-btn" class="btn-primary">保存备注</button>
+          <button id="journal-btn" class="btn-secondary">复制 journal 模板</button>
+          <span id="save-status" class="vt-muted"></span>
+        </div>
+      </div>
+    </div>
+
+    {# === 右侧：今日提示 + 历史 === #}
+    <aside class="vt-side">
+      <div class="vt-card">
+        <div class="vt-step-title">怎么练（1000h 循环）</div>
+        <ol class="vt-tips">
+          <li>写中文感想（不要先想英文）</li>
+          <li>看改写结果，对照自己的表达找差距</li>
+          <li>点词看音标和拼读规则，生词加错词本</li>
+          <li>0.75x 听标准音 → 跟读 → A/B 对比</li>
+          <li>填纠音备注（至少 2 条），复制进 journal</li>
+        </ol>
+      </div>
+      <div class="vt-card">
+        <div class="vt-step-title">训练历史</div>
+        <div id="history-box" class="vt-history"></div>
+      </div>
+    </aside>
+  </div>
+</section>
+
+<style>
+.voice-training-page h2 { margin-bottom: 4px; }
+.vt-layout { display: grid; grid-template-columns: 1fr 320px; gap: 16px; align-items: start; }
+.vt-main, .vt-side { display: flex; flex-direction: column; gap: 14px; }
+.vt-card { background: var(--bg-card, #fff); border: 1px solid var(--border-light, #e2e8f0); border-radius: 10px; padding: 14px 16px; }
+.vt-step-title { font-weight: 600; margin-bottom: 8px; display: flex; align-items: center; gap: 10px; }
+.vt-small { font-size: 12px; padding: 2px 8px; }
+.vt-muted { color: #718096; font-size: 12px; }
+.vt-row { display: flex; align-items: center; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
+.vt-row label { font-size: 13px; }
+#zh-input, #notes-input { width: 100%; border: 1px solid #cbd5e0; border-radius: 8px; padding: 8px 10px; font-size: 14px; box-sizing: border-box; }
+.vt-en { background: #f7fafc; border-radius: 8px; padding: 10px 12px; font-size: 15px; line-height: 1.7; white-space: pre-wrap; }
+.ipa-panel { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.ipa-chip { border: 1px solid #cbd5e0; border-radius: 14px; padding: 3px 10px; font-size: 13px; cursor: pointer; background: #fff; }
+.ipa-chip:hover { border-color: #4299e1; }
+.ipa-chip .ipa { color: #2b6cb0; font-size: 12px; }
+.ipa-chip .rule { display: none; }
+.ipa-chip.open .rule { display: block; width: 100%; color: #4a5568; font-size: 12px; border-top: 1px dashed #cbd5e0; margin-top: 4px; padding-top: 4px; }
+.ipa-chip.open { border-radius: 8px; }
+.vt-history .vt-hist-item { border-bottom: 1px solid #edf2f7; padding: 8px 0; font-size: 13px; cursor: pointer; }
+.vt-history .vt-hist-item:hover { background: #f7fafc; }
+.vt-hist-meta { color: #718096; font-size: 12px; }
+.vt-hist-zh { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vt-tips { padding-left: 18px; margin: 6px 0 0; font-size: 13px; color: #4a5568; line-height: 1.8; }
+.vt-audio-row audio { height: 36px; }
+@media (max-width: 900px) { .vt-layout { grid-template-columns: 1fr; } }
+</style>
+
+<script>
+(function () {
+  "use strict";
+  var state = { recordId: null, recorder: null, chunks: [], recording: false };
+
+  function $(id) { return document.getElementById(id); }
+  function show(el) { el.style.display = ""; }
+  function setStatus(msg) { $("save-status").textContent = msg || ""; }
+
+  async function api(url, opts) {
+    var resp = await fetch(url, Object.assign({ headers: {} }, opts));
+    var data = null;
+    try { data = await resp.json(); } catch (e) { /* ignore */ }
+    if (!resp.ok) throw new Error((data && data.detail) || ("HTTP " + resp.status));
+    return data;
+  }
+
+  // ---- Step 1: 改写 ----
+  $("zh-input").addEventListener("input", function () {
+    $("zh-count").textContent = this.value.length + "/800";
+  });
+
+  $("rewrite-btn").addEventListener("click", async function () {
+    var zh = $("zh-input").value.trim();
+    if (zh.length < 2) { alert("先写两句今天的感想～"); return; }
+    this.disabled = true; this.textContent = "改写中…";
+    try {
+      var r = await api("/api/voice-training/rewrite", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ zh_text: zh, style: $("style-select").value })
+      });
+      state.recordId = r.record_id;
+      if (r.retryable) {
+        alert("改写服务暂时不可用，点「重新生成」重试");
+        $("en-text").textContent = "（改写失败，请重试）";
+      } else {
+        $("en-text").textContent = r.en_text;
+        $("en-count").textContent = r.word_count + " 词" + (r.dry_run ? "（演示模式）" : "");
+      }
+      show($("vt-step2"));
+      $("ipa-panel").style.display = "none";
+      $("vt-step3").style.display = "none";
+      $("vt-step4").style.display = "none";
+      loadHistory();
+    } catch (e) { alert("改写失败：" + e.message); }
+    this.disabled = false; this.textContent = "改写成英文";
+  });
+
+  $("retry-btn").addEventListener("click", async function () {
+    if (!state.recordId) return;
+    this.disabled = true;
+    try {
+      var r = await api("/api/voice-training/" + state.recordId + "/retry", { method: "POST" });
+      if (!r.retryable) {
+        $("en-text").textContent = r.en_text;
+        $("en-count").textContent = r.word_count + " 词";
+      }
+    } catch (e) { alert("重试失败：" + e.message); }
+    this.disabled = false;
+  });
+
+  // ---- Step 2: 音标 ----
+  $("phonetics-btn").addEventListener("click", async function () {
+    if (!state.recordId) return;
+    this.disabled = true; this.textContent = "解析中…";
+    try {
+      var r = await api("/api/voice-training/" + state.recordId + "/phonetics", { method: "POST" });
+      var panel = $("ipa-panel");
+      panel.innerHTML = "";
+      r.words.forEach(function (w) {
+        var chip = document.createElement("div");
+        chip.className = "ipa-chip";
+        var ipaText = w.ipa_us || w.ipa_uk || "（无音标）";
+        chip.innerHTML = "<b>" + w.word + "</b> <span class='ipa'>" + ipaText + "</span>" +
+          "<span class='rule'>加载规则…</span>";
+        chip.addEventListener("click", async function () {
+          chip.classList.toggle("open");
+          if (chip.classList.contains("open") && !chip.dataset.ruleLoaded) {
+            try {
+              var rr = await api("/api/voice-training/word-rule?word=" + encodeURIComponent(w.word));
+              chip.querySelector(".rule").textContent = rr.rule || "（暂无规则说明）";
+            } catch (e) { chip.querySelector(".rule").textContent = "规则加载失败"; }
+            chip.dataset.ruleLoaded = "1";
+          }
+        });
+        panel.appendChild(chip);
+      });
+      panel.style.display = "flex";
+    } catch (e) { alert("音标解析失败：" + e.message); }
+    this.disabled = false; this.textContent = "解析音标";
+  });
+
+  // ---- Step 3: TTS + 跟读 ----
+  $("speed-range").addEventListener("input", function () {
+    $("speed-label").textContent = this.value + "x";
+  });
+
+  $("tts-btn").addEventListener("click", async function () {
+    if (!state.recordId) return;
+    this.disabled = true; this.textContent = "合成中…";
+    try {
+      var r = await api("/api/voice-training/" + state.recordId + "/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          voice: $("voice-select").value,
+          speed: parseFloat($("speed-range").value)
+        })
+      });
+      $("tts-audio").src = r.audio_url;
+      $("tts-audio").load();
+      $("vt-provider").textContent =
+        "音源：" + (r.provider === "edge" ? "Edge（免费）" : "MiniMax") + (r.cached ? "（缓存）" : "");
+      show($("vt-step3"));
+      $("tts-audio").play().catch(function () {});
+    } catch (e) { alert("语音合成失败：" + e.message); }
+    this.disabled = false; this.textContent = "生成语音";
+  });
+
+  $("record-btn").addEventListener("click", async function () {
+    if (state.recording) { stopRecording(); return; }
+    try {
+      var stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      var mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+        ? "audio/webm;codecs=opus" : "";
+      state.recorder = mime ? new MediaRecorder(stream, { mimeType: mime })
+                             : new MediaRecorder(stream);
+      state.chunks = [];
+      state.recorder.ondataavailable = function (e) { if (e.data.size) state.chunks.push(e.data); };
+      state.recorder.onstop = async function () {
+        stream.getTracks().forEach(function (t) { t.stop(); });
+        var blob = new Blob(state.chunks, { type: state.recorder.mimeType || "audio/webm" });
+        var fd = new FormData();
+        fd.append("audio", blob, "recording.webm");
+        $("record-status").textContent = "上传中…";
+        try {
+          var r = await api("/api/voice-training/" + state.recordId + "/recording",
+            { method: "POST", body: fd });
+          $("rec-audio").src = r.audio_url;
+          $("rec-audio").style.display = "";
+          $("ab-btn").disabled = false;
+          show($("vt-step4"));
+          $("record-status").textContent = "已保存，可以 A/B 对比";
+        } catch (e) { $("record-status").textContent = "上传失败：" + e.message; }
+      };
+      state.recorder.start();
+      state.recording = true;
+      this.textContent = "⏹ 停止录音";
+      $("record-status").textContent = "录音中…（听一句，跟一句）";
+    } catch (e) { alert("无法访问麦克风：" + e.message); }
+  });
+
+  function stopRecording() {
+    state.recording = false;
+    if (state.recorder && state.recorder.state !== "inactive") state.recorder.stop();
+    $("record-btn").textContent = "🎙 开始跟读";
+  }
+
+  // A/B 连播：参考音 → 300ms → 录音
+  $("ab-btn").addEventListener("click", function () {
+    var a = $("tts-audio"), b = $("rec-audio");
+    a.currentTime = 0; b.currentTime = 0;
+    a.play().catch(function () {});
+    a.onended = function () {
+      setTimeout(function () { b.play().catch(function () {}); }, 300);
+    };
+  });
+
+  // ---- Step 4: 备注 + journal ----
+  $("save-notes-btn").addEventListener("click", async function () {
+    if (!state.recordId) return;
+    try {
+      await api("/api/voice-training/" + state.recordId, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notes: $("notes-input").value })
+      });
+      setStatus("已保存 ✓"); setTimeout(function () { setStatus(""); }, 2000);
+    } catch (e) { setStatus("保存失败：" + e.message); }
+  });
+
+  $("journal-btn").addEventListener("click", async function () {
+    if (!state.recordId) return;
+    try {
+      var r = await api("/api/voice-training/" + state.recordId + "/journal-format");
+      var text = r.markdown + "\n\n## 4. 跟读 & 纠音记录\n" +
+        "| 单词/句子 | 错误 | 修正 |\n|---|---|---|\n|  |  |  |\n\n" +
+        $("notes-input").value.trim();
+      await navigator.clipboard.writeText(text);
+      setStatus("已复制，粘贴到 daily/ 今日文件即可 ✓");
+      setTimeout(function () { setStatus(""); }, 3000);
+    } catch (e) { setStatus("复制失败：" + e.message); }
+  });
+
+  // ---- 历史 ----
+  async function loadHistory() {
+    try {
+      var r = await api("/api/voice-training/records?page=1&size=10");
+      var box = $("history-box");
+      box.innerHTML = r.total === 0 ? "还没有训练记录，从今天开始～" : "";
+      r.items.forEach(function (it) {
+        var div = document.createElement("div");
+        div.className = "vt-hist-item";
+        div.innerHTML = "<div class='vt-hist-meta'>" + it.created_at.slice(0, 16) +
+          (it.has_tts ? " 🔊" : "") + (it.has_recording ? " 🎙" : "") + "</div>" +
+          "<div class='vt-hist-zh'>" + it.source_zh.slice(0, 40) + "</div>";
+        div.addEventListener("click", function () {
+          $("zh-input").value = it.source_zh;
+          $("zh-count").textContent = it.source_zh.length + "/800";
+          if (it.rewritten_en) {
+            state.recordId = it.id;
+            $("en-text").textContent = it.rewritten_en;
+            show($("vt-step2"));
+            if (it.tts_voice) $("voice-select").value = it.tts_voice;
+            if (it.notes) $("notes-input").value = it.notes;
+            if (it.has_tts) {
+              $("tts-audio").src = "/api/voice-training/" + it.id + "/audio/tts";
+              show($("vt-step3"));
+            }
+            if (it.has_recording) {
+              $("rec-audio").src = "/api/voice-training/" + it.id + "/audio/recording";
+              $("rec-audio").style.display = "";
+              show($("vt-step4"));
+            }
+            window.scrollTo({ top: 0, behavior: "smooth" });
+          }
+        });
+        box.appendChild(div);
+      });
+    } catch (e) { /* 历史加载失败静默 */ }
+  }
+
+  loadHistory();
+})();
+</script>
+{% endblock %}

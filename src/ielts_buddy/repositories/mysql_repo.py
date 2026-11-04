@@ -19,6 +19,7 @@ from sqlalchemy import (
     BigInteger, Boolean, Column, Date, DateTime, DECIMAL, Integer,
     Numeric, SmallInteger, MetaData, String,
     Table, Text, UniqueConstraint, Index, insert, select, update, delete, text,
+    func,
 )
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import IntegrityError
@@ -186,6 +187,24 @@ t_focus_sessions = Table(
 )
 
 # v3.7 P1 口语对练历史表 (PRD: docs/web-mvp/plans/phase-8-speaking-practice.md §6)
+t_voice_training_records = Table(
+    "voice_training_records", metadata,
+    Column("id", BigInteger, primary_key=True, autoincrement=True),
+    Column("user_id", BigInteger, nullable=False, server_default=text("1")),
+    Column("source_zh", Text, nullable=False),
+    Column("rewritten_en", Text, nullable=False),
+    Column("style", String(16), nullable=False, server_default=text("'natural'")),
+    Column("ipa_json", Text, nullable=True),
+    Column("tts_voice", String(64), nullable=False, server_default=text("'en-US-AriaNeural'")),
+    Column("tts_path", String(255), nullable=True),
+    Column("recording_path", String(255), nullable=True),
+    Column("notes", Text, nullable=False),
+    Column("created_at", DateTime, nullable=False, server_default=text("CURRENT_TIMESTAMP")),
+    Column("updated_at", DateTime, nullable=False, server_default=text("CURRENT_TIMESTAMP")),
+    Column("sync_status", String(16), nullable=False, server_default=text("'synced'")),
+    Index("idx_vtr_user_created", "user_id", "created_at"),
+)
+
 t_speaking_practice_records = Table(
     "speaking_practice_records", metadata,
     Column("id", BigInteger, primary_key=True, autoincrement=True),
@@ -2949,6 +2968,132 @@ class MySQLReadingPracticeRepository:
         }
 
 
+# =============================================================
+# 11. MySQLVoiceTrainingRepository（v3.9 W11 语音训练工坊）
+# =============================================================
+
+
+class MySQLVoiceTrainingRepository:
+    """MySQL 实现的 VoiceTrainingRepository（与 SQLite 版接口一致）。"""
+
+    def __init__(self, engine: Engine) -> None:
+        self._engine = engine
+
+    def create_record(
+        self,
+        user_id: int,
+        source_zh: str,
+        style: str = "natural",
+        rewritten_en: str = "",
+        tts_voice: str = "en-US-AriaNeural",
+    ) -> int:
+        with self._engine.begin() as conn:
+            row = conn.execute(insert(t_voice_training_records).values(
+                user_id=user_id,
+                source_zh=source_zh,
+                style=style,
+                rewritten_en=rewritten_en,
+                tts_voice=tts_voice,
+                notes="",
+            ))
+            return int(row.inserted_primary_key[0])
+
+    def attach_rewrite(self, user_id: int, record_id: int, rewritten_en: str) -> bool:
+        with self._engine.begin() as conn:
+            row = conn.execute(
+                update(t_voice_training_records)
+                .where(t_voice_training_records.c.user_id == user_id)
+                .where(t_voice_training_records.c.id == record_id)
+                .values(rewritten_en=rewritten_en,
+                        updated_at=datetime.now())
+            )
+            return row.rowcount > 0
+
+    def attach_ipa(self, user_id: int, record_id: int, ipa_json: str) -> bool:
+        with self._engine.begin() as conn:
+            row = conn.execute(
+                update(t_voice_training_records)
+                .where(t_voice_training_records.c.user_id == user_id)
+                .where(t_voice_training_records.c.id == record_id)
+                .values(ipa_json=ipa_json, updated_at=datetime.now())
+            )
+            return row.rowcount > 0
+
+    def attach_tts(self, user_id: int, record_id: int, tts_path: str, tts_voice: str) -> bool:
+        with self._engine.begin() as conn:
+            row = conn.execute(
+                update(t_voice_training_records)
+                .where(t_voice_training_records.c.user_id == user_id)
+                .where(t_voice_training_records.c.id == record_id)
+                .values(tts_path=tts_path, tts_voice=tts_voice,
+                        updated_at=datetime.now())
+            )
+            return row.rowcount > 0
+
+    def attach_recording(self, user_id: int, record_id: int, recording_path: str) -> bool:
+        with self._engine.begin() as conn:
+            row = conn.execute(
+                update(t_voice_training_records)
+                .where(t_voice_training_records.c.user_id == user_id)
+                .where(t_voice_training_records.c.id == record_id)
+                .values(recording_path=recording_path, updated_at=datetime.now())
+            )
+            return row.rowcount > 0
+
+    def update_notes(self, user_id: int, record_id: int, notes: str) -> bool:
+        with self._engine.begin() as conn:
+            row = conn.execute(
+                update(t_voice_training_records)
+                .where(t_voice_training_records.c.user_id == user_id)
+                .where(t_voice_training_records.c.id == record_id)
+                .values(notes=notes, updated_at=datetime.now())
+            )
+            return row.rowcount > 0
+
+    def _row_to_dict(self, row) -> dict:
+        d = dict(row._mapping)
+        for k in ("created_at", "updated_at"):
+            if d.get(k) is not None and hasattr(d[k], "isoformat"):
+                d[k] = d[k].isoformat(timespec="seconds")
+        return d
+
+    def get_record(self, user_id: int, record_id: int) -> Optional[dict]:
+        with self._engine.connect() as conn:
+            row = conn.execute(
+                select(t_voice_training_records)
+                .where(t_voice_training_records.c.user_id == user_id)
+                .where(t_voice_training_records.c.id == record_id)
+            ).fetchone()
+        return self._row_to_dict(row) if row else None
+
+    def list_records(
+        self, user_id: int, page: int = 1, size: int = 20
+    ) -> tuple[list[dict], int]:
+        base = t_voice_training_records
+        with self._engine.connect() as conn:
+            total = conn.execute(
+                select(func.count()).select_from(base)
+                .where(base.c.user_id == user_id)
+            ).scalar() or 0
+            rows = conn.execute(
+                select(base)
+                .where(base.c.user_id == user_id)
+                .order_by(base.c.id.desc())
+                .limit(size).offset((page - 1) * size)
+            ).fetchall()
+        return [self._row_to_dict(r) for r in rows], int(total)
+
+    def count_today(self, user_id: int) -> int:
+        today = datetime.now().strftime("%Y-%m-%d")
+        with self._engine.connect() as conn:
+            total = conn.execute(
+                select(func.count()).select_from(t_voice_training_records)
+                .where(t_voice_training_records.c.user_id == user_id)
+                .where(func.date(t_voice_training_records.c.created_at) == today)
+            ).scalar() or 0
+        return int(total)
+
+
 class MySQLRepositoryContainer:
     """10 个 MySQL Repository 的容器(v3.8 新增 2 个)。
 
@@ -2987,6 +3132,8 @@ class MySQLRepositoryContainer:
         self.prep_resource = MySQLPrepResourceRepository(self._engine)
         # v3.8 P3.2 Reading 真题题库
         self.reading_practice = MySQLReadingPracticeRepository(self._engine)
+        # v3.9 W11 语音训练工坊
+        self.voice_training = MySQLVoiceTrainingRepository(self._engine)
 
     def close(self) -> None:
         self._engine.dispose()
@@ -3014,6 +3161,7 @@ __all__ = [
     "MySQLListeningPracticeRepository",
     "MySQLPrepResourceRepository",
     "MySQLReadingPracticeRepository",
+    "MySQLVoiceTrainingRepository",
     "MySQLRepositoryContainer",
     "create_mysql_repositories",
     "REVIEW_INTERVALS",

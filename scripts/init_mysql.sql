@@ -456,3 +456,21 @@ SET FOREIGN_KEY_CHECKS = 1;
 --
 -- SELECT * FROM cache_meta;
 --   -- 期望两行：master_json_mtime=0, curated_json_mtime=0
+
+-- v3.9 W11 语音训练工坊（每日中文感想 → LLM 改写 → 音标 → TTS → 跟读对比）
+CREATE TABLE IF NOT EXISTS voice_training_records (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    user_id BIGINT NOT NULL DEFAULT 1,
+    source_zh TEXT NOT NULL,
+    rewritten_en TEXT NOT NULL,
+    style VARCHAR(16) NOT NULL DEFAULT 'natural',
+    ipa_json TEXT,
+    tts_voice VARCHAR(64) NOT NULL DEFAULT 'en-US-AriaNeural',
+    tts_path VARCHAR(255),
+    recording_path VARCHAR(255),
+    notes TEXT NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    sync_status VARCHAR(16) NOT NULL DEFAULT 'synced',
+    INDEX idx_vtr_user_created (user_id, created_at DESC)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

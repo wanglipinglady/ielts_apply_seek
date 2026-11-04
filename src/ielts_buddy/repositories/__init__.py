@@ -24,6 +24,7 @@ from ielts_buddy.repositories.sqlite_repo import (
     SQLitePrepResourceRepository,
     SQLiteReadingPracticeRepository,
     SQLiteRepositoryContainer,
+    SQLiteVoiceTrainingRepository,
     SQLiteSpeakingPracticeRepository,
     SQLiteTypingRepository,
     SQLiteUserRepository,
@@ -43,6 +44,7 @@ try:
         MySQLPrepResourceRepository,
         MySQLReadingPracticeRepository,
         MySQLRepositoryContainer,
+        MySQLVoiceTrainingRepository,
         MySQLSpeakingPracticeRepository,
         MySQLTypingRepository,
         MySQLUserRepository,
@@ -67,6 +69,7 @@ __all__ = [
     "SQLitePrepResourceRepository",
     "SQLiteReadingPracticeRepository",
     "SQLiteRepositoryContainer",
+    "SQLiteVoiceTrainingRepository",
     "create_sqlite_repositories",
     "REVIEW_INTERVALS",
 ]
@@ -86,6 +89,7 @@ if _MYSQL_AVAILABLE:
         "MySQLPrepResourceRepository",
         "MySQLReadingPracticeRepository",
         "MySQLRepositoryContainer",
+        "MySQLVoiceTrainingRepository",
         "create_mysql_repositories",
     ]
 

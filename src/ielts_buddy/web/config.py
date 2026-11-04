@@ -333,6 +333,23 @@ LISTENING_AUDIO_RETENTION_DAYS: Final[int] = int(
 )
 # 启动期是否自动种子题库(默认 True;False 用于测试)
 LISTENING_AUTO_SEED: Final[bool] = _env_bool("IELTS_BUDDY_LISTENING_AUTO_SEED", True)
+
+# v3.9 W11 语音训练工坊配置
+VOICE_TTS_TIMEOUT: Final[float] = float(
+    os.environ.get("IELTS_BUDDY_VOICE_TTS_TIMEOUT", "30").strip() or "30"
+)
+VOICE_DEFAULT_VOICE: Final[str] = os.environ.get(
+    "IELTS_BUDDY_VOICE_DEFAULT_VOICE", "en-US-AriaNeural"
+).strip()
+VOICE_RECORDING_MAX_MB: Final[int] = int(
+    os.environ.get("IELTS_BUDDY_VOICE_RECORDING_MAX_MB", "10").strip() or "10"
+)
+VOICE_TEXT_MAX_WORDS: Final[int] = int(
+    os.environ.get("IELTS_BUDDY_VOICE_TEXT_MAX_WORDS", "500").strip() or "500"
+)
+VOICE_SOURCE_ZH_MAX_CHARS: Final[int] = int(
+    os.environ.get("IELTS_BUDDY_VOICE_ZH_MAX_CHARS", "800").strip() or "800"
+)
 # 启动期每个 Section 种子套数(默认 10/8/7/5 = 30 套)
 LISTENING_SEED_S1: Final[int] = int(os.environ.get("IELTS_BUDDY_LISTENING_SEED_S1", "10").strip() or "10")
 LISTENING_SEED_S2: Final[int] = int(os.environ.get("IELTS_BUDDY_LISTENING_SEED_S2", "8").strip() or "8")
@@ -370,6 +387,11 @@ __all__ = [
     "READING_LLM_TIMEOUT_SECONDS",
     "LISTENING_AUDIO_RETENTION_DAYS",
     "LISTENING_AUTO_SEED",
+    "VOICE_TTS_TIMEOUT",
+    "VOICE_DEFAULT_VOICE",
+    "VOICE_RECORDING_MAX_MB",
+    "VOICE_TEXT_MAX_WORDS",
+    "VOICE_SOURCE_ZH_MAX_CHARS",
     "LISTENING_SEED_S1",
     "LISTENING_SEED_S2",
     "LISTENING_SEED_S3",

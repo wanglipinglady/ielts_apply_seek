@@ -293,6 +293,25 @@ CREATE INDEX IF NOT EXISTS idx_spr_session
 CREATE INDEX IF NOT EXISTS idx_spr_user_part
     ON speaking_practice_records(user_id, part);
 
+-- v3.9 W11 语音训练工坊（每日中文感想 → LLM 改写 → 音标 → TTS → 跟读对比）
+CREATE TABLE IF NOT EXISTS voice_training_records (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    source_zh TEXT NOT NULL,               -- 中文原文
+    rewritten_en TEXT NOT NULL DEFAULT '', -- LLM 改写英文（改写失败时为空）
+    style TEXT NOT NULL DEFAULT 'natural', -- natural / casual / formal
+    ipa_json TEXT,                          -- JSON: [{word, ipa_us, ipa_uk, phonemes, rule}]
+    tts_voice TEXT NOT NULL DEFAULT 'en-US-AriaNeural',
+    tts_path TEXT,                          -- 相对 ~/.ielts-buddy/voice/ 的 TTS mp3
+    recording_path TEXT,                    -- 相对 ~/.ielts-buddy/voice/ 的跟读录音
+    notes TEXT NOT NULL DEFAULT '',         -- 纠音备注（手动填写）
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT '',
+    sync_status TEXT NOT NULL DEFAULT 'synced'
+);
+CREATE INDEX IF NOT EXISTS idx_vtr_user_created
+    ON voice_training_records(user_id, created_at DESC);
+
 -- v3.7 P2 真·听力题库(LLM 出题 + TTS 合成音频)
 CREATE TABLE IF NOT EXISTS listening_questions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -3188,6 +3207,134 @@ class SQLiteReadingPracticeRepository:
 # =============================================================
 
 
+# =============================================================
+# v3.9 W11: 语音训练工坊 Repository（SQLite 实现）
+# =============================================================
+
+
+class SQLiteVoiceTrainingRepository:
+    """SQLite 实现的 VoiceTrainingRepository。
+    记录每日中文感想→英文改写→跟读的完整闭环，所有方法带 user_id 隔离。
+    """
+
+    def __init__(self, conn: sqlite3.Connection) -> None:
+        self._conn = conn
+
+    # ---- 写入 ----
+    def create_record(
+        self,
+        user_id: int,
+        source_zh: str,
+        style: str = "natural",
+        rewritten_en: str = "",
+        tts_voice: str = "en-US-AriaNeural",
+    ) -> int:
+        """创建一条训练记录（中文先落库，改写结果后续 update 填）。"""
+        now_iso = datetime.now().isoformat(timespec="seconds")
+        cur = self._conn.execute(
+            """INSERT INTO voice_training_records
+               (user_id, source_zh, style, rewritten_en, tts_voice,
+                created_at, updated_at, sync_status)
+               VALUES (?, ?, ?, ?, ?, ?, ?, 'synced')""",
+            (user_id, source_zh, style, rewritten_en, tts_voice,
+             now_iso, now_iso),
+        )
+        self._conn.commit()
+        return int(cur.lastrowid)
+
+    def attach_rewrite(
+        self, user_id: int, record_id: int, rewritten_en: str
+    ) -> bool:
+        """LLM 改写成功后回填英文文本。"""
+        cur = self._conn.execute(
+            "UPDATE voice_training_records SET rewritten_en = ?, updated_at = ? "
+            "WHERE user_id = ? AND id = ?",
+            (rewritten_en, datetime.now().isoformat(timespec="seconds"),
+             user_id, record_id),
+        )
+        self._conn.commit()
+        return cur.rowcount > 0
+
+    def attach_ipa(
+        self, user_id: int, record_id: int, ipa_json: str
+    ) -> bool:
+        """音标解析结果回填（JSON 字符串）。"""
+        cur = self._conn.execute(
+            "UPDATE voice_training_records SET ipa_json = ?, updated_at = ? "
+            "WHERE user_id = ? AND id = ?",
+            (ipa_json, datetime.now().isoformat(timespec="seconds"),
+             user_id, record_id),
+        )
+        self._conn.commit()
+        return cur.rowcount > 0
+
+    def attach_tts(
+        self, user_id: int, record_id: int, tts_path: str, tts_voice: str
+    ) -> bool:
+        cur = self._conn.execute(
+            "UPDATE voice_training_records SET tts_path = ?, tts_voice = ?, "
+            "updated_at = ? WHERE user_id = ? AND id = ?",
+            (tts_path, tts_voice,
+             datetime.now().isoformat(timespec="seconds"), user_id, record_id),
+        )
+        self._conn.commit()
+        return cur.rowcount > 0
+
+    def attach_recording(
+        self, user_id: int, record_id: int, recording_path: str
+    ) -> bool:
+        cur = self._conn.execute(
+            "UPDATE voice_training_records SET recording_path = ?, "
+            "updated_at = ? WHERE user_id = ? AND id = ?",
+            (recording_path, datetime.now().isoformat(timespec="seconds"),
+             user_id, record_id),
+        )
+        self._conn.commit()
+        return cur.rowcount > 0
+
+    def update_notes(self, user_id: int, record_id: int, notes: str) -> bool:
+        cur = self._conn.execute(
+            "UPDATE voice_training_records SET notes = ?, updated_at = ? "
+            "WHERE user_id = ? AND id = ?",
+            (notes, datetime.now().isoformat(timespec="seconds"),
+             user_id, record_id),
+        )
+        self._conn.commit()
+        return cur.rowcount > 0
+
+    # ---- 读取 ----
+    def get_record(self, user_id: int, record_id: int) -> Optional[dict]:
+        row = self._conn.execute(
+            "SELECT * FROM voice_training_records "
+            "WHERE user_id = ? AND id = ?",
+            (user_id, record_id),
+        ).fetchone()
+        return dict(row) if row else None
+
+    def list_records(
+        self, user_id: int, page: int = 1, size: int = 20
+    ) -> tuple[list[dict], int]:
+        total = self._conn.execute(
+            "SELECT COUNT(*) AS c FROM voice_training_records WHERE user_id = ?",
+            (user_id,),
+        ).fetchone()["c"]
+        rows = self._conn.execute(
+            """SELECT * FROM voice_training_records
+               WHERE user_id = ?
+               ORDER BY created_at DESC LIMIT ? OFFSET ?""",
+            (user_id, size, (page - 1) * size),
+        ).fetchall()
+        return [dict(r) for r in rows], int(total)
+
+    def count_today(self, user_id: int) -> int:
+        today = datetime.now().strftime("%Y-%m-%d")
+        return int(self._conn.execute(
+            "SELECT COUNT(*) AS c FROM voice_training_records "
+            "WHERE user_id = ? AND created_at LIKE ?",
+            (user_id, today + "%"),
+        ).fetchone()["c"])
+
+
 class SQLiteRepositoryContainer:
     """SQLite Repository 容器(v3.8 升级为 10 个)。"""
 
@@ -3232,6 +3379,8 @@ class SQLiteRepositoryContainer:
         self.prep_resource = SQLitePrepResourceRepository(self._conn)
         # v3.8 P3.2：Reading 真题题库
         self.reading_practice = SQLiteReadingPracticeRepository(self._conn)
+        # v3.9 W11：语音训练工坊
+        self.voice_training = SQLiteVoiceTrainingRepository(self._conn)
 
         if cache_path is None:
             # v3：vocab_cache 与业务共用同一个 db 文件（避免维护多份 cache 拷贝）
