@@ -15,6 +15,8 @@ import re
 from pathlib import Path
 from typing import Optional
 
+from ielts_buddy.web.craft_rewrite_service import strip_reasoning
+
 logger = logging.getLogger(__name__)
 
 # ARPAbet → 美式 IPA（含重音标记处理）
@@ -246,7 +248,7 @@ class PhoneticsService:
                 ],
                 temperature=0.3,
             )
-            return (resp.choices[0].message.content or "").strip()
+            return strip_reasoning(resp.choices[0].message.content or "")
         except Exception as exc:
             logger.warning("[phonetics] LLM 规则生成失败(%s): %s", word, exc)
             return ""

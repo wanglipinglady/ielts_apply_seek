@@ -15,6 +15,26 @@ logger = logging.getLogger(__name__)
 
 VALID_STYLES = ("natural", "casual", "formal")
 
+# ---- LLM 思考标签清理（MiniMax M2 等推理模型会把 <think 块混在 content 里返回，
+# 污染正文/TTS 输入，必须剥离） ----
+_REASONING_BLOCK_RE = re.compile(
+    r"<think(?:ing)?(?:\s[^>]*)?>.*?(?:</think(?:ing)?\s*>|$)", re.DOTALL | re.IGNORECASE
+)
+_REASONING_BLOCK2_RE = re.compile(
+    r"<reasoning(?:\s[^>]*)?>.*?(?:</reasoning\s*>|$)", re.DOTALL | re.IGNORECASE
+)
+_LONE_TAG_RE = re.compile(r"</?(?:think(?:ing)?|reasoning)\b[^>]*>", re.IGNORECASE)
+
+
+def strip_reasoning(text: str) -> str:
+    """剥离 LLM content 里的思考块/孤立思考标签，只保留正式输出。"""
+    if not text:
+        return ""
+    out = _REASONING_BLOCK_RE.sub("", text)
+    out = _REASONING_BLOCK2_RE.sub("", out)
+    out = _LONE_TAG_RE.sub("", out)
+    return out.strip()
+
 _STYLE_HINT = {
     "natural": "natural, everyday American English",
     "casual": "casual, conversational American English (spoken style)",
@@ -71,7 +91,7 @@ class CraftRewriteService:
                 ],
                 temperature=0.7,
             )
-            en_text = (resp.choices[0].message.content or "").strip()
+            en_text = strip_reasoning(resp.choices[0].message.content or "")
             en_text = re.sub(r"^\"+|\"+$", "", en_text).strip()
             if not en_text:
                 raise RuntimeError("LLM 返回空文本")
